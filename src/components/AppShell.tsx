@@ -19,7 +19,6 @@ import {
   Sun,
   PanelLeft,
   PanelRight,
-  BarChart3,
   Trash2,
   PanelsTopLeft,
   ChevronDown,
@@ -31,7 +30,6 @@ import {
   AlertTriangle,
   ClipboardCheck,
   HandCoins,
-  NotebookPen,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
@@ -68,14 +66,12 @@ type NavItem = {
 const allNav: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard" },
   { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks, permission: "tasks" },
+  { to: "/portal/residuos", label: "Faturamento", icon: Recycle, permission: "billing", tab: "faturamento2" },
   { to: "/clients", label: "Clientes", icon: Building2, permission: "clients" },
   { to: "/terceirizados", label: "Terceirizados", icon: Factory, permission: "outsourced" },
-  { to: "/reports", label: "Relatórios", icon: BarChart3, permission: "reports" },
   { to: "/portal/documentos", label: "Documentos", icon: FileText, permission: "documents" },
-  { to: "/notes", label: "Atas e anotações", icon: NotebookPen, permission: "documents" },
   { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true, ownerOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
-  { to: "/portal/residuos", label: "Faturamento", icon: Recycle, permission: "billing", tab: "faturamento2" },
   { to: "/financeiro", label: "Financeiro", icon: HandCoins, permission: "billing" },
   { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, permission: "movement_settings", tab: "configuracoes" },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
@@ -86,12 +82,20 @@ const allNav: readonly NavItem[] = [
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut, isAdmin, isClient, hasPermission } = useAuth();
   const nav = useMemo(() => {
-    return allNav.filter(
+    const visibleItems = allNav.filter(
       (item) =>
         (!item.adminOnly || isAdmin) &&
         (!item.ownerOnly || user?.id === FILES_OWNER_ID) &&
         (item.to === "/portal" ? isClient || hasPermission("portal_units") || hasPermission("portal_reports") : !item.permission || hasPermission(item.permission)),
     );
+    // Para a equipe interna, o Portal do Cliente é um bloco auxiliar e fica no
+    // fim do menu, depois de Personalizar. No perfil Cliente preservamos a
+    // ordem original, pois o portal é a navegação principal desse usuário.
+    if (isClient) return visibleItems;
+    const portalItem = visibleItems.find((item) => item.to === "/portal");
+    return portalItem
+      ? [...visibleItems.filter((item) => item.to !== "/portal"), portalItem]
+      : visibleItems;
   }, [isAdmin, isClient, hasPermission, user?.id]);
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useClients, useProfiles } from "@/hooks/use-data";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Archive, KeyRound, Plus, ShieldCheck, User as UserIcon, UserCheck, UserX } from "lucide-react";
+import { ChevronDown, KeyRound, Plus, ShieldCheck, User as UserIcon, UserCheck, UserX } from "lucide-react";
 
 export const Route = createFileRoute("/_app/users")({ component: UsersPage });
 
@@ -35,6 +36,40 @@ type Role = "admin" | "collaborator" | "client";
 type FormState = { fullName: string; email: string; password: string; role: Role; permissions: string[]; clientId: string };
 const defaults: FormState = { fullName: "", email: "", password: "", role: "collaborator", permissions: ["dashboard", "tasks"], clientId: "" };
 const roleLabel: Record<Role, string> = { admin: "Administrador", collaborator: "Colaboradores", client: "Cliente" };
+
+function UserCategorySection({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="overflow-hidden rounded-xl border bg-card shadow-sm">
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50"
+        >
+          <span className="flex items-center gap-2 font-semibold">
+            {title}
+            <Badge variant="secondary">{count}</Badge>
+          </span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-t p-4">
+          {count > 0 ? children : <p className="text-sm text-muted-foreground">Nenhum usuário nesta categoria.</p>}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 function AccessForm({ value, onChange, includeCredentials = false, passwordRequired = true }: { value: FormState; onChange: (next: FormState) => void; includeCredentials?: boolean; passwordRequired?: boolean }) {
   const { data: clients = [] } = useClients();
@@ -145,5 +180,87 @@ function UsersPage() {
     const email = emailFor(p);
     return <Card key={p.id} className="p-4"><div className="flex items-center gap-3"><Avatar className="h-12 w-12"><AvatarImage src={p.avatar_url || undefined} alt={p.full_name || email || "Usuário"} /><AvatarFallback>{(p.full_name || email || "?").slice(0, 2).toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><h3 className="truncate font-semibold">{p.full_name || "Sem nome"}</h3><p className="truncate text-xs text-muted-foreground">E-mail: {email ?? "Não informado"}</p></div>{role === "admin" ? <ShieldCheck className="h-4 w-4 text-primary" /> : <UserIcon className="h-4 w-4 text-muted-foreground" />}</div><div className="mt-3 flex gap-1"><Badge variant={role === "admin" ? "default" : "secondary"}>{roleLabel[role]}</Badge>{self && <Badge variant="outline">Você</Badge>}</div><div className="mt-3 border-t pt-3"><Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(p.id)}>{role === "client" ? "Editar acesso do portal" : "Definir categoria e acessos"}</Button>{role !== "client" && <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => { setResetTarget(p); setNewPassword(""); }}><KeyRound className="mr-1 h-3 w-3" />Redefinir senha</Button>}{!self && <Button size="sm" variant="outline" className="mt-2 w-full" onClick={() => setActive.mutate({ userId: p.id, active: false })}><UserX className="mr-1 h-3 w-3" /> Desativar acesso</Button>}</div></Card>;
   };
-  return <div className="space-y-6 p-6"><header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold tracking-tight">Usuários</h1><p className="text-sm text-muted-foreground">Crie logins e defina os acessos de cada usuário.</p></div><Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Novo usuário</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Criar acesso</DialogTitle><DialogDescription>O login e a senha abaixo dão acesso ao sistema conforme as permissões escolhidas.</DialogDescription></DialogHeader><AccessForm value={form} onChange={setForm} includeCredentials /><DialogFooter><Button disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Criando…" : "Criar acesso"}</Button></DialogFooter></DialogContent></Dialog></header><div><h2 className="mb-3 text-sm font-semibold text-muted-foreground">Ativos ({activeProfiles.length})</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{activeProfiles.map(renderProfile)}</div></div>{inactiveProfiles.length > 0 && <div><h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted-foreground"><Archive className="h-4 w-4" /> Desativados ({inactiveProfiles.length})</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{inactiveProfiles.map((p: any) => <Card key={p.id} className="border-dashed p-4 opacity-75"><p className="font-medium">{p.full_name || p.email}</p><Button size="sm" className="mt-3 w-full" variant="outline" onClick={() => setActive.mutate({ userId: p.id, active: true })}><UserCheck className="mr-1 h-3 w-3" /> Reativar acesso</Button></Card>)}</div></div>}<Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}><DialogContent><DialogHeader><DialogTitle>{form.role === "client" ? "Editar acesso do portal" : "Definir acessos"}</DialogTitle><DialogDescription>{form.role === "client" ? "Atualize os dados do responsável pelo acesso ao portal. Todas as alterações passam a valer imediatamente." : "Escolha a categoria e as áreas disponíveis no menu para este usuário."}</DialogDescription></DialogHeader><AccessForm value={form} onChange={setForm} includeCredentials={form.role === "client"} passwordRequired={false} /><DialogFooter><Button disabled={updateMutation.isPending} onClick={() => updateMutation.mutate()}>{updateMutation.isPending ? "Salvando…" : form.role === "client" ? "Salvar acesso" : "Salvar acessos"}</Button></DialogFooter></DialogContent></Dialog><Dialog open={!!resetTarget} onOpenChange={(open) => !open && setResetTarget(null)}><DialogContent><DialogHeader><DialogTitle>Redefinir senha</DialogTitle><DialogDescription>Defina uma nova senha para {resetTarget?.full_name || emailFor(resetTarget || {}) || "este acesso"}. Ela passa a valer imediatamente.</DialogDescription></DialogHeader><div className="space-y-2"><Label htmlFor="new-password">Nova senha</Label><Input id="new-password" type="password" minLength={6} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Mínimo de 6 caracteres" /></div><DialogFooter><Button disabled={resetPasswordMutation.isPending || newPassword.length < 6} onClick={() => resetPasswordMutation.mutate()}>{resetPasswordMutation.isPending ? "Redefinindo…" : "Salvar nova senha"}</Button></DialogFooter></DialogContent></Dialog></div>;
+  const profilesByRole: Record<Role, any[]> = { admin: [], collaborator: [], client: [] };
+  activeProfiles.forEach((profile) => {
+    const role = (roles.find((item: { user_id: string; role: string }) => item.user_id === profile.id)?.role ?? "collaborator") as Role;
+    profilesByRole[role].push(profile);
+  });
+
+  return (
+    <div className="space-y-6 p-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Usuários</h1>
+          <p className="text-sm text-muted-foreground">Crie logins e defina os acessos de cada usuário.</p>
+        </div>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Novo usuário</Button></DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Criar acesso</DialogTitle>
+              <DialogDescription>O login e a senha abaixo dão acesso ao sistema conforme as permissões escolhidas.</DialogDescription>
+            </DialogHeader>
+            <AccessForm value={form} onChange={setForm} includeCredentials />
+            <DialogFooter><Button disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Criando…" : "Criar acesso"}</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </header>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground">Usuários ativos ({activeProfiles.length})</h2>
+          <p className="text-xs text-muted-foreground">Abra uma categoria para visualizar e gerenciar seus acessos.</p>
+        </div>
+        <UserCategorySection title="Administradores" count={profilesByRole.admin.length}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{profilesByRole.admin.map(renderProfile)}</div>
+        </UserCategorySection>
+        <UserCategorySection title="Colaboradores" count={profilesByRole.collaborator.length}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{profilesByRole.collaborator.map(renderProfile)}</div>
+        </UserCategorySection>
+        <UserCategorySection title="Clientes" count={profilesByRole.client.length}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{profilesByRole.client.map(renderProfile)}</div>
+        </UserCategorySection>
+      </section>
+
+      {inactiveProfiles.length > 0 && (
+        <UserCategorySection title="Acessos desativados" count={inactiveProfiles.length}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {inactiveProfiles.map((p: any) => (
+              <Card key={p.id} className="border-dashed p-4 opacity-75">
+                <p className="font-medium">{p.full_name || p.email}</p>
+                <Button size="sm" className="mt-3 w-full" variant="outline" onClick={() => setActive.mutate({ userId: p.id, active: true })}>
+                  <UserCheck className="mr-1 h-3 w-3" /> Reativar acesso
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </UserCategorySection>
+      )}
+
+      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{form.role === "client" ? "Editar acesso do portal" : "Definir acessos"}</DialogTitle>
+            <DialogDescription>{form.role === "client" ? "Atualize os dados do responsável pelo acesso ao portal. Todas as alterações passam a valer imediatamente." : "Escolha a categoria e as áreas disponíveis no menu para este usuário."}</DialogDescription>
+          </DialogHeader>
+          <AccessForm value={form} onChange={setForm} includeCredentials={form.role === "client"} passwordRequired={false} />
+          <DialogFooter><Button disabled={updateMutation.isPending} onClick={() => updateMutation.mutate()}>{updateMutation.isPending ? "Salvando…" : form.role === "client" ? "Salvar acesso" : "Salvar acessos"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resetTarget} onOpenChange={(open) => !open && setResetTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redefinir senha</DialogTitle>
+            <DialogDescription>Defina uma nova senha para {resetTarget?.full_name || emailFor(resetTarget || {}) || "este acesso"}. Ela passa a valer imediatamente.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="new-password">Nova senha</Label>
+            <Input id="new-password" type="password" minLength={6} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Mínimo de 6 caracteres" />
+          </div>
+          <DialogFooter><Button disabled={resetPasswordMutation.isPending || newPassword.length < 6} onClick={() => resetPasswordMutation.mutate()}>{resetPasswordMutation.isPending ? "Redefinindo…" : "Salvar nova senha"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
