@@ -1,7 +1,7 @@
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Pencil, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Pencil, RotateCcw, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -56,6 +57,22 @@ type ResidueEmission = {
   finalized_at: string;
   client_portal_visible: boolean;
 };
+type BillingEmailDelivery = {
+  id: string;
+  cycle_id: string;
+  residue_emission_id: string | null;
+  recipient_email: string;
+  status: "pending" | "sending" | "sent" | "failed" | "cancelled";
+  attempts: number;
+  last_error: string | null;
+  sent_at: string | null;
+};
+type PublishDialogTarget = {
+  cycle: Cycle;
+  residueEmission?: ResidueEmission;
+  displayNumber: string;
+  residueId: string;
+};
 type Placement = {
   id: string;
   cycle_id: string | null;
@@ -85,6 +102,16 @@ type Movement = {
   treatment_rate: number;
   exchange_rate: number;
   observation: string | null;
+};
+type PendingMovement = Movement & {
+  cycle_id: string;
+  client_id: string;
+  cycle_branch_id: string | null;
+  bulletin_number: number;
+  cycle_status: string;
+  client_name: string;
+  branch_name: string;
+  residue_name: string;
 };
 type MovementAttachment = { id: string; movement_id: string; file_name: string; storage_path: string; created_at: string };
 type Service = { id: string; name: string; active: boolean; default_rate?: number; branch_id?: string | null };
@@ -211,6 +238,7 @@ export function BillingV2Module() {
   const [periodEnd, setPeriodEnd] = useState(() => storedBillingView().periodEnd || new Date().toISOString().slice(0, 10));
   const [cycleBranchId, setCycleBranchId] = useState(() => storedBillingView().cycleBranchId || "");
   const [cycleId, setCycleId] = useState(() => storedBillingView().cycleId || "");
+  const [homeTab, setHomeTab] = useState<"boletins" | "pendentes">("boletins");
   const [tab, setTab] = useState(() => storedBillingView().tab || "locacoes");
   const [residueFilterId, setResidueFilterId] = useState(() => storedBillingView().residueFilterId || "all");
   const [billingViewRestored, setBillingViewRestored] = useState(false);
@@ -250,6 +278,12 @@ export function BillingV2Module() {
   const [selectedBulkCycleIds, setSelectedBulkCycleIds] = useState<string[]>([]);
   const [isFinalizingBulk, setIsFinalizingBulk] = useState(false);
   const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
+  const [publishDialog, setPublishDialog] = useState<PublishDialogTarget | null>(null);
+  const [emailMessage, setEmailMessage] = useState("");
+  const [recipientPreview, setRecipientPreview] = useState<string[]>([]);
+  const [recipientPreviewLoading, setRecipientPreviewLoading] = useState(false);
+  const [recipientPreviewError, setRecipientPreviewError] = useState("");
+  const [focusedMovementId, setFocusedMovementId] = useState("");
 
   // Em uma recarga causada pelo próprio navegador, a primeira renderização pode
   // ocorrer no servidor. Restauramos a aba somente depois da hidratação e antes
@@ -319,6 +353,18 @@ export function BillingV2Module() {
       return (data || []) as ResidueEmission[];
     },
   });
+  const billingEmailDeliveriesQuery = useQuery({
+    queryKey: ["billing-email-deliveries", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_email_deliveries" as any) as any)
+        .select("id,cycle_id,residue_emission_id,recipient_email,status,attempts,last_error,sent_at,billing_v2_cycles!inner(client_id)")
+        .eq("billing_v2_cycles.client_id", clientId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as BillingEmailDelivery[];
+    },
+  });
   const recentCyclesQuery = useQuery({
     queryKey: ["billing-v2-recent"],
     queryFn: async () => {
@@ -329,6 +375,66 @@ export function BillingV2Module() {
         .limit(8);
       if (error) throw error;
       return (data || []) as Cycle[];
+    },
+  });
+  const pendingMovementsQuery = useQuery({
+    queryKey: ["billing-v2-pending-movements"],
+    queryFn: async () => {
+      const { data: movementRows, error: movementError } = await (supabase.from("billing_v2_movements" as any) as any)
+        .select("id,batch_id,cycle_id,branch_id,equipment_id,replacement_equipment_id,waste_residue_id,occurred_on,service_order,mtr_number,placed_quantity,removed_quantity,weight_kg,confirmed,treatment_rate,exchange_rate,observation")
+        .eq("confirmed", false)
+        .order("occurred_on", { ascending: true });
+      if (movementError) throw movementError;
+      if (!movementRows?.length) return [] as PendingMovement[];
+
+      const cycleIds = Array.from(new Set(movementRows.map((item: any) => item.cycle_id)));
+      const { data: cycleRows, error: cycleError } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .select("id,client_id,branch_id,bulletin_number,status,is_demo")
+        .in("id", cycleIds)
+        .eq("is_demo", false)
+        .eq("status", "draft");
+      if (cycleError) throw cycleError;
+      const visibleCycles = cycleRows || [];
+      if (!visibleCycles.length) return [] as PendingMovement[];
+
+      const clientIds = Array.from(new Set(visibleCycles.map((item: any) => item.client_id)));
+      const branchIds = Array.from(new Set([
+        ...visibleCycles.map((item: any) => item.branch_id),
+        ...movementRows.map((item: any) => item.branch_id),
+      ].filter(Boolean)));
+      const residueIds = Array.from(new Set(movementRows.map((item: any) => item.waste_residue_id).filter(Boolean)));
+      const [clientsResult, branchesResult, residuesResult] = await Promise.all([
+        (supabase.from("clients" as any) as any).select("id,name").in("id", clientIds),
+        branchIds.length
+          ? (supabase.from("client_branches" as any) as any).select("id,name").in("id", branchIds)
+          : Promise.resolve({ data: [], error: null }),
+        residueIds.length
+          ? (supabase.from("waste_residues" as any) as any).select("id,name").in("id", residueIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (clientsResult.error) throw clientsResult.error;
+      if (branchesResult.error) throw branchesResult.error;
+      if (residuesResult.error) throw residuesResult.error;
+
+      const cyclesById = new Map(visibleCycles.map((item: any) => [item.id, item]));
+      const clientsById = new Map((clientsResult.data || []).map((item: any) => [item.id, item.name]));
+      const branchesById = new Map((branchesResult.data || []).map((item: any) => [item.id, item.name]));
+      const residuesById = new Map((residuesResult.data || []).map((item: any) => [item.id, item.name]));
+      return movementRows.flatMap((item: any) => {
+        const targetCycle = cyclesById.get(item.cycle_id) as any;
+        if (!targetCycle) return [];
+        const targetBranchId = item.branch_id || targetCycle.branch_id;
+        return [{
+          ...item,
+          client_id: targetCycle.client_id,
+          cycle_branch_id: targetCycle.branch_id,
+          bulletin_number: targetCycle.bulletin_number,
+          cycle_status: targetCycle.status,
+          client_name: clientsById.get(targetCycle.client_id) || "Cliente",
+          branch_name: targetBranchId ? (branchesById.get(targetBranchId) || "Filial/pátio") : "Matriz (sem filial/pátio)",
+          residue_name: item.waste_residue_id ? (residuesById.get(item.waste_residue_id) || "Resíduo") : "—",
+        } as PendingMovement];
+      });
     },
   });
   const bmSearchNumber = Number((bmSearch.match(/\d+/g) || []).join(""));
@@ -713,6 +819,7 @@ export function BillingV2Module() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["billing-v2-placements", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
+    qc.invalidateQueries({ queryKey: ["billing-v2-pending-movements"] });
     qc.invalidateQueries({ queryKey: ["billing-v2-cycle-services", cycleId] });
   };
   const saveIssuer = useMutation({
@@ -1012,6 +1119,7 @@ export function BillingV2Module() {
     },
     onSuccess: (_data, { confirmed }) => {
       void qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-pending-movements"] });
       toast.success(confirmed ? "Movimentação confirmada: valores incluídos no BM." : "Movimentação pendente: valores retirados do BM.");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -1207,8 +1315,21 @@ export function BillingV2Module() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const requestBillingEmailDispatch = async (payload: { cycleId: string; residueEmissionId?: string; customMessage?: string }) => {
+    const { data, error } = await supabase.functions.invoke("send-billing-emails", { body: payload });
+    void qc.invalidateQueries({ queryKey: ["billing-email-deliveries", clientId] });
+    if (error || data?.configured === false) {
+      toast.info("Publicado no portal. O aviso por e-mail ficou aguardando a configuração do Resend.");
+      return;
+    }
+    if (Number(data?.sent || 0) > 0) {
+      toast.success(`${data.sent} aviso${Number(data.sent) === 1 ? "" : "s"} por e-mail enviado${Number(data.sent) === 1 ? "" : "s"}.`);
+    } else if (Number(data?.processed || 0) === 0) {
+      toast.info("Publicado no portal, mas este cliente não possui destinatário de e-mail vinculado.");
+    }
+  };
   const setCyclePortalVisibility = useMutation({
-    mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
+    mutationFn: async ({ id, visible }: { id: string; visible: boolean; customMessage?: string; sendEmail?: boolean }) => {
       const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
         .update({ client_portal_visible: visible })
         .eq("id", id)
@@ -1219,11 +1340,14 @@ export function BillingV2Module() {
       void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       toast.success(variables.visible ? "Boletim publicado no portal do cliente." : "Boletim removido do portal do cliente.");
+      if (variables.visible && variables.sendEmail) void requestBillingEmailDispatch({ cycleId: variables.id, customMessage: variables.customMessage });
+      else void qc.invalidateQueries({ queryKey: ["billing-email-deliveries", clientId] });
+      if (variables.visible && variables.sendEmail) setPublishDialog(null);
     },
     onError: (error: Error) => toast.error(error.message),
   });
   const setResidueEmissionPortalVisibility = useMutation({
-    mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
+    mutationFn: async ({ id, visible }: { id: string; visible: boolean; customMessage?: string; sendEmail?: boolean }) => {
       const { error } = await (supabase.from("billing_v2_residue_emissions" as any) as any)
         .update({ client_portal_visible: visible })
         .eq("id", id);
@@ -1232,9 +1356,46 @@ export function BillingV2Module() {
     onSuccess: (_, variables) => {
       void qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
       toast.success(variables.visible ? "Emissão publicada no portal do cliente." : "Emissão removida do portal do cliente.");
+      if (variables.visible && variables.sendEmail) {
+        const emission = residueEmissionsQuery.data?.find((item) => item.id === variables.id);
+        if (emission) void requestBillingEmailDispatch({ cycleId: emission.cycle_id, residueEmissionId: variables.id, customMessage: variables.customMessage });
+      } else {
+        void qc.invalidateQueries({ queryKey: ["billing-email-deliveries", clientId] });
+      }
+      if (variables.visible && variables.sendEmail) setPublishDialog(null);
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const openPublishConfirmation = async (target: PublishDialogTarget) => {
+    setPublishDialog(target);
+    setEmailMessage("");
+    setRecipientPreview([]);
+    setRecipientPreviewError("");
+    setRecipientPreviewLoading(true);
+    const { data, error } = await supabase.functions.invoke("send-billing-emails", {
+      body: { cycleId: target.cycle.id, previewOnly: true },
+    });
+    if (error) {
+      setRecipientPreviewError("Não foi possível conferir os e-mails agora. Verifique a integração antes de enviar.");
+    } else {
+      setRecipientPreview(Array.isArray(data?.recipients) ? data.recipients : []);
+    }
+    setRecipientPreviewLoading(false);
+  };
+  const confirmPublishAndSend = () => {
+    if (!publishDialog) return;
+    const customMessage = emailMessage.trim();
+    if (publishDialog.residueEmission) {
+      setResidueEmissionPortalVisibility.mutate({
+        id: publishDialog.residueEmission.id,
+        visible: true,
+        customMessage,
+        sendEmail: true,
+      });
+      return;
+    }
+    setCyclePortalVisibility.mutate({ id: publishDialog.cycle.id, visible: true, customMessage, sendEmail: true });
+  };
   const remove = async (table: string, id: string) => {
     if (!confirm("Excluir este lançamento?") || !id) return;
     const { error } = await (supabase.from(table as any) as any).delete().eq("id", id);
@@ -1326,6 +1487,20 @@ export function BillingV2Module() {
   const branchName = (id?: string | null) => branch(id || "")?.name || "Matriz (sem filial/pátio)";
   const clientCycles = cyclesQuery.data || [];
   const residueEmissions = residueEmissionsQuery.data || [];
+  const billingEmailDeliveries = billingEmailDeliveriesQuery.data || [];
+  const emailDeliverySummary = (targetCycleId: string, residueEmissionId: string | null = null) => {
+    const deliveries = billingEmailDeliveries.filter((item) =>
+      item.cycle_id === targetCycleId && item.residue_emission_id === residueEmissionId,
+    );
+    if (!deliveries.length) return { label: "Nenhum envio registrado", title: "Este BM pode ter sido publicado antes da ativação do envio por e-mail ou não possuir um acesso de cliente vinculado." };
+    const sent = deliveries.filter((item) => item.status === "sent").length;
+    const failed = deliveries.filter((item) => item.status === "failed").length;
+    const waiting = deliveries.filter((item) => item.status === "pending" || item.status === "sending").length;
+    if (sent === deliveries.length) return { label: `${sent} enviado${sent === 1 ? "" : "s"}`, title: deliveries.map((item) => item.recipient_email).join(", ") };
+    if (failed) return { label: `${failed} com falha`, title: deliveries.filter((item) => item.status === "failed").map((item) => `${item.recipient_email}: ${item.last_error || "falha no envio"}`).join("\n") };
+    if (waiting) return { label: `${waiting} aguardando`, title: deliveries.map((item) => item.recipient_email).join(", ") };
+    return { label: "Não enviado", title: deliveries.map((item) => item.recipient_email).join(", ") };
+  };
   const emittedGroups = useMemo(() => {
     const map = new Map<string, { cycleId: string; major: number; parent?: Cycle; emissions: ResidueEmission[] }>();
     clientCycles.filter((item) => item.status === "closed").forEach((item) => {
@@ -1355,12 +1530,32 @@ export function BillingV2Module() {
     .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0));
   const bmSearching = Number.isFinite(bmSearchNumber) && bmSearchNumber > 0;
   const recentDisplayCycles = bmSearching ? (bmSearchQuery.data || []) : recentCycles;
+  const pendingMovementGroups = useMemo(() => {
+    const grouped = new Map<string, PendingMovement[]>();
+    (pendingMovementsQuery.data || []).forEach((item) => {
+      const key = item.batch_id || item.id;
+      grouped.set(key, [...(grouped.get(key) || []), item]);
+    });
+    return Array.from(grouped.entries())
+      .map(([key, rows]) => ({ key, rows }))
+      .sort((a, b) => a.rows[0].occurred_on.localeCompare(b.rows[0].occurred_on));
+  }, [pendingMovementsQuery.data]);
   const openRecentCycle = (item: Cycle) => {
+    setFocusedMovementId("");
     setClientId(item.client_id);
     setCycleBranchId(branchKey(item.branch_id));
     setCycleId(item.id);
     setResidueFilterId("all");
     setTab("locacoes");
+  };
+  const openPendingMovement = (item: PendingMovement) => {
+    setClientId(item.client_id);
+    setCycleBranchId(branchKey(item.cycle_branch_id));
+    setCycleId(item.cycle_id);
+    setResidueFilterId("all");
+    setMovementBranchFilter(branchKey(item.branch_id));
+    setFocusedMovementId(item.id);
+    setTab("movimentos");
   };
   const issuerCompany = outsourcedCompanies.find((company) => company.id === cycle?.outsourced_company_id);
   const documentThirdParty = issuerCompany || outsourcedCompanies.find((company) =>
@@ -1807,6 +2002,17 @@ export function BillingV2Module() {
         </header>
       )}
       {!cycleId && (
+        <Tabs value={homeTab} onValueChange={(value) => setHomeTab(value as "boletins" | "pendentes")}>
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-xl bg-muted/50 p-1">
+            <TabsTrigger value="boletins" className="rounded-lg data-[state=active]:shadow-sm">Boletins</TabsTrigger>
+            <TabsTrigger value="pendentes" className="rounded-lg data-[state=active]:shadow-sm">
+              Movimentações pendentes
+              {pendingMovementGroups.length > 0 && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{pendingMovementGroups.length}</span>}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+      {!cycleId && homeTab === "boletins" && (
       <Card className="p-5">
         <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
           <Field label="Cliente">
@@ -1851,7 +2057,7 @@ export function BillingV2Module() {
         </div>
       </Card>
       )}
-      {!cycleId ? (
+      {!cycleId ? homeTab === "boletins" ? (
         <div className="flex flex-col gap-6">
           <Card className="order-2 p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1920,11 +2126,85 @@ export function BillingV2Module() {
         </Card>
         </div>
       ) : (
+        <Card className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Movimentações pendentes de gerar valor</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Estes lançamentos estão marcados como “Não gera valor” e ainda não entram na soma do BM. Somente BMs em edição aparecem aqui. Abra a movimentação para conferir os dados e confirmar quando estiver correto.
+              </p>
+            </div>
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">
+              {pendingMovementGroups.length} pendente{pendingMovementGroups.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[1260px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="p-2">BM</th>
+                  <th className="p-2">Data</th>
+                  <th className="p-2">Cliente</th>
+                  <th className="p-2">Matriz/filial/pátio</th>
+                  <th className="p-2">OS / MTR</th>
+                  <th className="p-2">Resíduo</th>
+                  <th className="p-2">Movimentação</th>
+                  <th className="p-2">Peso</th>
+                  <th className="p-2">Observação</th>
+                  <th className="p-2">Situação do BM</th>
+                  <th className="p-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {pendingMovementsQuery.isLoading ? (
+                  <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Carregando movimentações pendentes…</td></tr>
+                ) : pendingMovementsQuery.isError ? (
+                  <tr><td colSpan={11} className="p-8 text-center text-destructive">Não foi possível carregar as movimentações pendentes.</td></tr>
+                ) : pendingMovementGroups.length ? pendingMovementGroups.map(({ key, rows }) => {
+                  const item = rows[0];
+                  const placed = rows.reduce((sum, row) => sum + Number(row.placed_quantity || 0), 0);
+                  const removed = rows.reduce((sum, row) => sum + Number(row.removed_quantity || 0), 0);
+                  const weight = rows.reduce((sum, row) => sum + Number(row.weight_kg || 0), 0);
+                  const observations = Array.from(new Set(rows.map((row) => row.observation?.trim()).filter(Boolean))).join(" · ");
+                  return (
+                    <tr key={key} className="border-b align-top">
+                      <td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td>
+                      <td className="p-2 whitespace-nowrap">{new Date(`${item.occurred_on}T12:00:00`).toLocaleDateString("pt-BR")}</td>
+                      <td className="p-2 font-medium"><span className="block max-w-56 truncate" title={item.client_name}>{item.client_name}</span></td>
+                      <td className="p-2"><span className="block max-w-56" title={item.branch_name}>{item.branch_name}</span></td>
+                      <td className="p-2"><div>OS: {item.service_order || "—"}</div><div className="text-xs text-muted-foreground">MTR: {item.mtr_number || "—"}</div></td>
+                      <td className="p-2">{item.residue_name}</td>
+                      <td className="p-2 whitespace-nowrap">
+                        {number(placed)} colocada(s) · {number(removed)} removida(s)
+                        {rows.length > 1 && <div className="text-xs text-muted-foreground">{rows.length} equipamentos agrupados</div>}
+                      </td>
+                      <td className="p-2 whitespace-nowrap">{number(weight)} kg</td>
+                      <td className="max-w-64 p-2" title={observations || undefined}>{observations || "—"}</td>
+                      <td className="p-2">
+                        <span className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${item.cycle_status === "closed" ? "bg-muted text-muted-foreground" : "bg-amber-100 text-amber-800"}`}>
+                          {item.cycle_status === "closed" ? "Finalizado" : "Em edição"}
+                        </span>
+                      </td>
+                      <td className="p-2 text-right">
+                        <Button variant="outline" size="sm" onClick={() => openPendingMovement(item)}>
+                          Abrir movimentação
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Nenhuma movimentação pendente. Todos os lançamentos estão gerando valor.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
         <>
           <Card className="sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-primary/15 p-3 shadow-elegant supports-[backdrop-filter]:bg-card/80 supports-[backdrop-filter]:backdrop-blur">
-            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setCycleId("")}>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setCycleId(""); setFocusedMovementId(""); }}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Voltar aos boletins
+              {homeTab === "pendentes" ? "Voltar às pendências" : "Voltar aos boletins"}
             </Button>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className="text-lg font-bold tracking-tight text-primary">{filteredEmissionPreview ? `#${filteredEmissionPreview}` : bulletinNumber(cycle?.bulletin_number)}</span>
@@ -1949,7 +2229,7 @@ export function BillingV2Module() {
               <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm">Emissões</TabsTrigger>
             </TabsList>
             <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(branchKey(item.branch_id)); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
-            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{emittedGroups.length ? emittedGroups.map((group) => { const expanded = expandedBMs.includes(group.cycleId); const hasEmissions = group.emissions.length > 0; const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`; const closedParent = Boolean(group.parent && group.parent.status === "closed"); return <Fragment key={group.cycleId}><tr className="border-b"><td className="p-2 font-semibold"><div className="flex items-center gap-1.5">{hasEmissions ? <button type="button" aria-label={expanded ? "Recolher recortes" : "Expandir recortes"} onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])} className="text-muted-foreground transition-colors hover:text-primary">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button> : <span className="inline-block w-4" />}{headerNumber}{hasEmissions ? <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{group.emissions.length} recorte(s)</span> : null}</div></td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{group.parent ? `${new Date(`${group.parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${group.parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</td><td className="p-2">{closedParent && group.parent?.finalized_at ? new Date(group.parent.finalized_at).toLocaleDateString("pt-BR") : group.parent ? "Em edição" : "—"}</td><td className="p-2 text-right">{group.parent ? <div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver boletim ${headerNumber}`} aria-label={`Ver boletim ${headerNumber}`} onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="h-4 w-4" /></Button>{closedParent ? <label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!group.parent.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: Boolean(checked) })} />{group.parent.client_portal_visible ? "Publicado" : "Não publicado"}</label> : <span className="text-sm text-muted-foreground">Em edição</span>}</div> : <span className="text-sm text-muted-foreground">—</span>}</td></tr>{expanded ? group.emissions.map((em) => <tr key={em.id} className="border-b bg-muted/20"><td className="p-2 pl-8 font-semibold">#{em.display_number}</td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</td><td className="p-2">{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver emissão #${em.display_number}`} aria-label={`Ver emissão #${em.display_number}`} disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="h-4 w-4" /></Button><label className="inline-flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={!!em.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: Boolean(checked) })} />{em.client_portal_visible ? "Publicado" : "Não publicado"}</label><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : null}</Fragment>; }) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"><p className="font-medium">Publicação no Portal do Cliente + envio por e-mail</p><p className="mt-1 text-muted-foreground">Use as ações separadamente: visualize o BM, publique somente no Portal do Cliente ou confira os destinatários e envie por e-mail com uma mensagem.</p></div><p className="mt-3 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser enviadas separadamente.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1320px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2">Status do e-mail</th><th className="p-2 text-right">Ações</th></tr></thead><tbody>{emittedGroups.length ? emittedGroups.map((group) => { const expanded = expandedBMs.includes(group.cycleId); const hasEmissions = group.emissions.length > 0; const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`; const closedParent = Boolean(group.parent && group.parent.status === "closed"); const emailStatus = emailDeliverySummary(group.cycleId); return <Fragment key={group.cycleId}><tr className="border-b"><td className="p-2 font-semibold"><div className="flex items-center gap-1.5">{hasEmissions ? <button type="button" aria-label={expanded ? "Recolher recortes" : "Expandir recortes"} onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])} className="text-muted-foreground transition-colors hover:text-primary">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button> : <span className="inline-block w-4" />}{headerNumber}{hasEmissions ? <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{group.emissions.length} recorte(s)</span> : null}</div></td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{group.parent ? `${new Date(`${group.parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${group.parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</td><td className="p-2">{closedParent && group.parent?.finalized_at ? new Date(group.parent.finalized_at).toLocaleDateString("pt-BR") : group.parent ? "Em edição" : "—"}</td><td className="p-2 text-xs" title={emailStatus.title}>{group.parent?.client_portal_visible ? emailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right">{group.parent ? <div className="inline-flex items-center justify-end gap-2"><Button variant="outline" size="sm" onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button>{closedParent ? <><Button variant="outline" size="sm" disabled={setCyclePortalVisibility.isPending} onClick={() => { if (!group.parent!.client_portal_visible || window.confirm(`Remover o ${headerNumber} do Portal do Cliente?`)) setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: !group.parent!.client_portal_visible }); }}>{group.parent.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setCyclePortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, displayNumber: headerNumber, residueId: "all" })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button></> : <span className="text-sm text-muted-foreground">Finalize para publicar ou enviar</span>}</div> : <span className="text-sm text-muted-foreground">—</span>}</td></tr>{expanded ? group.emissions.map((em) => { const residueEmailStatus = emailDeliverySummary(group.cycleId, em.id); return <tr key={em.id} className="border-b bg-muted/20"><td className="p-2 pl-8 font-semibold">#{em.display_number}</td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</td><td className="p-2">{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-xs" title={residueEmailStatus.title}>{em.client_portal_visible ? residueEmailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="outline" size="sm" disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button><Button variant="outline" size="sm" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => { if (!em.client_portal_visible || window.confirm(`Remover a emissão #${em.display_number} do Portal do Cliente?`)) setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: !em.client_portal_visible }); }}>{em.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, residueEmission: em, displayNumber: `#${em.display_number}`, residueId: em.waste_residue_id })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>; }) : null}</Fragment>; }) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="grid gap-4 xl:grid-cols-[minmax(360px,440px)_1fr] xl:items-start">
               <Card className="p-5 xl:sticky xl:top-40">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
@@ -2286,6 +2566,7 @@ export function BillingV2Module() {
                 onAttachmentRemove={(attachment) => removeMovementAttachment.mutate(attachment)}
                 removingAttachmentId={removeMovementAttachment.isPending ? removeMovementAttachment.variables?.id : undefined}
                 uploadingId={addMovementAttachment.isPending ? addMovementAttachment.variables?.movementId : undefined}
+                focusedMovementId={focusedMovementId}
                 />
               </div>
             </TabsContent>
@@ -2449,6 +2730,51 @@ export function BillingV2Module() {
           </Tabs>
         </>
       )}
+      <Dialog open={Boolean(publishDialog)} onOpenChange={(open) => { if (!open) setPublishDialog(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Conferir publicação e envio</DialogTitle>
+          </DialogHeader>
+          {publishDialog && (
+            <div className="space-y-5">
+              <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 text-sm sm:grid-cols-2">
+                <div><p className="text-xs text-muted-foreground">Boletim</p><p className="font-semibold">{publishDialog.displayNumber}</p></div>
+                <div><p className="text-xs text-muted-foreground">Cliente</p><p className="font-semibold">{clients.find((item) => item.id === publishDialog.cycle.client_id)?.name || clientName}</p></div>
+                <div><p className="text-xs text-muted-foreground">Filial/pátio</p><p className="font-semibold">{branchName(publishDialog.cycle.branch_id)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Conteúdo</p><p className="font-semibold">{publishDialog.residueEmission ? residues.find((item) => item.id === publishDialog.residueEmission?.waste_residue_id)?.name || "Emissão por resíduo" : "BM completo"}</p></div>
+              </div>
+
+              <Button variant="outline" className="w-full" onClick={() => void viewBulletin(publishDialog.cycle, publishDialog.residueId, publishDialog.displayNumber)}>
+                <Eye className="mr-2 h-4 w-4" />Visualizar o BM antes de enviar
+              </Button>
+
+              <div className="space-y-2">
+                <Label>Será enviado para</Label>
+                <div className="rounded-lg border p-3 text-sm">
+                  {recipientPreviewLoading ? <p className="text-muted-foreground">Conferindo os e-mails cadastrados no acesso do cliente…</p> : recipientPreviewError ? <p className="text-destructive">{recipientPreviewError}</p> : recipientPreview.length ? <div className="space-y-1">{recipientPreview.map((email) => <div key={email} className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>{email}</span></div>)}</div> : <p className="text-amber-700">Nenhum e-mail está vinculado ao acesso deste cliente. Cadastre um destinatário antes de enviar.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="billing-email-message">Mensagem para o cliente <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                <Textarea id="billing-email-message" value={emailMessage} maxLength={2000} rows={5} onChange={(event) => setEmailMessage(event.target.value)} placeholder="Ex.: Olá! Segue o boletim de medição do período para sua conferência." />
+                <p className="text-right text-xs text-muted-foreground">{emailMessage.length}/2000 caracteres</p>
+              </div>
+
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
+                Ao confirmar, o BM será publicado no Portal do Cliente e o aviso será enviado aos e-mails mostrados acima.
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublishDialog(null)}>Cancelar</Button>
+            <Button disabled={recipientPreviewLoading || recipientPreview.length === 0 || Boolean(recipientPreviewError) || setCyclePortalVisibility.isPending || setResidueEmissionPortalVisibility.isPending} onClick={confirmPublishAndSend}>
+              <Send className="mr-2 h-4 w-4" />
+              {setCyclePortalVisibility.isPending || setResidueEmissionPortalVisibility.isPending ? "Publicando…" : "Publicar no portal e enviar e-mail"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
@@ -2653,6 +2979,7 @@ function MovementTable({
   onAttachmentRemove,
   removingAttachmentId,
   uploadingId,
+  focusedMovementId,
 }: {
   rows: Movement[];
   branches: Branch[];
@@ -2668,6 +2995,7 @@ function MovementTable({
   onAttachmentRemove: (attachment: MovementAttachment) => void;
   removingAttachmentId?: string;
   uploadingId?: string;
+  focusedMovementId?: string;
 }) {
   const [editing, setEditing] = useState<Movement | null>(null);
   const [editingRows, setEditingRows] = useState<Movement[]>([]);
@@ -2720,6 +3048,11 @@ function MovementTable({
     });
     return Array.from(map.entries()).map(([key, groupRows]) => ({ key, rows: groupRows }));
   }, [rows]);
+  useEffect(() => {
+    if (!focusedMovementId) return;
+    const focusedRow = document.getElementById(`movement-${focusedMovementId}`);
+    focusedRow?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedMovementId, rows]);
   const toggleDetails = (key: string) =>
     setExpandedGroups((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
   const branchEquipment = editing ? equipment.filter((item) => item.branch_id === editing.branch_id) : [];
@@ -2788,9 +3121,10 @@ function MovementTable({
               const allConfirmed = groupRows.every((item) => item.confirmed);
               const isChanging = groupRows.some((item) => changingConfirmationIds?.includes(item.id));
               const isSaving = groupRows.some((item) => savingId === item.id);
+              const isFocused = groupRows.some((item) => item.id === focusedMovementId);
               return (
               <Fragment key={key}>
-              <tr className="border-b">
+              <tr id={`movement-${row.id}`} className={`border-b transition-colors ${isFocused ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""}`}>
                 <td className="p-2">
                   {new Date(`${row.occurred_on}T12:00:00`).toLocaleDateString("pt-BR")}
                 </td>
