@@ -24,7 +24,8 @@ const empty = { title: "", description: "", expiresAt: "", notifyDays: "30", not
 const safeName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-120) || "documento";
 
 export function ClientDocumentsManager({ clientId }: { clientId: string }) {
-  const { isAdmin } = useAuth();
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission("documents");
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -122,7 +123,7 @@ export function ClientDocumentsManager({ clientId }: { clientId: string }) {
     </Card>}
     <div className="space-y-2">{shown.map((doc) => {
       const expired = !!doc.expires_at && doc.expires_at < today;
-      return <Card key={doc.id} className="flex flex-wrap items-center gap-3 p-4"><FileText className={expired ? "text-destructive" : "text-primary"} /><div className="min-w-0 flex-1"><p className="font-medium">{doc.title}</p><p className="truncate text-sm text-muted-foreground">{unitName(doc.branch_id)} · {doc.file_name}{doc.expires_at ? ` · Vence em ${doc.expires_at}` : " · Sem vencimento"} · {doc.notify_daily_until_resolved !== false ? "Alerta diário" : "Alerta único"}</p></div><span className={`rounded-full px-2 py-1 text-xs font-medium ${expired ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{expired ? "Vencido" : "Vigente"}</span>{isAdmin && <><Button size="icon" variant="ghost" onClick={() => edit(doc)} title="Editar documento"><Pencil className="h-4 w-4" /></Button><Button size="icon" variant="ghost" onClick={() => remove(doc)} title="Excluir documento"><Trash2 className="h-4 w-4 text-destructive" /></Button></>}</Card>;
+      return <Card key={doc.id} className="flex flex-wrap items-center gap-3 p-4"><FileText className={expired ? "text-destructive" : "text-primary"} /><div className="min-w-0 flex-1"><p className="font-medium">{doc.title}</p><p className="truncate text-sm text-muted-foreground">{unitName(doc.branch_id)} · {doc.file_name}{doc.expires_at ? ` · Vence em ${doc.expires_at}` : " · Sem vencimento"} · {doc.notify_daily_until_resolved !== false ? "Alerta diário" : "Alerta único"}</p></div><span className={`rounded-full px-2 py-1 text-xs font-medium ${expired ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{expired ? "Vencido" : "Vigente"}</span>{canManage && <><Button size="icon" variant="ghost" onClick={() => edit(doc)} title="Editar documento"><Pencil className="h-4 w-4" /></Button><Button size="icon" variant="ghost" onClick={() => remove(doc)} title="Excluir documento"><Trash2 className="h-4 w-4 text-destructive" /></Button></>}</Card>;
     })}{!shown.length && <Card className="border-dashed p-8 text-center text-sm text-muted-foreground">Nenhum documento cadastrado para esta unidade.</Card>}</div>
   </section>;
 }
