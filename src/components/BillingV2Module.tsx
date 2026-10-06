@@ -3097,12 +3097,6 @@ function MovementTable({
   const branchResidues = editing ? residues.filter((item) => !item.branch_id || item.branch_id === editing.branch_id) : [];
   const uploadPdf = async (row: Movement, file?: File) => {
     if (!file) return;
-    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(file.name);
-    if (!isPdf && !isImage) {
-      toast.error("Anexe uma imagem (foto) ou um arquivo PDF.");
-      return;
-    }
     if (file.size > 15 * 1024 * 1024) {
       toast.error("O arquivo deve ter no máximo 15 MB.");
       return;
@@ -3207,7 +3201,7 @@ function MovementTable({
                       );
                     })}
                     <label className="inline-flex">
-                      <input className="sr-only" type="file" accept="image/*,application/pdf,.pdf" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                      <input className="sr-only" type="file" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
                       <Button asChild variant="outline" size="sm" disabled={uploadingId === row.id} aria-label="Adicionar arquivo ou foto à movimentação">
                         <span><Upload className="mr-1 h-3.5 w-3.5" />Adicionar arquivo</span>
                       </Button>
