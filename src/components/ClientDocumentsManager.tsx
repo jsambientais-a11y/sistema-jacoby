@@ -22,6 +22,11 @@ type ClientDocument = {
 
 const empty = { title: "", description: "", expiresAt: "", notifyDays: "30", notifyDaily: true, branchId: "matrix" };
 const safeName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-120) || "documento";
+const isConnectionFailure = (message?: string) => /failed to fetch|networkerror|network request failed/i.test(message ?? "");
+const documentErrorMessage = (error: { message?: string } | null) =>
+  isConnectionFailure(error?.message)
+    ? "Não foi possível concluir o envio por instabilidade de conexão. Atualize a página, entre novamente se necessário e tente outra vez."
+    : error?.message || "Não foi possível salvar o documento.";
 
 export function ClientDocumentsManager({ clientId }: { clientId: string }) {
   const { hasPermission } = useAuth();
@@ -31,6 +36,7 @@ export function ClientDocumentsManager({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClientDocument | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(empty);
   const [unitFilter, setUnitFilter] = useState("all");
   const { data: branches = [] } = useQuery({
@@ -60,33 +66,64 @@ export function ClientDocumentsManager({ clientId }: { clientId: string }) {
   const unitName = (branchId: string | null) => branchId ? branches.find((branch) => branch.id === branchId)?.name ?? "Filial" : "Matriz";
   const shown = documents.filter((doc) => unitFilter === "all" || (unitFilter === "matrix" ? !doc.branch_id : doc.branch_id === unitFilter));
 
+  const uploadFile = async (storagePath: string, selectedFile: File) => {
+    const options = { contentType: selectedFile.type || "application/octet-stream" };
+    let result = await supabase.storage.from("client-documents").upload(storagePath, selectedFile, options);
+    if (!result.error || !isConnectionFailure(result.error.message)) return result.error;
+
+    // Sessões que ficaram abertas por muitas horas podem falhar no primeiro
+    // envio sem retornar o erro real. Renova o acesso e tenta uma única vez.
+    await supabase.auth.refreshSession();
+    result = await supabase.storage.from("client-documents").upload(storagePath, selectedFile, options);
+    if (result.error && /already exists|resource.*exists|duplicate/i.test(result.error.message)) return null;
+    return result.error;
+  };
+
   const save = async () => {
     if (!form.title.trim()) return toast.error("Informe o nome do documento.");
     if (!editing && !file) return toast.error("Anexe o arquivo do documento.");
+    setSaving(true);
     let storagePath = editing?.storage_path;
-    let fileName = editing?.file_name;
-    if (file) {
-      storagePath = `${clientId}/${Date.now()}-${safeName(file.name)}`;
-      const { error } = await supabase.storage.from("client-documents").upload(storagePath, file, { contentType: file.type || "application/octet-stream" });
-      if (error) return toast.error(error.message);
-      fileName = file.name;
+    let uploadedNewFile = false;
+    try {
+      let fileName = editing?.file_name;
+      if (file) {
+        storagePath = `${clientId}/${Date.now()}-${safeName(file.name)}`;
+        const uploadError = await uploadFile(storagePath, file);
+        if (uploadError) {
+          console.error("Falha ao enviar documento", { stage: "storage", message: uploadError.message, size: file.size, type: file.type });
+          return toast.error(documentErrorMessage(uploadError));
+        }
+        uploadedNewFile = true;
+        fileName = file.name;
+      }
+      const data = {
+        client_id: clientId, branch_id: form.branchId === "matrix" ? null : form.branchId,
+        title: form.title.trim(), description: form.description.trim() || null,
+        storage_path: storagePath, file_name: fileName, expires_at: form.expiresAt || null,
+        notify_days_before: Math.max(0, Number.parseInt(form.notifyDays, 10) || 0),
+        notify_daily_until_resolved: form.notifyDaily, active: true,
+      };
+      const result = editing
+        ? await (supabase.from("client_documents") as any).update(data).eq("id", editing.id)
+        : await (supabase.from("client_documents") as any).insert(data);
+      if (result.error) {
+        console.error("Falha ao salvar documento", { stage: "database", message: result.error.message });
+        if (uploadedNewFile && storagePath) await supabase.storage.from("client-documents").remove([storagePath]);
+        return toast.error(documentErrorMessage(result.error));
+      }
+      await (supabase.rpc("jacoby_process_document_alerts") as any);
+      if (file && editing?.storage_path && editing.storage_path !== storagePath) await supabase.storage.from("client-documents").remove([editing.storage_path]);
+      await qc.invalidateQueries({ queryKey: ["client-documents", clientId] });
+      close();
+      toast.success(editing ? "Documento atualizado." : "Documento anexado.");
+    } catch (error) {
+      console.error("Falha inesperada ao salvar documento", error);
+      if (uploadedNewFile && storagePath) await supabase.storage.from("client-documents").remove([storagePath]);
+      toast.error(documentErrorMessage(error instanceof Error ? error : null));
+    } finally {
+      setSaving(false);
     }
-    const data = {
-      client_id: clientId, branch_id: form.branchId === "matrix" ? null : form.branchId,
-      title: form.title.trim(), description: form.description.trim() || null,
-      storage_path: storagePath, file_name: fileName, expires_at: form.expiresAt || null,
-      notify_days_before: Math.max(0, Number.parseInt(form.notifyDays, 10) || 0),
-      notify_daily_until_resolved: form.notifyDaily, active: true,
-    };
-    const result = editing
-      ? await (supabase.from("client_documents") as any).update(data).eq("id", editing.id)
-      : await (supabase.from("client_documents") as any).insert(data);
-    if (result.error) return toast.error(result.error.message);
-    await (supabase.rpc("jacoby_process_document_alerts") as any);
-    if (file && editing?.storage_path && editing.storage_path !== storagePath) await supabase.storage.from("client-documents").remove([editing.storage_path]);
-    await qc.invalidateQueries({ queryKey: ["client-documents", clientId] });
-    close();
-    toast.success(editing ? "Documento atualizado." : "Documento anexado.");
   };
   const remove = async (doc: ClientDocument) => {
     if (!confirm(`Excluir o documento “${doc.title}”?`)) return;
@@ -119,7 +156,7 @@ export function ClientDocumentsManager({ clientId }: { clientId: string }) {
       </div>
       <div className="space-y-2"><Label>Descrição</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Observações opcionais" /></div>
       <div className="space-y-2"><Label>Arquivo</Label><input ref={inputRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /><Button type="button" variant="outline" onClick={() => inputRef.current?.click()}><Paperclip className="mr-2 h-4 w-4" />{file ? "Trocar arquivo" : editing ? "Substituir arquivo" : "Anexar arquivo"}</Button><span className="ml-3 text-sm text-muted-foreground">{file?.name ?? editing?.file_name ?? "Todos os formatos são aceitos"}</span></div>
-      <div className="flex justify-end gap-2"><Button variant="outline" onClick={close}>Cancelar</Button><Button onClick={save}>Salvar documento</Button></div>
+      <div className="flex justify-end gap-2"><Button variant="outline" disabled={saving} onClick={close}>Cancelar</Button><Button disabled={saving} onClick={save}>{saving ? "Salvando…" : "Salvar documento"}</Button></div>
     </Card>}
     <div className="space-y-2">{shown.map((doc) => {
       const expired = !!doc.expires_at && doc.expires_at < today;
