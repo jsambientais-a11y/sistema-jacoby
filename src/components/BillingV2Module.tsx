@@ -2660,6 +2660,7 @@ export function BillingV2Module() {
                     <p className="mt-1 font-semibold">Emitido por {cycle?.issuer_type === "outsourced" ? issuerCompany?.trade_name || issuerCompany?.legal_name || "empresa terceirizada" : "Jacoby Soluções Ambientais"}</p>
                   </div>
                 </div>
+                {cycle?.issuer_type === "outsourced" && cycle.outsourced_company_id && <CycleCommissionSummary cycle={cycle} companyName={issuerCompany?.trade_name || issuerCompany?.legal_name || "terceirizada"} />}
                 <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(220px,1fr)_110px_130px_150px_170px_auto]">
                   <Field label="Incluir serviço no boletim">
                     <Select value={selectedServiceId} onValueChange={(serviceId) => {
@@ -3408,5 +3409,42 @@ function Boletim({
         <p className="mt-1 text-2xl font-bold text-primary">{money(totals.total)}</p>
       </div>
     </Card>
+  );
+}
+
+// Comissão da Jacoby nos BMs emitidos por terceirizada. Não entra no total nem no
+// PDF do BM: é gerada ao finalizar, conforme Configurações de movimentação.
+function CycleCommissionSummary({ cycle, companyName }: { cycle: Cycle; companyName: string }) {
+  const { data = [] } = useQuery({
+    queryKey: ["cycle-commission-summary", cycle.id, cycle.status],
+    enabled: cycle.status === "closed",
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_movement_commissions" as any) as any)
+        .select("source_type,net_commission_amount,commission_rate,waste_residue_id,waste_residues(name)")
+        .eq("cycle_id", cycle.id);
+      if (error) throw error;
+      return (data || []) as { source_type: "rental" | "exchange" | "treatment"; net_commission_amount: number; commission_rate: number; waste_residues?: { name: string | null } | null }[];
+    },
+  });
+  const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const total = data.reduce((sum, item) => sum + Number(item.net_commission_amount || 0), 0);
+  const groups = Array.from(data.reduce((map, item) => {
+    const label = item.source_type === "treatment" ? `Tratamento · ${item.waste_residues?.name || "resíduo"}` : item.source_type === "exchange" ? "Troca" : "Locação";
+    return map.set(label, (map.get(label) || 0) + Number(item.net_commission_amount || 0));
+  }, new Map<string, number>())).filter(([, value]) => value !== 0);
+  return (
+    <div className="mt-3 rounded-lg border border-dashed p-3 text-sm">
+      <p className="font-medium">Comissão da Jacoby neste BM</p>
+      {cycle.status !== "closed" ? (
+        <p className="mt-1 text-muted-foreground">Será calculada ao finalizar o BM, pelas regras de {companyName} em Configurações de movimentação › Comissionamento (modelo padrão ou exceção do cliente/pátio). Não entra no total nem no PDF.</p>
+      ) : !groups.length ? (
+        <p className="mt-1 text-muted-foreground">Nenhuma comissão gerada para este BM com as regras atuais.</p>
+      ) : (
+        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {groups.map(([label, value]) => <span key={label} className="text-muted-foreground">{label}: <strong className="text-foreground">{money(value)}</strong></span>)}
+          <span className="ml-auto font-semibold text-primary">Total líquido: {money(total)}</span>
+        </div>
+      )}
+    </div>
   );
 }

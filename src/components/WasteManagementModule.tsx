@@ -1,7 +1,7 @@
 /** Cadastros do cliente alimentam diretamente o demonstrativo mensal. */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FilePlus2, Info, Package, Pencil, Scale, Trash2, Truck } from "lucide-react";
+import { Download, FilePlus2, Info, Package, Pencil, Scale, Trash2, Truck, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useClients } from "@/hooks/use-data";
@@ -2224,6 +2224,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               <CommissionSettingsPanel
                 clientId={clientId}
                 residues={residues}
+                branches={branches}
                 companies={outsourcedCompanies}
               />
             </TabsContent>
@@ -3828,14 +3829,17 @@ function ServiceRateOverridesPanel({
 function CommissionSettingsPanel({
   clientId,
   residues,
+  branches,
   companies,
 }: {
   clientId: string;
   residues: Residue[];
+  branches: Branch[];
   companies: OutsourcedCompany[];
 }) {
   const qc = useQueryClient();
   const [companyId, setCompanyId] = useState("");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [form, setForm] = useState({ tax: "11", rental: "10", exchange: "10", active: true });
   const settingsQuery = useQuery({
     queryKey: ["outsourced-commission-settings", clientId],
@@ -3899,9 +3903,8 @@ function CommissionSettingsPanel({
   });
   const templateRates = templateRatesQuery.data || [];
   const number = (value: string) => Math.max(0, Number(value.replace(",", ".")) || 0);
-  const saveSettings = async () => {
-    if (!clientId || !companyId) return toast.error("Selecione a empresa terceirizada.");
-    const { error } = await (supabase.from("outsourced_commission_settings" as any) as any).upsert(
+  const upsertSetting = async () => {
+    const { data, error } = await (supabase.from("outsourced_commission_settings" as any) as any).upsert(
       {
         client_id: clientId,
         outsourced_company_id: companyId,
@@ -3911,26 +3914,54 @@ function CommissionSettingsPanel({
         active: form.active,
       },
       { onConflict: "client_id,outsourced_company_id" },
-    );
-    if (error) return toast.error(error.message);
+    ).select("id").single();
+    if (error) throw error;
     await qc.invalidateQueries({ queryKey: ["outsourced-commission-settings", clientId] });
-    toast.success("Regra de comissionamento salva.");
+    return data.id as string;
   };
+  const saveSettings = async () => {
+    if (!clientId || !companyId) return toast.error("Selecione a empresa terceirizada.");
+    try {
+      await upsertSetting();
+      toast.success("Regra de comissionamento salva.");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
+  // Valor por resíduo de um pátio específico. Se o cliente ainda segue o modelo
+  // padrão da terceirizada, a regra do cliente é criada com os valores da tela.
   const saveTreatment = async (residueId: string, outsourcedRate: string, jacobyRate: string) => {
-    if (!current?.id) return toast.error("Salve primeiro a regra geral da terceirizada.");
-    const { error } = await (supabase.from("outsourced_treatment_commission_rates" as any) as any).upsert(
-      {
-        commission_setting_id: current.id,
-        waste_residue_id: residueId,
-        outsourced_treatment_rate: number(outsourcedRate),
-        jacoby_treatment_rate: jacobyRate.trim() === "" ? null : number(jacobyRate),
-      },
-      { onConflict: "commission_setting_id,waste_residue_id" },
-    );
-    if (error) return toast.error(error.message);
-    await qc.invalidateQueries({ queryKey: ["outsourced-treatment-commission-rates", current.id] });
-    toast.success("Regra de tratamento salva.");
+    if (!clientId || !companyId) return toast.error("Selecione a empresa terceirizada.");
+    try {
+      const settingId = current?.id || await upsertSetting();
+      const { error } = await (supabase.from("outsourced_treatment_commission_rates" as any) as any).upsert(
+        {
+          commission_setting_id: settingId,
+          waste_residue_id: residueId,
+          outsourced_treatment_rate: number(outsourcedRate),
+          jacoby_treatment_rate: jacobyRate.trim() === "" ? null : number(jacobyRate),
+        },
+        { onConflict: "commission_setting_id,waste_residue_id" },
+      );
+      if (error) throw error;
+      await qc.invalidateQueries({ queryKey: ["outsourced-treatment-commission-rates", settingId] });
+      toast.success("Valor salvo. As comissões dos BMs finalizados foram recalculadas.");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
   };
+  const removeTreatment = async (rateId: string) => {
+    const { error } = await (supabase.from("outsourced_treatment_commission_rates" as any) as any).delete().eq("id", rateId);
+    if (error) return toast.error(error.message);
+    await qc.invalidateQueries({ queryKey: ["outsourced-treatment-commission-rates", current?.id] });
+    toast.success("Exceção removida. O pátio volta a usar o modelo padrão.");
+  };
+  const branchLabel = (id: string | null) => id ? branches.find((branch) => branch.id === id)?.name || "Pátio" : "Todos os pátios (geral)";
+  const residueBranchIds = Array.from(new Set(residues.filter((residue) => residue.active).map((residue) => residue.branch_id || "")));
+  const visibleResidues = residues
+    .filter((residue) => residue.active && (branchFilter === "all" || (residue.branch_id || "") === branchFilter))
+    .sort((a, b) => branchLabel(a.branch_id).localeCompare(branchLabel(b.branch_id)) || a.name.localeCompare(b.name));
+  const companyLabel = companies.find((company) => company.id === companyId)?.trade_name || companies.find((company) => company.id === companyId)?.legal_name || "terceirizada";
   return <>
     <Card className="p-4">
       <h2 className="font-semibold">Comissionamento de terceirizadas</h2>
@@ -3952,16 +3983,34 @@ function CommissionSettingsPanel({
       </div>
     </Card>
     <Card className="overflow-x-auto p-4">
-      <h2 className="font-semibold">Tratamento por resíduo</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Exemplo da planilha: valor total de R$ 0,35/kg, R$ 0,30/kg para a LDJ e R$ 0,05/kg para a Jacoby. O abatimento incide somente na parcela da Jacoby.</p>
-      {!current && !template ? <p className="py-8 text-center text-sm text-muted-foreground">Salve a regra geral para liberar os valores por resíduo.</p> : <table className="mt-4 min-w-[760px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Resíduo</th><th className="p-2">Valor do cliente/kg</th><th className="p-2">Terceirizada/kg</th><th className="p-2">Jacoby/kg</th><th className="p-2">Ação</th></tr></thead><tbody>{residues.filter((residue) => residue.active).map((residue) => {
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Tratamento por resíduo e pátio</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Quanto a Jacoby recebe por kg em cada resíduo de cada pátio. Ex.: lixo a R$ 0,35/kg = R$ 0,30 da LDJ + R$ 0,05 da Jacoby; sucata da Eliana = R$ 0,10/kg para a Jacoby.</p>
+        </div>
+        <div className="w-64"><Field label="Pátio">
+          <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os pátios</SelectItem>
+              {residueBranchIds.map((id) => <SelectItem key={id || "geral"} value={id}>{branchLabel(id || null)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field></div>
+      </div>
+      <div className="mt-3 grid gap-2 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground md:grid-cols-3">
+        <p><span className="mr-1 rounded-full bg-muted px-2 py-0.5 font-medium text-foreground">Modelo padrão</span> valor do modelo da {companyLabel}, igual para todos os clientes.</p>
+        <p><span className="mr-1 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">Exceção do pátio</span> valor próprio deste cliente neste pátio; tem prioridade sobre o modelo.</p>
+        <p><strong className="text-foreground">Jacoby/kg vazio</strong> = automático: valor do cliente/kg − valor da terceirizada/kg. Ao salvar, os BMs finalizados são recalculados.</p>
+      </div>
+      <table className="mt-4 min-w-[920px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Pátio</th><th className="p-2">Resíduo</th><th className="p-2">Valor do cliente/kg</th><th className="p-2">Terceirizada/kg</th><th className="p-2">Jacoby/kg</th><th className="p-2">Origem</th><th className="p-2">Ação</th></tr></thead><tbody>{visibleResidues.map((residue) => {
         const rate = treatmentRates.find((item) => item.waste_residue_id === residue.id);
         const templateRate = templateRates.find((item) => item.residue_name.trim().toLocaleLowerCase() === residue.name.trim().toLocaleLowerCase());
         const provider = String(rate?.outsourced_treatment_rate ?? templateRate?.outsourced_treatment_rate ?? 0);
         const jacobyValue = rate?.jacoby_treatment_rate ?? templateRate?.jacoby_treatment_rate;
         const jacoby = jacobyValue == null ? "" : String(jacobyValue);
-        return <tr key={`${current?.id || template?.id}-${residue.id}`} className="border-b"><td className="p-2 font-medium">{residue.name}</td><td className="p-2">{money(Number(residue.default_treatment_rate || 0))}</td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" defaultValue={provider} id={`provider-${residue.id}`} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" placeholder="Automático" defaultValue={jacoby} id={`jacoby-${residue.id}`} /></td><td className="p-2"><Button size="sm" variant="outline" disabled={!current} title={!current ? "Salve a regra geral para criar uma exceção deste cliente" : undefined} onClick={() => void saveTreatment(residue.id, (document.getElementById(`provider-${residue.id}`) as HTMLInputElement)?.value || "0", (document.getElementById(`jacoby-${residue.id}`) as HTMLInputElement)?.value || "")}>Salvar</Button></td></tr>;
-      })}</tbody></table>}
+        return <tr key={`${current?.id || template?.id || companyId}-${residue.id}-${rate?.id || "t"}`} className="border-b"><td className="p-2 text-muted-foreground">{branchLabel(residue.branch_id)}</td><td className="p-2 font-medium">{residue.name}</td><td className="p-2">{money(Number(residue.default_treatment_rate || 0))}</td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" defaultValue={provider} id={`provider-${residue.id}`} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" placeholder="Automático" defaultValue={jacoby} id={`jacoby-${residue.id}`} /></td><td className="p-2">{rate ? <span className="whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Exceção do pátio</span> : templateRate ? <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs font-medium">Modelo padrão</span> : <span className="text-xs text-muted-foreground">Automático</span>}</td><td className="p-2"><div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => void saveTreatment(residue.id, (document.getElementById(`provider-${residue.id}`) as HTMLInputElement)?.value || "0", (document.getElementById(`jacoby-${residue.id}`) as HTMLInputElement)?.value || "")}>Salvar</Button>{rate && <Button size="sm" variant="ghost" title="Remover exceção e voltar ao modelo padrão" onClick={() => void removeTreatment(rate.id)}><Undo2 className="h-4 w-4" /></Button>}</div></td></tr>;
+      })}{!visibleResidues.length && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Nenhum resíduo ativo para este pátio.</td></tr>}</tbody></table>
     </Card>
   </>;
 }
