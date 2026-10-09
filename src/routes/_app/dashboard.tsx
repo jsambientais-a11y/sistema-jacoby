@@ -17,11 +17,13 @@ type Doc = { id: string; client_id: string; branch_id: string | null; title: str
 type Branch = { id: string; client_id: string; name: string; cnpj: string | null };
 type Cycle = { id: string; client_id: string; branch_id: string | null; bulletin_number: number; period_start: string; period_end: string };
 type OpenCycle = Cycle & { movements: number; unconfirmedMovements: number; services: number; servicesAmount: number };
-type PendingMovement = { id: string; cycle: Cycle; branch_id: string | null; occurred_on: string; service_order: string | null; weight_kg: number };
+type PendingMovement = { id: string; cycle: Cycle; branch_id: string | null; occurred_on: string; service_order: string | null; mtr_number: string | null; observation: string | null; weight_kg: number; residue_name: string | null };
 type Panel = "valid" | "overdue" | "soon" | "alerts" | "cycles" | "movements";
-type Item = { key: string; title: string; subtitle: string; badge?: string; tone?: "danger" | "warning" | "ok"; group: string; open: () => void };
+type Item = { key: string; title: string; subtitle: string; badge?: string; tone?: "danger" | "warning" | "ok"; group: string; search?: string; open: () => void };
 
 const day = 86_400_000;
+// Busca sem acento e sem diferença de maiúsculas, com as palavras em qualquer ordem.
+const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 const todayIso = () => new Date().toISOString().slice(0, 10);
 function daysUntil(date: string) { return Math.round((Date.parse(`${date}T00:00:00`) - Date.parse(`${todayIso()}T00:00:00`)) / day); }
 // Datas digitadas com o ano errado (ex.: 0026 em vez de 2026) geravam "vencido há 730 mil dias".
@@ -91,7 +93,7 @@ function Dashboard() {
       if (!cycles?.length) return { cycles: [], pending: [] };
       const ids = cycles.map((cycle: Cycle) => cycle.id);
       const [movementsRes, servicesRes] = await Promise.all([
-        (supabase.from("billing_v2_movements" as any) as any).select("id,cycle_id,branch_id,confirmed,occurred_on,service_order,weight_kg").in("cycle_id", ids),
+        (supabase.from("billing_v2_movements" as any) as any).select("id,cycle_id,branch_id,confirmed,occurred_on,service_order,mtr_number,observation,weight_kg,waste_residue_id").in("cycle_id", ids),
         (supabase.from("billing_v2_cycle_services" as any) as any).select("cycle_id,amount").in("cycle_id", ids),
       ]);
       if (movementsRes.error) throw movementsRes.error;
@@ -99,13 +101,18 @@ function Dashboard() {
       const movements = (movementsRes.data ?? []) as any[];
       const services = (servicesRes.data ?? []) as any[];
       const byId = new Map<string, Cycle>(cycles.map((cycle: Cycle) => [cycle.id, cycle]));
+      const residueIds = Array.from(new Set(movements.map((item) => item.waste_residue_id).filter(Boolean)));
+      const { data: residueRows } = residueIds.length
+        ? await (supabase.from("waste_residues" as any) as any).select("id,name").in("id", residueIds)
+        : { data: [] };
+      const residueNames = new Map<string, string>((residueRows ?? []).map((item: { id: string; name: string }) => [item.id, item.name]));
       return {
         cycles: cycles.map((cycle: Cycle) => {
           const own = movements.filter((item) => item.cycle_id === cycle.id);
           const ownServices = services.filter((item) => item.cycle_id === cycle.id);
           return { ...cycle, movements: own.length, unconfirmedMovements: own.filter((item) => !item.confirmed).length, services: ownServices.length, servicesAmount: ownServices.reduce((sum, item) => sum + Number(item.amount || 0), 0) };
         }),
-        pending: movements.filter((item) => !item.confirmed).map((item) => ({ ...item, cycle: byId.get(item.cycle_id)! })),
+        pending: movements.filter((item) => !item.confirmed).map((item) => ({ ...item, residue_name: residueNames.get(item.waste_residue_id) ?? null, cycle: byId.get(item.cycle_id)! })),
       };
     },
   });
@@ -131,9 +138,13 @@ function Dashboard() {
   }, [documents, billing, clientFilter, unitFilter]);
 
   // O faturamento restaura o boletim aberto a partir do hash do endereço.
-  const openCycle = (cycle: Cycle) => navigate({
+  // Com uma movimentação informada, o BM abre filtrado no pátio e com ela destacada.
+  const openCycle = (cycle: Cycle, focus?: { movementId: string; branchId: string | null }) => navigate({
     to: "/portal/residuos", search: { aba: "faturamento2" } as any,
-    hash: new URLSearchParams({ cliente: cycle.client_id, inicio: cycle.period_start, fim: cycle.period_end, patio: cycle.branch_id || "__matriz__", boletim: cycle.id, subaba: "movimentos", residuo: "all" }).toString(),
+    hash: new URLSearchParams({
+      cliente: cycle.client_id, inicio: cycle.period_start, fim: cycle.period_end, patio: cycle.branch_id || "__matriz__", boletim: cycle.id, subaba: "movimentos", residuo: "all",
+      ...(focus ? { foco: focus.movementId, foco_patio: focus.branchId || "__matriz__" } : {}),
+    }).toString(),
   });
   const openDocument = (doc: Doc) => navigate({ to: "/clients/$clientId/edit", params: { clientId: doc.client_id }, search: { aba: "documentos" } as any });
   const docItems = (docs: Doc[]): Item[] => docs.map((doc) => ({
@@ -151,21 +162,31 @@ function Dashboard() {
       items: data.cycles.map((cycle) => ({
         key: cycle.id, title: `BM #${cycle.bulletin_number}`, group: `${clientName(cycle.client_id)} · ${unitName(cycle.branch_id)}`,
         subtitle: `${formatDate(cycle.period_start)} a ${formatDate(cycle.period_end)} · ${plural(cycle.movements, "movimentação", "movimentações")} · ${plural(cycle.services, "serviço")}${cycle.servicesAmount ? ` (${money(cycle.servicesAmount)})` : ""}`,
+        search: `${cycle.bulletin_number} ${cycle.period_start} ${cycle.period_end}`,
         badge: cycle.unconfirmedMovements ? `${cycle.unconfirmedMovements} sem confirmação` : "Tudo confirmado", tone: cycle.unconfirmedMovements ? "warning" : "ok", open: () => openCycle(cycle),
       })),
     },
     movements: {
       title: "Movimentações sem confirmação", description: "Lançadas em boletins abertos e ainda não confirmadas.",
-      items: data.pending.map((item) => ({
-        key: item.id, title: `${formatDate(item.occurred_on)} · BM #${item.cycle.bulletin_number}`, group: `${clientName(item.cycle.client_id)} · ${unitName(item.branch_id ?? item.cycle.branch_id)}`,
-        subtitle: [item.service_order && `OS ${item.service_order}`, Number(item.weight_kg) ? `${Number(item.weight_kg).toLocaleString("pt-BR")} kg` : null].filter(Boolean).join(" · ") || "Sem OS informada",
-        badge: "Não confirmada", tone: "warning", open: () => openCycle(item.cycle),
-      })),
+      items: data.pending.map((item) => {
+        const unit = unitName(item.branch_id ?? item.cycle.branch_id);
+        const kg = Number(item.weight_kg) ? `${Number(item.weight_kg).toLocaleString("pt-BR")} kg` : null;
+        return {
+          key: item.id, title: `${formatDate(item.occurred_on)} · ${item.residue_name || "Resíduo não informado"} · BM #${item.cycle.bulletin_number}`, group: `${clientName(item.cycle.client_id)} · ${unit}`,
+          subtitle: [item.service_order && `OS ${item.service_order}`, item.mtr_number && `MTR ${item.mtr_number}`, kg, item.observation].filter(Boolean).join(" · ") || "Sem OS informada",
+          search: [item.occurred_on, item.cycle.bulletin_number, item.residue_name, item.service_order, item.mtr_number, item.observation, unit].filter(Boolean).join(" "),
+          badge: "Não confirmada", tone: "warning", open: () => openCycle(item.cycle, { movementId: item.id, branchId: item.branch_id ?? item.cycle.branch_id }),
+        };
+      }),
     },
   };
   const current = panel ? panels[panel] : null;
-  const term = search.trim().toLocaleLowerCase("pt-BR");
-  const shownItems = (current?.items ?? []).filter((item) => !term || `${item.title} ${item.subtitle} ${item.group}`.toLocaleLowerCase("pt-BR").includes(term));
+  const terms = normalize(search).split(/\s+/).filter(Boolean);
+  const shownItems = (current?.items ?? []).filter((item) => {
+    if (!terms.length) return true;
+    const haystack = normalize(`${item.title} ${item.subtitle} ${item.group} ${item.search ?? ""}`);
+    return terms.every((term) => haystack.includes(term));
+  });
   const groups = shownItems.reduce((map, item) => map.set(item.group, [...(map.get(item.group) ?? []), item]), new Map<string, Item[]>());
   const openPanel = (next: Panel) => { setSearch(""); setPanel(next); };
 
@@ -197,7 +218,7 @@ function Dashboard() {
     <Dialog open={!!current} onOpenChange={(open) => !open && setPanel(null)}>
       <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3">
         <DialogHeader><DialogTitle>{current?.title} ({current?.items.length ?? 0})</DialogTitle><DialogDescription>{current?.description} Clique em um item para abrir.</DialogDescription></DialogHeader>
-        {(current?.items.length ?? 0) > 6 && <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome, cliente, unidade..." /></div>}
+        {(current?.items.length ?? 0) > 6 && <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por pátio, cliente, resíduo, OS, BM, data..." /></div>}
         <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
           {!shownItems.length ? <p className="py-10 text-center text-sm text-muted-foreground">Nada por aqui.</p> : [...groups.entries()].map(([group, items]) => <div key={group} className="mb-3">
             <p className="sticky top-0 bg-background py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group}</p>

@@ -297,6 +297,12 @@ export function BillingV2Module() {
     if (saved.cycleId) setCycleId(saved.cycleId);
     if (saved.tab) setTab(saved.tab);
     if (saved.residueFilterId) setResidueFilterId(saved.residueFilterId);
+    // Vindo do Dashboard: abre o BM já destacando a movimentação clicada.
+    const focus = new URLSearchParams(window.location.hash.slice(1));
+    if (focus.get("foco")) {
+      setFocusedMovementId(focus.get("foco") || "");
+      setMovementBranchFilter(focus.get("foco_patio") || "");
+    }
     setBillingViewRestored(true);
   }, []);
   useEffect(() => {
@@ -2605,6 +2611,7 @@ export function BillingV2Module() {
                 removingAttachmentId={removeMovementAttachment.isPending ? removeMovementAttachment.variables?.id : undefined}
                 uploadingId={addMovementAttachment.isPending ? addMovementAttachment.variables?.movementId : undefined}
                 focusedMovementId={focusedMovementId}
+                onFocusDone={() => setFocusedMovementId("")}
                 />
               </div>
             </TabsContent>
@@ -3019,6 +3026,7 @@ function MovementTable({
   removingAttachmentId,
   uploadingId,
   focusedMovementId,
+  onFocusDone,
 }: {
   rows: Movement[];
   branches: Branch[];
@@ -3035,6 +3043,7 @@ function MovementTable({
   removingAttachmentId?: string;
   uploadingId?: string;
   focusedMovementId?: string;
+  onFocusDone?: () => void;
 }) {
   const [editing, setEditing] = useState<Movement | null>(null);
   const [editingRows, setEditingRows] = useState<Movement[]>([]);
@@ -3087,11 +3096,25 @@ function MovementTable({
     });
     return Array.from(map.entries()).map(([key, groupRows]) => ({ key, rows: groupRows }));
   }, [rows]);
+  // Leva até a movimentação na lista e a destaca só por alguns instantes. Espera a
+  // linha existir (a lista pode ainda estar carregando) e rola uma única vez.
+  const scrolledFocusRef = useRef("");
+  const focusTimerRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!focusedMovementId) return;
-    const focusedRow = document.getElementById(`movement-${focusedMovementId}`);
-    focusedRow?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!focusedMovementId || scrolledFocusRef.current === focusedMovementId) return;
+    // A movimentação pode estar agrupada com outras na mesma linha (mesmo lançamento).
+    const focusedRow = document.querySelector(`[data-movement-ids~="${focusedMovementId}"]`);
+    if (!focusedRow) return;
+    scrolledFocusRef.current = focusedMovementId;
+    window.setTimeout(() => focusedRow.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+    if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current);
+    focusTimerRef.current = window.setTimeout(() => {
+      focusTimerRef.current = null;
+      scrolledFocusRef.current = "";
+      onFocusDone?.();
+    }, 3500);
   }, [focusedMovementId, rows]);
+  useEffect(() => () => { if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current); }, []);
   const toggleDetails = (key: string) =>
     setExpandedGroups((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
   const branchEquipment = editing ? equipment.filter((item) => item.branch_id === editing.branch_id) : [];
@@ -3157,7 +3180,7 @@ function MovementTable({
               const isFocused = groupRows.some((item) => item.id === focusedMovementId);
               return (
               <Fragment key={key}>
-              <tr id={`movement-${row.id}`} className={`border-b transition-colors ${isFocused ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""}`}>
+              <tr id={`movement-${row.id}`} data-movement-ids={groupRows.map((item) => item.id).join(" ")} className={`border-b transition-all duration-700 ${isFocused ? "bg-primary/15 outline outline-2 -outline-offset-2 outline-primary" : "outline-transparent"}`}>
                 <td className="p-2">
                   {new Date(`${row.occurred_on}T12:00:00`).toLocaleDateString("pt-BR")}
                 </td>

@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Archive, ArchiveRestore, FileText, Plus, Pencil, Trash2, Sparkles, Search } from "lucide-react";
+import { Archive, ArchiveRestore, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useClients, useTasks, type Client } from "@/hooks/use-data";
@@ -18,6 +18,7 @@ export const Route = createFileRoute("/_app/clients")({
 
 export function ClientsIndexPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { data: clients = [], isLoading: clientsLoading } = useClients();
   const { data: tasks = [] } = useTasks();
@@ -183,7 +184,7 @@ export function ClientsIndexPage() {
               <th className="w-[36%] px-4 py-4">Cliente</th>
               <th className="w-32 px-4 py-4 text-center">Atividades</th>
               <th className="px-4 py-4">Informações</th>
-              <th className="w-60 px-4 py-4 text-right">Ações</th>
+              <th className="w-40 px-4 py-4 text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -192,14 +193,22 @@ export function ClientsIndexPage() {
                 <td className="px-4 py-4"><div className="flex items-center gap-3"><Skeleton className="h-11 w-11 rounded-full" /><div className="space-y-2"><Skeleton className="h-4 w-44" /><Skeleton className="h-3 w-20" /></div></div></td>
                 <td className="px-4 py-4"><Skeleton className="mx-auto h-5 w-20" /></td>
                 <td className="px-4 py-4"><Skeleton className="mx-auto h-4 w-48" /></td>
-                <td className="px-4 py-4"><div className="flex justify-end gap-2">{Array.from({ length: 5 }, (_, icon) => <Skeleton key={icon} className="h-8 w-8 rounded-lg" />)}</div></td>
+                <td className="px-4 py-4"><div className="flex justify-end gap-2">{Array.from({ length: 3 }, (_, icon) => <Skeleton key={icon} className="h-8 w-8 rounded-lg" />)}</div></td>
               </tr>
             ))}
             {!loadingList && filteredClients.map((c) => {
               const count = tasks.filter((t) => t.client_id === c.id).length;
               const active = isActive(c);
               return (
-                <tr key={c.id} className="border-b transition hover:bg-primary/5">
+                <tr
+                  key={c.id}
+                  tabIndex={0}
+                  role="link"
+                  aria-label={`Abrir cadastro de ${c.name}`}
+                  onClick={() => navigate({ to: "/clients/$clientId/edit", params: { clientId: c.id } } as any)}
+                  onKeyDown={(event) => { if (event.key === "Enter") navigate({ to: "/clients/$clientId/edit", params: { clientId: c.id } } as any); }}
+                  className="cursor-pointer border-b transition hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none"
+                >
                   <td className="px-4 py-4">
                     <Link to="/clients/$clientId/edit" params={{ clientId: c.id }} className="flex items-center gap-3">
                       <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border bg-background shadow-sm">
@@ -224,13 +233,7 @@ export function ClientsIndexPage() {
                     </div>;
                   })()}</td>
                   <td className="px-4 py-4">
-                    <div className="flex justify-end gap-1">
-                      <Button asChild size="icon" variant="ghost" className={iconButton} title="Documentos do cliente">
-                        <Link to="/clients/$clientId/edit" params={{ clientId: c.id }} search={{ aba: "documentos" } as any}><FileText className="h-4 w-4" /></Link>
-                      </Button>
-                      <Button asChild size="icon" variant="ghost" className={iconButton} title="Relatório IA">
-                        <Link to="/client-report/$clientId" params={{ clientId: c.id }}><Sparkles className="h-4 w-4" /></Link>
-                      </Button>
+                    <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                       <Button asChild size="icon" variant="ghost" className={iconButton} title="Editar cliente">
                         <Link to="/clients/$clientId/edit" params={{ clientId: c.id }}><Pencil className="h-4 w-4" /></Link>
                       </Button>
