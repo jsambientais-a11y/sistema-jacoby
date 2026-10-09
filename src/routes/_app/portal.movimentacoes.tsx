@@ -22,6 +22,12 @@ type MovementAttachment = { id: string; name: string; path: string };
 type Branch = { id: string; name: string };
 const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const formatKg = (value: number) => `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0)} kg`;
+// As variações de madeira (por tipo de viagem) aparecem como um único resíduo.
+const residueLabel = (name: string | null) => {
+  const clean = (name || "").trim();
+  return clean.toLocaleUpperCase("pt-BR").startsWith("MADEIRA") ? "MADEIRA" : clean || null;
+};
+const HISTORY_TAG = "[Histórico LDJ]";
 
 function ClientMovementsPage() {
   const { clientId } = useAuth();
@@ -31,9 +37,27 @@ function ClientMovementsPage() {
     queryKey: ["client-confirmed-movements", clientId],
     enabled: !!clientId,
     queryFn: async () => {
-      const { data, error } = await (supabase.rpc("jacoby_client_confirmed_movements") as any);
+      const [{ data, error }, history] = await Promise.all([
+        (supabase.rpc("jacoby_client_confirmed_movements") as any),
+        // Coletas anteriores ao sistema, importadas dos relatórios mensais publicados.
+        (supabase.from("waste_movements" as any) as any)
+          .select("id,occurred_on,weight_kg,service_order,observation,placed_quantity,removed_quantity,operation_type,waste_residues(name),client_branches(name),waste_reports!inner(client_id,status)")
+          .eq("waste_reports.client_id", clientId)
+          .eq("waste_reports.status", "published")
+          .neq("operation_type", "container_placement"),
+      ]);
       if (error) throw error;
-      return (data ?? []) as Movement[];
+      if (history.error) throw history.error;
+      const historical = (history.data ?? []).map((item: any) => ({
+        id: item.id, occurred_on: item.occurred_on, branch_name: item.client_branches?.name || "Matriz",
+        residue_name: item.waste_residues?.name ?? null, removed_equipment: null, placed_equipment: null,
+        placed_quantity: Number(item.placed_quantity || 0), removed_quantity: Number(item.removed_quantity || 0),
+        weight_kg: Number(item.weight_kg || 0), service_order: item.service_order,
+        observation: String(item.observation || "").replace(HISTORY_TAG, "").trim() || null, attachments: [],
+      })) as Movement[];
+      return [...((data ?? []) as Movement[]), ...historical]
+        .map((item) => ({ ...item, residue_name: residueLabel(item.residue_name) }))
+        .sort((a, b) => b.occurred_on.localeCompare(a.occurred_on));
     },
   });
   const { data: clientBranches = [] } = useQuery({

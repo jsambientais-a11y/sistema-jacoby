@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Eye, FileText } from "lucide-react";
+import { Download, Eye, FileText, History } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,6 +13,7 @@ export const Route = createFileRoute("/_app/portal/boletins")({ component: Clien
 type Bulletin = { id: string; bulletin_number: number; display_number?: string | null; waste_residue_id?: string | null; branch_id: string | null; period_start: string; period_end: string; finalized_at: string | null; client_branches?: { name: string | null } | null; billing_v2_cycle_services?: { amount: number; waste_services?: { name: string | null } | null }[] };
 type Movement = { occurred_on: string; weight_kg: number; removed_quantity: number; treatment_rate: number; exchange_rate: number; service_order: string | null; waste_residues?: { name: string | null } | null };
 type Placement = { quantity: number; monthly_rental_rate: number; started_on: string; ended_on: string | null };
+type HistoricalBulletin = { id: string; bulletin_number: string; description: string | null; issuer_name: string | null; period_start: string; period_end: string; issued_on: string | null; total_amount: number | null; file_name: string; storage_path: string; client_branches?: { name: string | null } | null };
 
 const date = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR");
 const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
@@ -42,6 +43,23 @@ function ClientBulletinsPage() {
       return [...((cycles ?? []) as Bulletin[]), ...filtered].sort((a, b) => String(b.finalized_at).localeCompare(String(a.finalized_at)));
     },
   });
+
+  // Boletins emitidos antes do sistema: o cliente consulta o PDF original.
+  const { data: historical = [] } = useQuery({
+    queryKey: ["portal-historical-bulletins", clientId], enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("client_historical_bulletins" as any) as any)
+        .select("id,bulletin_number,description,issuer_name,period_start,period_end,issued_on,total_amount,file_name,storage_path,client_branches(name)")
+        .eq("client_id", clientId).order("period_start", { ascending: false }).order("bulletin_number", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as HistoricalBulletin[];
+    },
+  });
+  const openHistorical = async (bulletin: HistoricalBulletin, download = false) => {
+    const { data, error } = await supabase.storage.from("historical-bulletins").createSignedUrl(bulletin.storage_path, 600, download ? { download: bulletin.file_name } : undefined);
+    if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o boletim.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
 
   const generatePdf = async (bulletin: Bulletin, openOnly = false) => {
     const [{ data: movements, error }, { data: placements, error: placementsError }] = await Promise.all([
@@ -86,5 +104,5 @@ function ClientBulletinsPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
-  return <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6"><header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Boletins emitidos</h1><p className="text-sm text-muted-foreground">Consulte e baixe os boletins disponibilizados pela equipe Jacoby, com os valores e detalhes do período.</p></header><Card className="overflow-hidden">{isLoading ? <p className="p-8 text-sm text-muted-foreground">Carregando boletins...</p> : bulletins.length ? <div className="divide-y">{bulletins.map((bulletin) => { const services = Array.from(new Set((bulletin.billing_v2_cycle_services ?? []).map((item) => item.waste_services?.name).filter(Boolean))); return <div key={`${bulletin.id}-${bulletin.display_number || "base"}`} className="flex flex-wrap items-center gap-4 p-5"><FileText className="h-6 w-6 text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold">Boletim #{bulletin.display_number || String(bulletin.bulletin_number).padStart(3, "0")}</p><p className="text-sm text-muted-foreground">{bulletin.client_branches?.name || "Matriz"} · {date(bulletin.period_start)} a {date(bulletin.period_end)}</p>{bulletin.waste_residue_id && <p className="mt-1 text-sm text-muted-foreground">Emissão filtrada por resíduo.</p>}{services.length > 0 && <p className="mt-1 text-sm text-muted-foreground">Serviços: {services.join(" · ")}</p>}</div><div className="flex gap-2"><Button variant="outline" onClick={() => void generatePdf(bulletin, true)}><Eye className="mr-2 h-4 w-4" />Visualizar</Button><Button onClick={() => void generatePdf(bulletin)}><Download className="mr-2 h-4 w-4" />Baixar PDF</Button></div></div>; })}</div> : <p className="p-10 text-center text-sm text-muted-foreground">Nenhum boletim foi disponibilizado para consulta.</p>}</Card></div>;
+  return <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6"><header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Boletins emitidos</h1><p className="text-sm text-muted-foreground">Consulte e baixe os boletins disponibilizados pela equipe Jacoby, com os valores e detalhes do período.</p></header><Card className="overflow-hidden">{isLoading ? <p className="p-8 text-sm text-muted-foreground">Carregando boletins...</p> : bulletins.length ? <div className="divide-y">{bulletins.map((bulletin) => { const services = Array.from(new Set((bulletin.billing_v2_cycle_services ?? []).map((item) => item.waste_services?.name).filter(Boolean))); return <div key={`${bulletin.id}-${bulletin.display_number || "base"}`} className="flex flex-wrap items-center gap-4 p-5"><FileText className="h-6 w-6 text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold">Boletim #{bulletin.display_number || String(bulletin.bulletin_number).padStart(3, "0")}</p><p className="text-sm text-muted-foreground">{bulletin.client_branches?.name || "Matriz"} · {date(bulletin.period_start)} a {date(bulletin.period_end)}</p>{bulletin.waste_residue_id && <p className="mt-1 text-sm text-muted-foreground">Emissão filtrada por resíduo.</p>}{services.length > 0 && <p className="mt-1 text-sm text-muted-foreground">Serviços: {services.join(" · ")}</p>}</div><div className="flex gap-2"><Button variant="outline" onClick={() => void generatePdf(bulletin, true)}><Eye className="mr-2 h-4 w-4" />Visualizar</Button><Button onClick={() => void generatePdf(bulletin)}><Download className="mr-2 h-4 w-4" />Baixar PDF</Button></div></div>; })}</div> : <p className="p-10 text-center text-sm text-muted-foreground">Nenhum boletim foi disponibilizado para consulta.</p>}</Card>{historical.length > 0 && <section className="space-y-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold"><History className="h-5 w-5 text-primary" />Boletins anteriores</h2><p className="text-sm text-muted-foreground">Boletins emitidos antes do portal, disponíveis no documento original.</p></div><Card className="overflow-hidden"><div className="divide-y">{historical.map((bulletin) => <div key={bulletin.id} className="flex flex-wrap items-center gap-4 p-5"><FileText className="h-6 w-6 text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold">Boletim nº {bulletin.bulletin_number}{bulletin.description ? ` · ${bulletin.description}` : ""}</p><p className="text-sm text-muted-foreground">{bulletin.client_branches?.name || "Matriz"} · {date(bulletin.period_start)} a {date(bulletin.period_end)}{bulletin.issuer_name ? ` · ${bulletin.issuer_name}` : ""}</p>{bulletin.total_amount != null && <p className="mt-1 text-sm text-muted-foreground">Total: {money(Number(bulletin.total_amount))}</p>}</div><div className="flex gap-2"><Button variant="outline" onClick={() => void openHistorical(bulletin)}><Eye className="mr-2 h-4 w-4" />Visualizar</Button><Button onClick={() => void openHistorical(bulletin, true)}><Download className="mr-2 h-4 w-4" />Baixar PDF</Button></div></div>)}</div></Card></section>}</div>;
 }

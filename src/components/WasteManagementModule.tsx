@@ -212,6 +212,10 @@ const formatDate = (value: string) =>
     ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${value}T00:00:00`))
     : "—";
 const isContainerPlacement = (move: Movement) => move.operation_type === "container_placement";
+const chartResidueName = (name: string) => {
+  const clean = name.trim().toLocaleUpperCase("pt-BR");
+  return clean.startsWith("MADEIRA") ? "MADEIRA" : clean;
+};
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div>
     <Label>{label}</Label>
@@ -528,7 +532,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   );
   const { data: tickets = [] } = reportQuery<Ticket>("waste-tickets", "waste_weighing_tickets");
   const reportIds = reports.map((item) => item.id);
-  const { data: allClientMoves = [] } = useQuery({
+  const { data: reportHistoryMoves = [] } = useQuery({
     queryKey: ["waste-report-history", clientId, reportIds.join(",")],
     enabled: !!clientId && reportIds.length > 0,
     queryFn: async () => {
@@ -539,6 +543,20 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       return (data ?? []) as Movement[];
     },
   });
+  // O gráfico do portal também soma as coletas confirmadas dos boletins já
+  // publicados ao cliente, além do histórico importado nos relatórios mensais.
+  const { data: bulletinChartMoves = [] } = useQuery({
+    queryKey: ["waste-bulletin-chart-moves", clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await (supabase.rpc as any)("jacoby_client_chart_bulletin_movements", { p_client_id: clientId });
+      if (error) throw error;
+      return ((data ?? []) as Pick<Movement, "id" | "occurred_on" | "weight_kg" | "waste_residue_id" | "branch_id" | "service_order">[]).map((item) => ({
+        ...item, equipment_id: null, operation_type: "movement", placed_quantity: 0, removed_quantity: 0, mtr_number: null, destination_name: null,
+      }) as Movement);
+    },
+  });
+  const allClientMoves = useMemo(() => [...reportHistoryMoves, ...bulletinChartMoves], [reportHistoryMoves, bulletinChartMoves]);
   const active = residues.filter((r) => r.active);
   const activeEq = equipment.filter((e) => e.active);
   const vehicleModelOptions = uniqueOptionNames(
@@ -2882,13 +2900,17 @@ function AnnualWasteReport({
     month === "todos"
       ? `Ano de ${year}`
       : `${new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(Number(year), Number(month) - 1, 1))} de ${year}`;
-  const residueData = residues
-    .map((residue) => ({
-      name: residue.name,
-      kg: filtered
-        .filter((move) => move.waste_residue_id === residue.id)
-        .reduce((sum, move) => sum + Number(move.weight_kg || 0), 0),
-    }))
+  // Agrupa pelo nome: o mesmo resíduo cadastrado em vários pátios vira uma
+  // única barra, e as variações de madeira (por tipo de viagem) somam juntas.
+  const residueData = Array.from(
+    filtered.reduce((totals, move) => {
+      const residue = residues.find((item) => item.id === move.waste_residue_id);
+      if (!residue) return totals;
+      const name = chartResidueName(residue.name);
+      return totals.set(name, (totals.get(name) || 0) + Number(move.weight_kg || 0));
+    }, new Map<string, number>()),
+    ([name, kg]) => ({ name, kg }),
+  )
     .filter((item) => item.kg > 0)
     .sort((a, b) => b.kg - a.kg);
   const months =
