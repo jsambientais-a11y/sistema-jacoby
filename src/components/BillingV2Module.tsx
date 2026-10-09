@@ -722,13 +722,22 @@ export function BillingV2Module() {
       ),
     [placements, movementForm.branchId],
   );
-  const incomingEquipmentBase = useMemo(
-    () =>
-      equipment
-        .filter((item) => branchKey(item.branch_id) === movementForm.branchId)
-        .filter((item) => !outgoingPlacementIds.some((id) => activePlacementsAtBranch.find((placement) => placement.id === id)?.equipment_id === item.id)),
-    [equipment, movementForm.branchId, outgoingPlacementIds, activePlacementsAtBranch],
-  );
+  // Só pode ser colocado o que NÃO está no pátio: qualquer equipamento com locação
+  // ativa ali (inclusive os que estão sendo retirados agora) fica fora da lista.
+  const incomingEquipmentBase = useMemo(() => {
+    const placedHere = new Set(activePlacementsAtBranch.map((placement) => placement.equipment_id));
+    return equipment
+      .filter((item) => branchKey(item.branch_id) === movementForm.branchId)
+      .filter((item) => item.active !== false)
+      .filter((item) => !placedHere.has(item.id));
+  }, [equipment, movementForm.branchId, activePlacementsAtBranch]);
+  // Se a lista mudar (troca de pátio, nova locação), descarta seleções que deixaram de valer.
+  useEffect(() => {
+    setIncomingEquipmentIds((current) => {
+      const next = current.filter((id) => incomingEquipmentBase.some((item) => item.id === id));
+      return next.length === current.length ? current : next;
+    });
+  }, [incomingEquipmentBase]);
   const placementsForSelectedBranch = useMemo(
     () =>
       rentalBranchFilter
@@ -2317,6 +2326,8 @@ export function BillingV2Module() {
                       <SelectContent>
                         {equipment
                           .filter((item) => branchKey(item.branch_id) === placementForm.branchId)
+                          // Equipamento que já está locado (ativo) no pátio não pode ser locado de novo.
+                          .filter((item) => item.active !== false && !placements.some((placement) => placement.equipment_id === item.id && branchKey(placement.branch_id) === placementForm.branchId && !placement.ended_on && Number(placement.quantity || 0) > 0))
                           .map((item) => (
                           <SelectItem key={item.id} value={item.id}>
                             {equipmentName(item)}
