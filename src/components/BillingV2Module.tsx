@@ -281,6 +281,7 @@ export function BillingV2Module() {
   const [publishDialog, setPublishDialog] = useState<PublishDialogTarget | null>(null);
   const [emailMessage, setEmailMessage] = useState("");
   const [recipientPreview, setRecipientPreview] = useState<string[]>([]);
+  const [outsourcedIssuerPreview, setOutsourcedIssuerPreview] = useState<{ email: string | null; companyName: string } | null>(null);
   const [recipientPreviewLoading, setRecipientPreviewLoading] = useState(false);
   const [recipientPreviewError, setRecipientPreviewError] = useState("");
   const [focusedMovementId, setFocusedMovementId] = useState("");
@@ -1385,6 +1386,7 @@ export function BillingV2Module() {
     setPublishDialog(target);
     setEmailMessage("");
     setRecipientPreview([]);
+    setOutsourcedIssuerPreview(null);
     setRecipientPreviewError("");
     setRecipientPreviewLoading(true);
     const { data, error } = await supabase.functions.invoke("send-billing-emails", {
@@ -1394,6 +1396,7 @@ export function BillingV2Module() {
       setRecipientPreviewError("Não foi possível conferir os e-mails agora. Verifique a integração antes de enviar.");
     } else {
       setRecipientPreview(Array.isArray(data?.recipients) ? data.recipients : []);
+      setOutsourcedIssuerPreview(data?.outsourcedIssuer?.companyName ? data.outsourcedIssuer : null);
     }
     setRecipientPreviewLoading(false);
   };
@@ -2808,7 +2811,7 @@ export function BillingV2Module() {
               <div className="space-y-2">
                 <Label>Será enviado para</Label>
                 <div className="rounded-lg border p-3 text-sm">
-                  {recipientPreviewLoading ? <p className="text-muted-foreground">Conferindo os e-mails cadastrados no acesso do cliente…</p> : recipientPreviewError ? <p className="text-destructive">{recipientPreviewError}</p> : recipientPreview.length ? <div className="space-y-1">{recipientPreview.map((email) => <div key={email} className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>{email}</span></div>)}</div> : <p className="text-amber-700">Nenhum e-mail está vinculado ao acesso deste cliente. Cadastre um destinatário antes de enviar.</p>}
+                  {recipientPreviewLoading ? <p className="text-muted-foreground">Conferindo os e-mails do cliente e da empresa emissora…</p> : recipientPreviewError ? <p className="text-destructive">{recipientPreviewError}</p> : <div className="space-y-1">{recipientPreview.length ? recipientPreview.map((email) => <div key={email} className="flex flex-wrap items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>{email}</span>{outsourcedIssuerPreview?.email === email && <span className="text-xs text-muted-foreground">Terceirizada emissora: {outsourcedIssuerPreview.companyName}</span>}</div>) : <p className="text-amber-700">Nenhum e-mail está vinculado ao cliente ou à empresa terceirizada emissora. Cadastre um destinatário antes de enviar.</p>}{outsourcedIssuerPreview && !outsourcedIssuerPreview.email && <p className="mt-2 text-amber-700">A terceirizada emissora {outsourcedIssuerPreview.companyName} não possui e-mail cadastrado e não receberá este envio.</p>}</div>}
                 </div>
               </div>
 
@@ -2819,7 +2822,7 @@ export function BillingV2Module() {
               </div>
 
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
-                Ao confirmar, o BM será publicado no Portal do Cliente e o aviso será enviado aos e-mails mostrados acima.
+                Ao confirmar, o BM será publicado no Portal do Cliente e o aviso será enviado aos e-mails mostrados acima. Quando a nota for emitida por uma terceirizada, o e-mail cadastrado nela também será incluído.
               </div>
             </div>
           )}

@@ -21,6 +21,8 @@ type Cycle = {
   id: string;
   client_id: string;
   branch_id: string | null;
+  issuer_type: "jacoby" | "outsourced";
+  outsourced_company_id: string | null;
   bulletin_number: number;
   period_start: string;
   period_end: string;
@@ -93,7 +95,7 @@ export default {
       if (!input.cycleId) return json({ error: "Boletim não informado." }, 400);
       const { data: cycle, error: cycleError } = await admin
         .from("billing_v2_cycles")
-        .select("client_id")
+        .select("client_id,issuer_type,outsourced_company_id")
         .eq("id", input.cycleId)
         .single();
       if (cycleError || !cycle) return json({ error: "Boletim não encontrado." }, 404);
@@ -109,7 +111,24 @@ export default {
         const email = userData.user?.email?.trim().toLowerCase();
         if (email && !recipients.includes(email)) recipients.push(email);
       }
-      return json({ recipients });
+      let outsourcedIssuer: { email: string | null; companyName: string } | null = null;
+      if (cycle.issuer_type === "outsourced" && cycle.outsourced_company_id) {
+        const { data: company, error: companyError } = await admin
+          .from("outsourced_companies")
+          .select("legal_name,trade_name,email,active")
+          .eq("id", cycle.outsourced_company_id)
+          .maybeSingle();
+        if (companyError) return json({ error: companyError.message }, 500);
+        const email = company?.active ? company.email?.trim().toLowerCase() : "";
+        if (company?.active) {
+          if (email && !recipients.includes(email)) recipients.push(email);
+          outsourcedIssuer = {
+            email: email || null,
+            companyName: company.trade_name || company.legal_name,
+          };
+        }
+      }
+      return json({ recipients, outsourcedIssuer });
     }
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -177,7 +196,7 @@ export default {
       try {
         const { data: cycleData, error: cycleError } = await admin
           .from("billing_v2_cycles")
-          .select("id,client_id,branch_id,bulletin_number,period_start,period_end,client_portal_visible")
+          .select("id,client_id,branch_id,issuer_type,outsourced_company_id,bulletin_number,period_start,period_end,client_portal_visible")
           .eq("id", delivery.cycle_id)
           .single();
         if (cycleError || !cycleData) throw cycleError ?? new Error("Boletim não encontrado.");
