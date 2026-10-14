@@ -281,7 +281,7 @@ export function BillingV2Module() {
   const [publishDialog, setPublishDialog] = useState<PublishDialogTarget | null>(null);
   const [emailMessage, setEmailMessage] = useState("");
   const [recipientPreview, setRecipientPreview] = useState<string[]>([]);
-  const [outsourcedIssuerPreview, setOutsourcedIssuerPreview] = useState<{ email: string | null; companyName: string } | null>(null);
+  const [outsourcedIssuerPreview, setOutsourcedIssuerPreview] = useState<{ emails: string[]; companyName: string } | null>(null);
   const [recipientPreviewLoading, setRecipientPreviewLoading] = useState(false);
   const [recipientPreviewError, setRecipientPreviewError] = useState("");
   const [focusedMovementId, setFocusedMovementId] = useState("");
@@ -2811,7 +2811,7 @@ export function BillingV2Module() {
               <div className="space-y-2">
                 <Label>Será enviado para</Label>
                 <div className="rounded-lg border p-3 text-sm">
-                  {recipientPreviewLoading ? <p className="text-muted-foreground">Conferindo os e-mails do cliente e da empresa emissora…</p> : recipientPreviewError ? <p className="text-destructive">{recipientPreviewError}</p> : <div className="space-y-1">{recipientPreview.length ? recipientPreview.map((email) => <div key={email} className="flex flex-wrap items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>{email}</span>{outsourcedIssuerPreview?.email === email && <span className="text-xs text-muted-foreground">Terceirizada emissora: {outsourcedIssuerPreview.companyName}</span>}</div>) : <p className="text-amber-700">Nenhum e-mail está vinculado ao cliente ou à empresa terceirizada emissora. Cadastre um destinatário antes de enviar.</p>}{outsourcedIssuerPreview && !outsourcedIssuerPreview.email && <p className="mt-2 text-amber-700">A terceirizada emissora {outsourcedIssuerPreview.companyName} não possui e-mail cadastrado e não receberá este envio.</p>}</div>}
+                  {recipientPreviewLoading ? <p className="text-muted-foreground">Conferindo os e-mails do cliente e da empresa emissora…</p> : recipientPreviewError ? <p className="text-destructive">{recipientPreviewError}</p> : <div className="space-y-1">{recipientPreview.length ? recipientPreview.map((email) => <div key={email} className="flex flex-wrap items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>{email}</span>{outsourcedIssuerPreview?.emails.includes(email) && <span className="text-xs text-muted-foreground">Terceirizada emissora: {outsourcedIssuerPreview.companyName}</span>}</div>) : <p className="text-amber-700">Nenhum e-mail está vinculado ao cliente ou à empresa terceirizada emissora. Cadastre um destinatário antes de enviar.</p>}{outsourcedIssuerPreview && outsourcedIssuerPreview.emails.length === 0 && <p className="mt-2 text-amber-700">A terceirizada emissora {outsourcedIssuerPreview.companyName} não possui e-mail válido cadastrado e não receberá este envio.</p>}</div>}
                 </div>
               </div>
 

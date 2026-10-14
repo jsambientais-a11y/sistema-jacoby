@@ -55,6 +55,15 @@ function retryDate(attempts: number) {
   return new Date(Date.now() + delayMinutes * 60_000).toISOString();
 }
 
+function parseEmailList(value: string | null | undefined) {
+  return Array.from(new Set(
+    String(value || "")
+      .split(/[;,\s]+/)
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)),
+  ));
+}
+
 export default {
   fetch: async (request: Request): Promise<Response> => {
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -111,7 +120,7 @@ export default {
         const email = userData.user?.email?.trim().toLowerCase();
         if (email && !recipients.includes(email)) recipients.push(email);
       }
-      let outsourcedIssuer: { email: string | null; companyName: string } | null = null;
+      let outsourcedIssuer: { emails: string[]; companyName: string } | null = null;
       if (cycle.issuer_type === "outsourced" && cycle.outsourced_company_id) {
         const { data: company, error: companyError } = await admin
           .from("outsourced_companies")
@@ -119,11 +128,13 @@ export default {
           .eq("id", cycle.outsourced_company_id)
           .maybeSingle();
         if (companyError) return json({ error: companyError.message }, 500);
-        const email = company?.active ? company.email?.trim().toLowerCase() : "";
+        const emails = company?.active ? parseEmailList(company.email) : [];
         if (company?.active) {
-          if (email && !recipients.includes(email)) recipients.push(email);
+          for (const email of emails) {
+            if (!recipients.includes(email)) recipients.push(email);
+          }
           outsourcedIssuer = {
-            email: email || null,
+            emails,
             companyName: company.trade_name || company.legal_name,
           };
         }
