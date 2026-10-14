@@ -1508,7 +1508,9 @@ export function BillingV2Module() {
   const billingEmailDeliveries = billingEmailDeliveriesQuery.data || [];
   const emailDeliverySummary = (targetCycleId: string, residueEmissionId: string | null = null) => {
     const deliveries = billingEmailDeliveries.filter((item) =>
-      item.cycle_id === targetCycleId && item.residue_emission_id === residueEmissionId,
+      item.cycle_id === targetCycleId
+      && item.residue_emission_id === residueEmissionId
+      && item.status !== "cancelled",
     );
     if (!deliveries.length) return { label: "Nenhum envio registrado", title: "Este BM pode ter sido publicado antes da ativação do envio por e-mail ou não possuir um acesso de cliente vinculado." };
     const sent = deliveries.filter((item) => item.status === "sent").length;
