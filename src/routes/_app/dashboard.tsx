@@ -209,7 +209,7 @@ function Dashboard() {
         <Stat label="Em alerta" hint="Dentro do prazo de aviso" value={data.alerts.length} icon={BellRing} color="#7c3aed" onClick={() => openPanel("alerts")} />
       </div>
     </section>
-    {canViewBilling && <section className="space-y-2"><h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Faturamento</h2>
+    {canViewBilling && <section className="space-y-2"><h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Boletim de Medição</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Boletins em aberto" hint="Pendentes de finalização" value={data.cycles.length} icon={ClipboardList} color="#2563eb" onClick={() => openPanel("cycles")} />
         <Stat label="Movimentações sem confirmação" hint="Em boletins abertos" value={data.pending.length} icon={Truck} color="#d97706" onClick={() => openPanel("movements")} />

@@ -27,8 +27,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FinancialMonthPanel } from "@/components/FinancialMonthPanel";
+import { BillingFlowPreview, type BillingFlowEntry, type BillingFlowSaveInput, type BillingFlowTracking } from "@/components/BillingFlowPreview";
 
 export const Route = createFileRoute("/_app/financeiro")({ component: FinancialControlPage });
+
+// Mantém a tela anterior no código para consulta durante a validação do novo fluxo.
+// Ela não aparece na navegação nem altera os lançamentos existentes.
+const SHOW_ARCHIVED_FINANCIAL_VIEW = false;
 
 type FinancialService = {
   id: string;
@@ -74,6 +79,7 @@ type MovementCommission = {
   waste_residue_id: string | null;
   execution_date: string | null;
   base_amount: number;
+  commission_rate: number;
   gross_commission_amount: number;
   tax_withheld_amount: number;
   net_commission_amount: number;
@@ -138,6 +144,15 @@ function FinancialControlPage() {
       return (data || []) as MovementCommission[];
     },
   });
+  const billingTrackingQuery = useQuery({
+    queryKey: ["billing-receivable-tracking"],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_receivable_tracking" as any) as any)
+        .select("*");
+      if (error) throw error;
+      return (data || []) as BillingFlowTracking[];
+    },
+  });
   const cyclesQuery = useQuery({
     queryKey: ["outsourced-financial-cycles"],
     queryFn: async () => {
@@ -152,6 +167,7 @@ function FinancialControlPage() {
   });
   const directBillingDataQuery = useQuery({
     queryKey: ["jacoby-direct-billing-data"],
+    enabled: true,
     queryFn: async () => {
       const [placements, movements, services] = await Promise.all([
         (supabase.from("billing_v2_placements" as any) as any).select("cycle_id,quantity,monthly_rental_rate"),
@@ -300,6 +316,107 @@ function FinancialControlPage() {
   const directBillingTotal = directBillingRows.reduce((total, row) => total + row.total, 0);
   const totalCommissions = commissionTotal + movementCommissionTotal;
   const consolidatedTotal = directBillingTotal + totalCommissions;
+  const billingFlowEntries = useMemo<BillingFlowEntry[]>(() => {
+    const grouped = new Map<string, BillingFlowEntry>();
+    const savedByKey = new Map((billingTrackingQuery.data || []).map((item) => [`${item.cycle_id}:${item.category}:${item.source_key}`, item]));
+    const add = (entry: Omit<BillingFlowEntry, "itemsCount" | "tracking">) => {
+      const key = `${entry.cycleId}:${entry.category}:${entry.companyId || 'jacoby'}`;
+      const current = grouped.get(key);
+      if (current) {
+        current.baseAmount += entry.baseAmount;
+        current.currentCommission += entry.currentCommission;
+        current.itemsCount += 1;
+        current.legacyInvoiceNumber = null;
+        current.legacyIssuedOn = null;
+        current.legacyDueOn = null;
+        current.legacyExpectedOn = null;
+        current.legacyPaidOn = null;
+      } else {
+        grouped.set(key, { ...entry, itemsCount: 1, tracking: savedByKey.get(key) });
+      }
+    };
+    for (const { item, cycle, clientName, companyName, residueName } of movementCommissionRows) {
+      if (!cycle || cycle.status !== "closed") continue;
+      add({
+        id: `${cycle.id}:${item.source_type}:${item.outsourced_company_id}`,
+        cycleId: cycle.id,
+        companyId: item.outsourced_company_id,
+        category: item.source_type,
+        bulletin: `#${String(cycle.bulletin_number || 0).padStart(3, "0")}`,
+        client: clientName || "Cliente não identificado",
+        branch: branches.find((branch) => branch.id === cycle.branch_id)?.name || "Matriz",
+        company: companyName || "Terceirizada não identificada",
+        description: item.source_type === "treatment" ? `Tratamento · ${residueName || "resíduo"}` : item.source_type === "exchange" ? "Troca de equipamentos" : "Locação de equipamentos",
+        baseAmount: Number(item.base_amount || 0),
+        currentCommission: Number(item.net_commission_amount || 0),
+      });
+    }
+    for (const { item, cycle, clientName, companyName, serviceName, branchName } of rows) {
+      if (!cycle || cycle.status !== "closed" || !item.outsourced_company_id) continue;
+      const baseAmount = Number(item.net_invoice_amount ?? item.amount ?? 0);
+      add({
+        id: `${cycle.id}:service:${item.outsourced_company_id}`,
+        cycleId: cycle.id,
+        companyId: item.outsourced_company_id,
+        category: "service",
+        bulletin: `#${String(cycle.bulletin_number || 0).padStart(3, "0")}`,
+        client: clientName || "Cliente não identificado",
+        branch: branchName || "Matriz",
+        company: companyName || "Terceirizada não identificada",
+        description: serviceName || item.description || "Serviço terceirizado",
+        baseAmount,
+        currentCommission: baseAmount * Number(item.commission_rate || 0) / 100,
+        legacyInvoiceNumber: item.invoice_number,
+        legacyIssuedOn: item.invoice_issued_on,
+        legacyDueOn: item.invoice_due_date,
+        legacyExpectedOn: item.commission_due_date,
+        legacyPaidOn: item.received_on,
+      });
+    }
+    for (const direct of directBillingRows) {
+      const { cycle, clientName, branchName } = direct;
+      for (const [category, amount, description] of [
+        ['rental', direct.rental, 'Locação de equipamentos'],
+        ['exchange', direct.exchange, 'Troca de equipamentos'],
+        ['treatment', direct.treatment - direct.purchases, 'Tratamento de resíduos'],
+        ['service', direct.services, 'Serviços'],
+      ] as const) {
+        if (amount <= 0) continue;
+        add({
+          id: `${cycle.id}:${category}:jacoby`, cycleId: cycle.id, companyId: null,
+          category, bulletin: `#${String(cycle.bulletin_number || 0).padStart(3, '0')}`,
+          client: clientName || 'Cliente não identificado', branch: branchName || 'Matriz',
+          company: 'Jacoby (faturamento direto)', description,
+          baseAmount: amount, currentCommission: amount,
+        });
+      }
+    }
+    return [...grouped.values()].sort((a, b) => b.bulletin.localeCompare(a.bulletin));
+  }, [movementCommissionRows, rows, branches, directBillingRows, billingTrackingQuery.data]);
+  const saveBillingTracking = useMutation({
+    mutationFn: async (input: BillingFlowSaveInput) => {
+      const { entry, ...values } = input;
+      const { data, error } = await (supabase.from("billing_receivable_tracking" as any) as any)
+        .upsert({
+          cycle_id: entry.cycleId,
+          category: entry.category,
+          outsourced_company_id: entry.companyId,
+          source_key: entry.companyId || 'jacoby',
+          base_amount_snapshot: Number(entry.baseAmount.toFixed(2)),
+          ...values,
+        }, { onConflict: "cycle_id,category,source_key" })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as BillingFlowTracking;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["billing-receivable-tracking"] });
+      void queryClient.invalidateQueries({ queryKey: ["financial-month-panel"] });
+      toast.success("Conferência de faturamento salva.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const settleMovementCommission = useMutation({
     mutationFn: async (item: MovementCommission) => {
       const received = item.payment_status !== "received";
@@ -379,11 +496,31 @@ function FinancialControlPage() {
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
   if (!hasPermission("billing")) return <Navigate to="/dashboard" />;
+  if (!SHOW_ARCHIVED_FINANCIAL_VIEW) {
+    return (
+      <div className="mx-auto max-w-[1500px] space-y-6 p-4 sm:p-6">
+        <header>
+          <p className="text-sm font-medium text-primary">Controle de notas e repasses</p>
+          <h1 className="mt-1 text-2xl font-bold sm:text-3xl">Faturamento</h1>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+            Acompanhe cada BM até a emissão da nota, a previsão da comissão e o recebimento.
+          </p>
+        </header>
+        <BillingFlowPreview
+          entries={billingFlowEntries}
+          isLoading={servicesQuery.isLoading || movementCommissionsQuery.isLoading || cyclesQuery.isLoading || directBillingDataQuery.isLoading || billingTrackingQuery.isLoading}
+          loadError={[servicesQuery, movementCommissionsQuery, cyclesQuery, directBillingDataQuery, billingTrackingQuery, companiesQuery, branchesQuery, servicesCatalogQuery].map((query) => query.error).find((error) => error instanceof Error)?.message || null}
+          isSaving={saveBillingTracking.isPending}
+          onSave={(input) => saveBillingTracking.mutateAsync(input).then(() => undefined)}
+        />
+      </div>
+    );
+  }
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 p-4 sm:p-6">
       <header>
-        <p className="text-sm font-medium text-primary">Faturamento</p>
-        <h1 className="text-2xl font-bold">Financeiro</h1>
+        <p className="text-sm font-medium text-primary">Receitas e comissões</p>
+        <h1 className="text-2xl font-bold">Faturamento</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Serviços emitidos por terceirizada entram aqui automaticamente quando a data de execução é
           informada no BM.
@@ -435,7 +572,7 @@ function FinancialControlPage() {
             <Metric label="Total faturado consolidado" value={consolidatedTotal} />
           </div>
           <Card className="overflow-hidden">
-            <div className="border-b p-4"><h2 className="font-semibold">Composição do total faturado</h2><p className="mt-1 text-sm text-muted-foreground">Soma do que a Jacoby emitiu diretamente com as comissões registradas no Financeiro.</p></div>
+            <div className="border-b p-4"><h2 className="font-semibold">Composição do total faturado</h2><p className="mt-1 text-sm text-muted-foreground">Soma do que a Jacoby emitiu diretamente com as comissões registradas no Faturamento.</p></div>
             <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b bg-muted/30 text-left text-muted-foreground"><th className="p-3">Origem</th><th className="p-3">Descrição</th><th className="p-3 text-right">Valor</th></tr></thead><tbody><tr className="border-b"><td className="p-3 font-medium">Jacoby</td><td className="p-3">Boletins finalizados e emitidos pela Jacoby</td><td className="p-3 text-right font-medium">{money.format(directBillingTotal)}</td></tr><tr className="border-b"><td className="p-3 font-medium">Comissões de serviços</td><td className="p-3">Comissões configuradas nos serviços de terceirizadas</td><td className="p-3 text-right font-medium">{money.format(commissionTotal)}</td></tr><tr className="border-b"><td className="p-3 font-medium">Comissões de movimentações</td><td className="p-3">Locação, troca e tratamento emitidos por terceirizadas</td><td className="p-3 text-right font-medium">{money.format(movementCommissionTotal)}</td></tr></tbody><tfoot><tr className="bg-primary/10"><td className="p-3 font-bold" colSpan={2}>Total faturado</td><td className="p-3 text-right text-lg font-bold text-primary">{money.format(consolidatedTotal)}</td></tr></tfoot></table></div>
           </Card>
         </TabsContent>

@@ -18,6 +18,7 @@ import { Route as AppClientsRouteImport } from './routes/_app/clients'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppFinanceiroRouteImport } from './routes/_app/financeiro'
 import { Route as AppImportAtaRouteImport } from './routes/_app/import-ata'
+import { Route as AppIsoRouteImport } from './routes/_app/iso'
 import { Route as AppNotesRouteImport } from './routes/_app/notes'
 import { Route as AppReportsRouteImport } from './routes/_app/reports'
 import { Route as AppResiduosRouteImport } from './routes/_app/residuos'
@@ -30,6 +31,10 @@ import { Route as ApiOnedriveRouteImport } from './routes/api/onedrive'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
 import { Route as AppClientsIndexRouteImport } from './routes/_app/clients.index'
 import { Route as AppClientsNewRouteImport } from './routes/_app/clients.new'
+import { Route as AppIsoEvidenciasRouteImport } from './routes/_app/iso.evidencias'
+import { Route as AppIsoNaoConformidadesRouteImport } from './routes/_app/iso.nao-conformidades'
+import { Route as AppIsoPlanoRouteImport } from './routes/_app/iso.plano'
+import { Route as AppIsoRoteirosRouteImport } from './routes/_app/iso.roteiros'
 import { Route as AppPortalBoletinsRouteImport } from './routes/_app/portal.boletins'
 import { Route as AppPortalContaRouteImport } from './routes/_app/portal.conta'
 import { Route as AppPortalDocumentosRouteImport } from './routes/_app/portal.documentos'
@@ -92,6 +97,11 @@ const AppImportAtaRoute = AppImportAtaRouteImport.update({
   path: '/import-ata',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIsoRoute = AppIsoRouteImport.update({
+  id: '/iso',
+  path: '/iso',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNotesRoute = AppNotesRouteImport.update({
   id: '/notes',
   path: '/notes',
@@ -151,6 +161,26 @@ const AppClientsNewRoute = AppClientsNewRouteImport.update({
   id: '/new',
   path: '/new',
   getParentRoute: () => AppClientsRoute,
+} as any)
+const AppIsoEvidenciasRoute = AppIsoEvidenciasRouteImport.update({
+  id: '/evidencias',
+  path: '/evidencias',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoNaoConformidadesRoute = AppIsoNaoConformidadesRouteImport.update({
+  id: '/nao-conformidades',
+  path: '/nao-conformidades',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoPlanoRoute = AppIsoPlanoRouteImport.update({
+  id: '/plano',
+  path: '/plano',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoRoteirosRoute = AppIsoRoteirosRouteImport.update({
+  id: '/roteiros',
+  path: '/roteiros',
+  getParentRoute: () => AppIsoRoute,
 } as any)
 const AppPortalBoletinsRoute = AppPortalBoletinsRouteImport.update({
   id: '/portal/boletins',
@@ -249,6 +279,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AppDashboardRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/import-ata': typeof AppImportAtaRoute
+  '/iso': typeof AppIsoRouteWithChildren
   '/notes': typeof AppNotesRoute
   '/reports': typeof AppReportsRoute
   '/residuos': typeof AppResiduosRoute
@@ -260,6 +291,10 @@ export interface FileRoutesByFullPath {
   '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/iso/evidencias': typeof AppIsoEvidenciasRoute
+  '/iso/nao-conformidades': typeof AppIsoNaoConformidadesRoute
+  '/iso/plano': typeof AppIsoPlanoRoute
+  '/iso/roteiros': typeof AppIsoRoteirosRoute
   '/portal/boletins': typeof AppPortalBoletinsRoute
   '/portal/conta': typeof AppPortalContaRoute
   '/portal/documentos': typeof AppPortalDocumentosRoute
@@ -287,6 +322,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AppDashboardRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/import-ata': typeof AppImportAtaRoute
+  '/iso': typeof AppIsoRouteWithChildren
   '/notes': typeof AppNotesRoute
   '/reports': typeof AppReportsRoute
   '/residuos': typeof AppResiduosRoute
@@ -297,6 +333,10 @@ export interface FileRoutesByTo {
   '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/iso/evidencias': typeof AppIsoEvidenciasRoute
+  '/iso/nao-conformidades': typeof AppIsoNaoConformidadesRoute
+  '/iso/plano': typeof AppIsoPlanoRoute
+  '/iso/roteiros': typeof AppIsoRoteirosRoute
   '/portal/boletins': typeof AppPortalBoletinsRoute
   '/portal/conta': typeof AppPortalContaRoute
   '/portal/documentos': typeof AppPortalDocumentosRoute
@@ -327,6 +367,7 @@ export interface FileRoutesById {
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/financeiro': typeof AppFinanceiroRoute
   '/_app/import-ata': typeof AppImportAtaRoute
+  '/_app/iso': typeof AppIsoRouteWithChildren
   '/_app/notes': typeof AppNotesRoute
   '/_app/reports': typeof AppReportsRoute
   '/_app/residuos': typeof AppResiduosRoute
@@ -338,6 +379,10 @@ export interface FileRoutesById {
   '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/_app/clients/new': typeof AppClientsNewRoute
+  '/_app/iso/evidencias': typeof AppIsoEvidenciasRoute
+  '/_app/iso/nao-conformidades': typeof AppIsoNaoConformidadesRoute
+  '/_app/iso/plano': typeof AppIsoPlanoRoute
+  '/_app/iso/roteiros': typeof AppIsoRoteirosRoute
   '/_app/portal/boletins': typeof AppPortalBoletinsRoute
   '/_app/portal/conta': typeof AppPortalContaRoute
   '/_app/portal/documentos': typeof AppPortalDocumentosRoute
@@ -368,6 +413,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/financeiro'
     | '/import-ata'
+    | '/iso'
     | '/notes'
     | '/reports'
     | '/residuos'
@@ -379,6 +425,10 @@ export interface FileRouteTypes {
     | '/api/onedrive'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/iso/evidencias'
+    | '/iso/nao-conformidades'
+    | '/iso/plano'
+    | '/iso/roteiros'
     | '/portal/boletins'
     | '/portal/conta'
     | '/portal/documentos'
@@ -406,6 +456,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/financeiro'
     | '/import-ata'
+    | '/iso'
     | '/notes'
     | '/reports'
     | '/residuos'
@@ -416,6 +467,10 @@ export interface FileRouteTypes {
     | '/api/onedrive'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/iso/evidencias'
+    | '/iso/nao-conformidades'
+    | '/iso/plano'
+    | '/iso/roteiros'
     | '/portal/boletins'
     | '/portal/conta'
     | '/portal/documentos'
@@ -445,6 +500,7 @@ export interface FileRouteTypes {
     | '/_app/dashboard'
     | '/_app/financeiro'
     | '/_app/import-ata'
+    | '/_app/iso'
     | '/_app/notes'
     | '/_app/reports'
     | '/_app/residuos'
@@ -456,6 +512,10 @@ export interface FileRouteTypes {
     | '/api/onedrive'
     | '/_app/client-report/$clientId'
     | '/_app/clients/new'
+    | '/_app/iso/evidencias'
+    | '/_app/iso/nao-conformidades'
+    | '/_app/iso/plano'
+    | '/_app/iso/roteiros'
     | '/_app/portal/boletins'
     | '/_app/portal/conta'
     | '/_app/portal/documentos'
@@ -548,6 +608,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppImportAtaRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/iso': {
+      id: '/_app/iso'
+      path: '/iso'
+      fullPath: '/iso'
+      preLoaderRoute: typeof AppIsoRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/notes': {
       id: '/_app/notes'
       path: '/notes'
@@ -631,6 +698,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/clients/new'
       preLoaderRoute: typeof AppClientsNewRouteImport
       parentRoute: typeof AppClientsRoute
+    }
+    '/_app/iso/evidencias': {
+      id: '/_app/iso/evidencias'
+      path: '/evidencias'
+      fullPath: '/iso/evidencias'
+      preLoaderRoute: typeof AppIsoEvidenciasRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/nao-conformidades': {
+      id: '/_app/iso/nao-conformidades'
+      path: '/nao-conformidades'
+      fullPath: '/iso/nao-conformidades'
+      preLoaderRoute: typeof AppIsoNaoConformidadesRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/plano': {
+      id: '/_app/iso/plano'
+      path: '/plano'
+      fullPath: '/iso/plano'
+      preLoaderRoute: typeof AppIsoPlanoRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/roteiros': {
+      id: '/_app/iso/roteiros'
+      path: '/roteiros'
+      fullPath: '/iso/roteiros'
+      preLoaderRoute: typeof AppIsoRoteirosRouteImport
+      parentRoute: typeof AppIsoRoute
     }
     '/_app/portal/boletins': {
       id: '/_app/portal/boletins'
@@ -770,6 +865,23 @@ const AppClientsRouteWithChildren = AppClientsRoute._addFileChildren(
   AppClientsRouteChildren,
 )
 
+interface AppIsoRouteChildren {
+  AppIsoEvidenciasRoute: typeof AppIsoEvidenciasRoute
+  AppIsoNaoConformidadesRoute: typeof AppIsoNaoConformidadesRoute
+  AppIsoPlanoRoute: typeof AppIsoPlanoRoute
+  AppIsoRoteirosRoute: typeof AppIsoRoteirosRoute
+}
+
+const AppIsoRouteChildren: AppIsoRouteChildren = {
+  AppIsoEvidenciasRoute: AppIsoEvidenciasRoute,
+  AppIsoNaoConformidadesRoute: AppIsoNaoConformidadesRoute,
+  AppIsoPlanoRoute: AppIsoPlanoRoute,
+  AppIsoRoteirosRoute: AppIsoRoteirosRoute,
+}
+
+const AppIsoRouteWithChildren =
+  AppIsoRoute._addFileChildren(AppIsoRouteChildren)
+
 interface AppTasksRouteChildren {
   AppTasksCalendarRoute: typeof AppTasksCalendarRoute
   AppTasksKanbanRoute: typeof AppTasksKanbanRoute
@@ -795,6 +907,7 @@ interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
   AppFinanceiroRoute: typeof AppFinanceiroRoute
   AppImportAtaRoute: typeof AppImportAtaRoute
+  AppIsoRoute: typeof AppIsoRouteWithChildren
   AppNotesRoute: typeof AppNotesRoute
   AppReportsRoute: typeof AppReportsRoute
   AppResiduosRoute: typeof AppResiduosRoute
@@ -822,6 +935,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
   AppFinanceiroRoute: AppFinanceiroRoute,
   AppImportAtaRoute: AppImportAtaRoute,
+  AppIsoRoute: AppIsoRouteWithChildren,
   AppNotesRoute: AppNotesRoute,
   AppReportsRoute: AppReportsRoute,
   AppResiduosRoute: AppResiduosRoute,

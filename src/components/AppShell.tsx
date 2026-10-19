@@ -31,6 +31,7 @@ import {
   ClipboardCheck,
   HandCoins,
 } from "lucide-react";
+import { EnvironmentSwitch } from "@/components/EnvironmentSwitch";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -66,13 +67,13 @@ type NavItem = {
 const allNav: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard" },
   { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks, permission: "tasks" },
-  { to: "/portal/residuos", label: "Faturamento", icon: Recycle, permission: "billing", tab: "faturamento2" },
+  { to: "/portal/residuos", label: "Boletim de Medição", icon: Recycle, permission: "billing", tab: "faturamento2" },
   { to: "/clients", label: "Clientes", icon: Building2, permission: "clients" },
   { to: "/terceirizados", label: "Terceirizados", icon: Factory, permission: "outsourced" },
   { to: "/portal/documentos", label: "Documentos", icon: FileText, permission: "documents" },
   { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true, ownerOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
-  { to: "/financeiro", label: "Financeiro", icon: HandCoins, permission: "billing" },
+  { to: "/financeiro", label: "Faturamento", icon: HandCoins, permission: "billing" },
   { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, permission: "movement_settings", tab: "configuracoes" },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
   { to: "/trash", label: "Lixeira", icon: Trash2, permission: "trash" },
@@ -248,6 +249,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <PanelLeft className="h-5 w-5" />
         </Button>
         <span className="font-semibold">Jacoby</span>
+        {!isClient && <EnvironmentSwitch active="management" />}
         <NotificationBell />
       </div>
 
@@ -352,7 +354,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="flex-1 overflow-x-hidden md:pt-0 pt-12">
         <div className="hidden md:flex sticky top-0 z-30 items-center justify-between px-4 py-2 bg-background/80 backdrop-blur border-b">
           {isAdmin || hasPermission("dashboard") ? <Link to="/dashboard" className="inline-flex h-9 w-9 items-center justify-center rounded-md text-destructive transition hover:bg-destructive/10" title="Alertas de documentos"><AlertTriangle className="h-5 w-5" /></Link> : <span />}
-          <NotificationBell />
+          <div className="flex items-center gap-3">
+            {!isClient && <EnvironmentSwitch active="management" />}
+            <NotificationBell />
+          </div>
         </div>
         {children}
       </main>

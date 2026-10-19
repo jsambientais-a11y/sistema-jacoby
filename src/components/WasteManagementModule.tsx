@@ -1830,7 +1830,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </TabsList>
             <TabsContent value="equipamentos" className="space-y-4">
               <BillingImpactNote>
-                <strong>Alimenta o Faturamento →</strong> o <strong>Valor da locação</strong> cadastrado aqui vira a linha <strong>Locação de equipamentos</strong> do BM. Os equipamentos também aparecem como opção nas abas <strong>Locação</strong> e <strong>Movimentações</strong> do boletim. O valor por troca fica na aba <strong>Troca</strong>.
+                <strong>Alimenta o Boletim de Medição →</strong> o <strong>Valor da locação</strong> cadastrado aqui vira a linha <strong>Locação de equipamentos</strong> do BM. Os equipamentos também aparecem como opção nas abas <strong>Locação</strong> e <strong>Movimentações</strong> do boletim. O valor por troca fica na aba <strong>Troca</strong>.
               </BillingImpactNote>
               <Card className="p-4">
                 <h2 className="font-semibold">
@@ -2122,13 +2122,13 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </TabsContent>
             <TabsContent value="residuos" className="space-y-4">
               <BillingImpactNote>
-                <strong>Alimenta o Faturamento →</strong> o <strong>valor de tratamento por kg</strong> (por filial/pátio) vira a linha <strong>Tratamento de resíduos</strong> do BM, calculada como <strong>peso × valor</strong> e lançada nas <strong>Movimentações</strong>. Os resíduos também viram opção na Locação e Movimentações.
+                <strong>Alimenta o Boletim de Medição →</strong> o <strong>valor de tratamento por kg</strong> (por filial/pátio) vira a linha <strong>Tratamento de resíduos</strong> do BM, calculada como <strong>peso × valor</strong> e lançada nas <strong>Movimentações</strong>. Os resíduos também viram opção na Locação e Movimentações.
               </BillingImpactNote>
               <ResidueBranchConfig clientId={clientId} branches={branches} residues={residues} onSaved={refreshClient} />
             </TabsContent>
             <TabsContent value="valores" className="space-y-4">
               <BillingImpactNote>
-                <strong>Alimenta o Faturamento →</strong> o <strong>valor por troca</strong> de cada equipamento vira a linha <strong>Troca de equipamentos</strong> do BM, aplicado a cada troca confirmada nas <strong>Movimentações</strong>. Alterar aqui atualiza os BMs <strong>em edição</strong>; os já finalizados mantêm o valor da época.
+                <strong>Alimenta o Boletim de Medição →</strong> o <strong>valor por troca</strong> de cada equipamento vira a linha <strong>Troca de equipamentos</strong> do BM, aplicado a cada troca confirmada nas <strong>Movimentações</strong>. Alterar aqui atualiza os BMs <strong>em edição</strong>; os já finalizados mantêm o valor da época.
               </BillingImpactNote>
               <Card className="p-4">
                 <h2 className="font-semibold">Valor por troca</h2>
@@ -2219,7 +2219,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </TabsContent>
             <TabsContent value="comissionamento" className="space-y-4">
               <BillingImpactNote tone="amber">
-                <strong>Não entra no total nem no PDF do BM.</strong> As taxas de comissão cadastradas aqui alimentam o relatório de <strong>Comissões</strong> no <strong>Financeiro</strong> — calculadas automaticamente quando um BM emitido por <strong>empresa terceirizada</strong> é finalizado.
+                <strong>Não entra no total nem no PDF do BM.</strong> As taxas de comissão cadastradas aqui alimentam o relatório de <strong>Comissões</strong> no <strong>Faturamento</strong> — calculadas automaticamente quando um BM emitido por <strong>empresa terceirizada</strong> é finalizado.
               </BillingImpactNote>
               <CommissionSettingsPanel
                 clientId={clientId}

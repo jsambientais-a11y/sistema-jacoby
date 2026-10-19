@@ -945,7 +945,7 @@ export function BillingV2Module() {
       await supabase.storage.from("movement-documents").remove([service.invoice_pdf_path]);
     }
     refresh();
-    toast.success("PDF de faturamento anexado ao BM e ao Financeiro.");
+    toast.success("PDF de faturamento anexado ao BM e ao Faturamento.");
   };
   const openCycleServiceInvoicePdf = async (service: CycleService) => {
     if (!service.invoice_pdf_path) return;
@@ -2015,7 +2015,7 @@ export function BillingV2Module() {
       {!cycleId && (
         <header>
           <p className="text-sm font-medium text-primary">Portal do Cliente</p>
-          <h1 className="text-2xl font-bold">Faturamento</h1>
+          <h1 className="text-2xl font-bold">Boletim de Medição</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Cada boletim é um ciclo independente: registre locação, movimentações e destinação no período que fizer sentido e finalize quando estiver concluído.
           </p>
