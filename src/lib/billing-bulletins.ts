@@ -5,6 +5,7 @@ export type BillingBulletin = {
   client: string;
   branch: string;
   company: string;
+  residues?: { id: string; name: string }[];
 };
 
 // A emissão é a finalização do BM, e não a emissão da NF ou o número do BM.

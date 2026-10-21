@@ -324,11 +324,12 @@ function FinancialControlPage() {
       id: cycle.id,
       number: cycle.bulletin_number || 0,
       emittedAt: cycle.finalized_at,
+      residues: Array.from(new Set((directBillingDataQuery.data?.movements || []).filter((item) => item.cycle_id === cycle.id).map((item) => item.waste_residue_id).filter((id): id is string => Boolean(id)))).map((id) => ({ id, name: residues.find((item) => item.id === id)?.name || "Resíduo" })),
       client: clients.find((item) => item.id === cycle.client_id)?.name || "Cliente não identificado",
       branch: branches.find((item) => item.id === cycle.branch_id)?.name || "Matriz",
       company: cycle.issuer_type === "jacoby" ? "Jacoby" : company?.trade_name || company?.legal_name || "Terceirizada não identificada",
     };
-  }), [cycles, companies, clients, branches]);
+  }), [cycles, companies, clients, branches, directBillingDataQuery.data, residues]);
   const billingFlowEntries = useMemo<BillingFlowEntry[]>(() => {
     const grouped = new Map<string, BillingFlowEntry>();
     const savedByKey = new Map((billingTrackingQuery.data || []).map((item) => [`${item.cycle_id}:${item.category}:${item.source_key}`, item]));

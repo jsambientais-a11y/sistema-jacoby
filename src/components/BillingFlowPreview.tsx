@@ -1,3 +1,4 @@
+import { residueNameKey, uniqueResidueNames } from "@/lib/residue-names";
 import { useState } from "react";
 import { billingAgreement, billingCommission } from "@/lib/billing-agreement";
 import { BillingBulletinOverview } from "@/components/BillingBulletinOverview";
@@ -121,11 +122,15 @@ export function BillingFlowPreview({
 }) {
   const [category, setCategory] = useState<BillingFlowCategory | "all">("all");
   const [selectedId, setSelectedId] = useState("");
+  const [selectedResidue, setSelectedResidue] = useState("all");
   const [search, setSearch] = useState("");
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
+  const residuesByCycle = new Map(bulletins.map((item) => [item.id, uniqueResidueNames(item.residues || [])]));
+  const residueOptions = uniqueResidueNames(bulletins.flatMap((item) => item.residues || []));
+  const matchesResidue = (id: string) => selectedResidue === "all" || (residuesByCycle.get(id) || []).some((item) => residueNameKey(item.name) === selectedResidue);
   const visible = entries.filter(
     (entry) =>
-      entry.category === category &&
+      entry.category === category && matchesResidue(entry.cycleId) &&
       (!normalizedSearch ||
         [entry.bulletin, entry.client, entry.branch, entry.company, entry.description]
           .join(" ")
@@ -191,6 +196,14 @@ export function BillingFlowPreview({
             />
           </div>
         </div>
+        <div className="px-4 pt-4 sm:px-5">
+          <div className="max-w-sm space-y-1.5"><Label>Filtrar BMs por resíduo</Label>
+            <Select value={selectedResidue} onValueChange={(value) => { setSelectedResidue(value); setSelectedId(""); }}>
+              <SelectTrigger aria-label="Filtrar BMs por resíduo"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="all">Todos os resíduos</SelectItem>{residueOptions.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+        </div>
         <div className="p-4 sm:p-5">
           <Tabs
             value={category}
@@ -229,7 +242,7 @@ export function BillingFlowPreview({
             Carregando BMs e comissões…
           </p>
         ) : category === "all" ? (
-          <BillingBulletinOverview bulletins={bulletins} entries={entries} search={search} onOpen={(entry) => {
+          <BillingBulletinOverview bulletins={bulletins.filter((item) => matchesResidue(item.id))} entries={entries} search={search} onOpen={(entry) => {
             setCategory(entry.category);
             setSelectedId(entry.id);
             setSearch("");
@@ -270,6 +283,7 @@ export function BillingFlowPreview({
                     <p className="text-xs text-muted-foreground">
                       {entry.branch} · {entry.company}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-1" aria-label="Resíduos do BM">{(residuesByCycle.get(entry.cycleId) || []).map((item) => <span key={item.id} className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}</div>
                     <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2 text-xs">
                       <span className="truncate text-muted-foreground">
                         {entry.itemsCount} item(ns) · {entry.description}

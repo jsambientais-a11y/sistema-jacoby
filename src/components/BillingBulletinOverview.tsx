@@ -1,3 +1,4 @@
+import { uniqueResidueNames } from "@/lib/residue-names";
 import { sortBillingBulletins, type BillingBulletin } from "@/lib/billing-bulletins";
 import { Button } from "@/components/ui/button";
 import type { BillingFlowEntry } from "@/components/BillingFlowPreview";
@@ -18,7 +19,7 @@ export function BillingBulletinOverview({ bulletins, entries, search, onOpen }: 
   for (const entry of entries) byCycle.set(entry.cycleId, [...(byCycle.get(entry.cycleId) || []), entry]);
   const query = search.trim().toLocaleLowerCase("pt-BR");
   const shown = sortBillingBulletins(bulletins).filter((bulletin) => !query ||
-    [`#${String(bulletin.number).padStart(3, "0")}`, bulletin.client, bulletin.branch, bulletin.company,
+    [`#${String(bulletin.number).padStart(3, "0")}`, bulletin.client, bulletin.branch, bulletin.company, ...(bulletin.residues || []).map((item) => item.name),
       ...(byCycle.get(bulletin.id) || []).map((entry) => entry.description)]
       .join(" ").toLocaleLowerCase("pt-BR").includes(query));
 
@@ -37,7 +38,7 @@ export function BillingBulletinOverview({ bulletins, entries, search, onOpen }: 
         <tbody>{shown.map((bulletin) => <tr key={bulletin.id} className="border-b last:border-0">
           <td className="whitespace-nowrap p-3">{bulletin.emittedAt && Number.isFinite(Date.parse(bulletin.emittedAt)) ? emissionDate.format(new Date(bulletin.emittedAt)) : "Data não informada"}</td>
           <td className="p-3 font-semibold">#{String(bulletin.number).padStart(3, "0")}</td>
-          <td className="p-3"><p className="font-medium">{bulletin.client}</p><p className="text-xs text-muted-foreground">{bulletin.branch}</p></td>
+          <td className="p-3"><p className="font-medium">{bulletin.client}</p><p className="text-xs text-muted-foreground">{bulletin.branch}</p><div className="mt-2 flex flex-wrap gap-1" aria-label="Resíduos do BM">{uniqueResidueNames(bulletin.residues || []).map((item) => <span key={item.id} className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}</div></td>
           <td className="p-3">{bulletin.company}</td>
           <td className="p-3"><div className="flex flex-wrap gap-2">{(byCycle.get(bulletin.id) || []).map((entry) =>
             <Button key={entry.id} type="button" variant="outline" size="sm" onClick={() => onOpen(entry)} aria-label={`Conferir ${labels[entry.category]} do BM #${String(bulletin.number).padStart(3, "0")}`}>
