@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { billingAgreement, billingCommission } from "@/lib/billing-agreement";
+import { BillingBulletinOverview } from "@/components/BillingBulletinOverview";
+import type { BillingBulletin } from "@/lib/billing-bulletins";
 import { CalendarClock, CheckCircle2, FileText, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,18 +106,20 @@ function invoiceIssuedOn(entry: BillingFlowEntry) {
 
 export function BillingFlowPreview({
   entries,
+  bulletins,
   isLoading = false,
   loadError,
   isSaving = false,
   onSave,
 }: {
   entries: BillingFlowEntry[];
+  bulletins: BillingBulletin[];
   isLoading?: boolean;
   loadError: string | null;
   isSaving?: boolean;
   onSave: (input: BillingFlowSaveInput) => Promise<void>;
 }) {
-  const [category, setCategory] = useState<BillingFlowCategory>("rental");
+  const [category, setCategory] = useState<BillingFlowCategory | "all">("all");
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
@@ -191,11 +195,15 @@ export function BillingFlowPreview({
           <Tabs
             value={category}
             onValueChange={(value) => {
-              setCategory(value as BillingFlowCategory);
+              setCategory(value as BillingFlowCategory | "all");
               setSelectedId("");
             }}
           >
             <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0 sm:flex sm:flex-wrap sm:justify-start">
+              <TabsTrigger value="all" className="min-h-10 justify-between rounded-lg border px-4 py-2 data-[state=active]:border-primary data-[state=active]:bg-primary/10">
+                Todos os BMs
+                <span className="ml-3 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{bulletins.length}</span>
+              </TabsTrigger>
               {categories.map((item) => (
                 <TabsTrigger
                   key={item.id}
@@ -220,6 +228,12 @@ export function BillingFlowPreview({
           <p className="border-t p-8 text-center text-sm text-muted-foreground">
             Carregando BMs e comissões…
           </p>
+        ) : category === "all" ? (
+          <BillingBulletinOverview bulletins={bulletins} entries={entries} search={search} onOpen={(entry) => {
+            setCategory(entry.category);
+            setSelectedId(entry.id);
+            setSearch("");
+          }} />
         ) : !visible.length ? (
           <p className="border-t p-8 text-center text-sm text-muted-foreground">
             {search

@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FinancialMonthPanel } from "@/components/FinancialMonthPanel";
 import { BillingFlowPreview, type BillingFlowEntry, type BillingFlowSaveInput, type BillingFlowTracking } from "@/components/BillingFlowPreview";
+import type { BillingBulletin } from "@/lib/billing-bulletins";
 
 export const Route = createFileRoute("/_app/financeiro")({ component: FinancialControlPage });
 
@@ -65,6 +66,7 @@ type FinancialService = {
 type Cycle = {
   id: string; client_id: string; branch_id: string | null; bulletin_number: number;
   issuer_type: "jacoby" | "outsourced"; status: "draft" | "closed";
+  outsourced_company_id: string | null;
   period_start: string; period_end: string; finalized_at: string | null;
 };
 type BillingPlacement = { cycle_id: string; quantity: number; monthly_rental_rate: number };
@@ -159,7 +161,7 @@ function FinancialControlPage() {
       // BMs do RAG pertencem exclusivamente ao ambiente de demonstração e não
       // podem compor nenhuma visão ou total do Financeiro interno.
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
-        .select("id,client_id,branch_id,bulletin_number,issuer_type,status,period_start,period_end,finalized_at")
+        .select("id,client_id,branch_id,bulletin_number,issuer_type,outsourced_company_id,status,period_start,period_end,finalized_at")
         .eq("is_demo", false);
       if (error) throw error;
       return (data || []) as Cycle[];
@@ -316,6 +318,17 @@ function FinancialControlPage() {
   const directBillingTotal = directBillingRows.reduce((total, row) => total + row.total, 0);
   const totalCommissions = commissionTotal + movementCommissionTotal;
   const consolidatedTotal = directBillingTotal + totalCommissions;
+  const issuedBulletins = useMemo<BillingBulletin[]>(() => cycles.filter((cycle) => cycle.status === "closed").map((cycle) => {
+    const company = companies.find((item) => item.id === cycle.outsourced_company_id);
+    return {
+      id: cycle.id,
+      number: cycle.bulletin_number || 0,
+      emittedAt: cycle.finalized_at,
+      client: clients.find((item) => item.id === cycle.client_id)?.name || "Cliente não identificado",
+      branch: branches.find((item) => item.id === cycle.branch_id)?.name || "Matriz",
+      company: cycle.issuer_type === "jacoby" ? "Jacoby" : company?.trade_name || company?.legal_name || "Terceirizada não identificada",
+    };
+  }), [cycles, companies, clients, branches]);
   const billingFlowEntries = useMemo<BillingFlowEntry[]>(() => {
     const grouped = new Map<string, BillingFlowEntry>();
     const savedByKey = new Map((billingTrackingQuery.data || []).map((item) => [`${item.cycle_id}:${item.category}:${item.source_key}`, item]));
@@ -510,6 +523,7 @@ function FinancialControlPage() {
         </header>
         <BillingFlowPreview
           entries={billingFlowEntries}
+          bulletins={issuedBulletins}
           isLoading={servicesQuery.isLoading || movementCommissionsQuery.isLoading || cyclesQuery.isLoading || directBillingDataQuery.isLoading || billingTrackingQuery.isLoading}
           loadError={[servicesQuery, movementCommissionsQuery, cyclesQuery, directBillingDataQuery, billingTrackingQuery, companiesQuery, branchesQuery, servicesCatalogQuery].map((query) => query.error).find((error) => error instanceof Error)?.message || null}
           isSaving={saveBillingTracking.isPending}
