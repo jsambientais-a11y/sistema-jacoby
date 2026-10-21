@@ -219,7 +219,7 @@ function FinancialControlPage() {
     queryFn: async () => {
       const { data, error } = await (supabase.from("waste_residues" as any) as any).select("id,name,jacoby_pays_client");
       if (error) throw error;
-      return (data || []) as Named[];
+      return (data || []) as (Named & { jacoby_pays_client: boolean })[];
     },
   });
   const cycles = cyclesQuery.data || [],
@@ -326,6 +326,7 @@ function FinancialControlPage() {
         current.baseAmount += entry.baseAmount;
         current.currentCommission += entry.currentCommission;
         current.itemsCount += 1;
+        current.isScrap ||= entry.isScrap;
         current.legacyInvoiceNumber = null;
         current.legacyIssuedOn = null;
         current.legacyDueOn = null;
@@ -347,6 +348,7 @@ function FinancialControlPage() {
         branch: branches.find((branch) => branch.id === cycle.branch_id)?.name || "Matriz",
         company: companyName || "Terceirizada não identificada",
         description: item.source_type === "treatment" ? `Tratamento · ${residueName || "resíduo"}` : item.source_type === "exchange" ? "Troca de equipamentos" : "Locação de equipamentos",
+        isScrap: item.source_type === "treatment" && Boolean(residues.find((residue) => residue.id === item.waste_residue_id)?.jacoby_pays_client),
         baseAmount: Number(item.base_amount || 0),
         currentCommission: Number(item.net_commission_amount || 0),
       });
@@ -392,7 +394,7 @@ function FinancialControlPage() {
       }
     }
     return [...grouped.values()].sort((a, b) => b.bulletin.localeCompare(a.bulletin));
-  }, [movementCommissionRows, rows, branches, directBillingRows, billingTrackingQuery.data]);
+  }, [movementCommissionRows, rows, branches, residues, directBillingRows, billingTrackingQuery.data]);
   const saveBillingTracking = useMutation({
     mutationFn: async (input: BillingFlowSaveInput) => {
       const { entry, ...values } = input;

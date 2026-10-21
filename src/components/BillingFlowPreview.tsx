@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { billingAgreement, billingCommission } from "@/lib/billing-agreement";
 import { CalendarClock, CheckCircle2, FileText, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ export type BillingFlowTracking = {
   rule_type: "percent" | "fixed";
   rule_value: number;
   base_amount_snapshot: number;
+  net_invoice_amount: number | null;
   commission_amount: number;
   invoice_number: string | null;
   invoice_issued_on: string | null;
@@ -44,6 +46,7 @@ export type BillingFlowEntry = {
   branch: string;
   company: string;
   description: string;
+  isScrap?: boolean;
   baseAmount: number;
   currentCommission: number;
   itemsCount: number;
@@ -58,6 +61,7 @@ export type BillingFlowSaveInput = {
   entry: BillingFlowEntry;
   rule_type: "percent" | "fixed";
   rule_value: number;
+  net_invoice_amount: number | null;
   invoice_number: string | null;
   invoice_issued_on: string | null;
   invoice_due_on: string | null;
@@ -294,8 +298,14 @@ function BillingFlowDraft({
   onSave: (input: BillingFlowSaveInput) => Promise<void>;
 }) {
   const saved = entry.tracking;
-  const [ruleType, setRuleType] = useState<"percent" | "fixed">(saved?.rule_type || "fixed");
-  const [ruleValue, setRuleValue] = useState(String(saved?.rule_value ?? entry.currentCommission));
+  const agreement = billingAgreement(entry);
+  const [ruleType, setRuleType] = useState<"percent" | "fixed">(saved?.rule_type || agreement.defaultRule);
+  const [ruleValue, setRuleValue] = useState(
+    saved ? String(saved.rule_value) : agreement.requiresAgreement ? "" : String(entry.currentCommission),
+  );
+  const [netInvoiceAmount, setNetInvoiceAmount] = useState(
+    saved?.net_invoice_amount == null ? "" : String(saved.net_invoice_amount),
+  );
   const [invoiceNumber, setInvoiceNumber] = useState(
     saved ? saved.invoice_number || "" : entry.legacyInvoiceNumber || "",
   );
@@ -315,13 +325,9 @@ function BillingFlowDraft({
   const [paidOn, setPaidOn] = useState(saved ? saved.received_on || "" : entry.legacyPaidOn || "");
   const [notes, setNotes] = useState(saved?.notes || "");
   const [formError, setFormError] = useState("");
-  const parsedValue = Number(ruleValue.replace(",", "."));
-  const previewCommission =
-    Number.isFinite(parsedValue) && parsedValue >= 0
-      ? ruleType === "percent"
-        ? (entry.baseAmount * parsedValue) / 100
-        : parsedValue
-      : 0;
+  const parsedValue = ruleValue.trim() === "" ? NaN : Number(ruleValue.replace(",", "."));
+  const parsedNet = netInvoiceAmount.trim() === "" ? null : Number(netInvoiceAmount.replace(",", "."));
+  const previewCommission = billingCommission(ruleType, parsedValue, parsedNet);
   const automaticExpectedOn = nextMonthTenth(basis === "issue" ? issuedOn : dueOn);
   const expectedOn = useManualDate ? manualExpectedOn : automaticExpectedOn;
   const save = async () => {
@@ -333,6 +339,14 @@ function BillingFlowDraft({
       (ruleType === "percent" && parsedValue > 100)
     ) {
       setFormError("Informe um valor válido. O percentual deve ficar entre 0 e 100%.");
+      return;
+    }
+    if (netInvoiceAmount.trim() && (parsedNet == null || !Number.isFinite(parsedNet) || parsedNet < 0)) {
+      setFormError("Informe um valor líquido da nota válido, maior ou igual a zero.");
+      return;
+    }
+    if (ruleType === "percent" && parsedNet == null) {
+      setFormError("Informe o valor líquido da nota fiscal para calcular o percentual.");
       return;
     }
     if (issuedOn && dueOn && dueOn < issuedOn) {
@@ -352,6 +366,7 @@ function BillingFlowDraft({
         entry,
         rule_type: ruleType,
         rule_value: parsedValue,
+        net_invoice_amount: parsedNet,
         invoice_number: invoiceNumber.trim() || null,
         invoice_issued_on: issuedOn || null,
         invoice_due_on: dueOn || null,
@@ -386,13 +401,17 @@ function BillingFlowDraft({
           </div>
           <div>
             <p className="text-muted-foreground">{entry.companyId ? 'Repasse deste registro' : 'Faturamento deste registro'}</p>
-            <strong>{money.format(previewCommission)}</strong>
+            <strong>{previewCommission == null ? "A informar" : money.format(previewCommission)}</strong>
           </div>
         </div>
       </div>
 
       <div className="space-y-3 p-4 sm:p-5">
         <h4 className="font-semibold">1. {entry.companyId ? 'Repasse / comissão' : 'Valor faturado pela Jacoby'}</h4>
+        <p className="rounded-lg border bg-muted/30 p-3 text-sm">{agreement.message}</p>
+        {saved?.rule_type === "percent" && saved.net_invoice_amount == null && (
+          <p className="text-sm text-amber-800">O lançamento anterior usou a base do BM. Informe o líquido da nota e confira o percentual antes de salvar novamente. O valor salvo permanece no histórico até essa conferência.</p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Tipo de cálculo</Label>
@@ -400,46 +419,44 @@ function BillingFlowDraft({
               value={ruleType}
               onValueChange={(value) => {
                 setRuleType(value as "percent" | "fixed");
-                setRuleValue(
-                  value === "percent"
-                    ? String(
-                        entry.baseAmount > 0
-                          ? Number(((entry.currentCommission / entry.baseAmount) * 100).toFixed(4))
-                          : 0,
-                      )
-                    : String(entry.currentCommission),
-                );
+                setRuleValue("");
               }}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="percent">Porcentagem sobre a base</SelectItem>
-                <SelectItem value="fixed">Valor fixo em reais</SelectItem>
+                <SelectItem value="percent">Percentual sobre o líquido da nota</SelectItem>
+                <SelectItem value="fixed">Valor acordado em reais</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>{ruleType === "percent" ? "Percentual (%)" : "Valor fixo (R$)"}</Label>
+            <Label htmlFor="billing-rule-value">{ruleType === "percent" ? "Percentual (%)" : "Valor acordado (R$)"}</Label>
             <Input
+              id="billing-rule-value"
               type="number"
               min="0"
-              step="0.01"
+              step={ruleType === "percent" ? "0.0001" : "0.01"}
               value={ruleValue}
               onChange={(event) => setRuleValue(event.target.value)}
             />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          O valor do BM continua intacto. {entry.companyId
-            ? 'O repasse salvo aqui é o valor a receber, após eventuais abatimentos combinados.'
-            : 'O valor salvo aqui é o faturamento direto a receber do cliente.'}
+          {ruleType === "percent"
+            ? "Comissão = valor líquido da nota × percentual informado. Não há novo desconto de imposto sobre a comissão."
+            : "Informe o valor final combinado entre as partes. Não há percentual ou desconto automático."} O valor do BM continua intacto.
         </p>
       </div>
 
       <div className="space-y-3 p-4 sm:p-5">
         <h4 className="font-semibold">2. Nota fiscal</h4>
+        <div className="max-w-sm space-y-1.5">
+          <Label htmlFor="billing-net-invoice">Valor líquido da nota fiscal (R$){ruleType === "percent" ? " · obrigatório" : " · opcional"}</Label>
+          <Input id="billing-net-invoice" type="number" min="0" step="0.01" value={netInvoiceAmount} onChange={(event) => setNetInvoiceAmount(event.target.value)} placeholder="Valor após os descontos da nota" />
+          <p className="text-xs text-muted-foreground">{ruleType === "percent" && parsedNet != null && previewCommission != null ? `${money.format(parsedNet)} × ${parsedValue}% = ${money.format(previewCommission)}` : "Informe o líquido correspondente a este lançamento, sem repetir o total da mesma nota em outras categorias."}</p>
+        </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label>Número da nota</Label>
