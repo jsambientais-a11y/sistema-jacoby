@@ -177,7 +177,12 @@ const branchKey = (value?: string | null) => value || BRANCH_MATRIZ;
 const serviceNameKey = (name?: string | null) =>
   (name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
 const billingViewStorageKey = "jacoby:billing-v2:view";
+type BulletinListState = {
+  clientId: string; branchId: string; limit: number;
+  status: "all" | "draft" | "closed"; search: string;
+};
 type BillingViewState = {
+  returnToList?: BulletinListState | null;
   clientId?: string;
   periodStart?: string;
   periodEnd?: string;
@@ -236,6 +241,7 @@ function Field({ label, children, className = "" }: { label: string; children: R
 export function BillingV2Module() {
   const qc = useQueryClient();
   const { data: clients = [] } = useClients();
+  const [returnToList, setReturnToList] = useState<BulletinListState | null>(() => storedBillingView().returnToList || null);
   const [clientId, setClientId] = useState(() => storedBillingView().clientId || "");
   const [periodStart, setPeriodStart] = useState(() => storedBillingView().periodStart || new Date().toISOString().slice(0, 10));
   const [periodEnd, setPeriodEnd] = useState(() => storedBillingView().periodEnd || new Date().toISOString().slice(0, 10));
@@ -269,7 +275,7 @@ export function BillingV2Module() {
   const [incomingEquipmentIds, setIncomingEquipmentIds] = useState<string[]>([]);
   const [importPlacementIds, setImportPlacementIds] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
-  const [resultStatusFilter, setResultStatusFilter] = useState<"all" | "draft" | "closed">("draft");
+  const [resultStatusFilter, setResultStatusFilter] = useState<"all" | "draft" | "closed">("all");
   const [treatmentCompanyId, setTreatmentCompanyId] = useState("");
   const [expandedBMs, setExpandedBMs] = useState<string[]>([]);
   const [bmSearch, setBmSearch] = useState("");
@@ -303,6 +309,7 @@ export function BillingV2Module() {
   // de aplicar qualquer cliente padrão, para não perder o boletim em edição.
   useEffect(() => {
     const saved = storedBillingView();
+    if (saved.returnToList) setReturnToList(saved.returnToList);
     if (saved.clientId) setClientId(saved.clientId);
     if (saved.periodStart) setPeriodStart(saved.periodStart);
     if (saved.periodEnd) setPeriodEnd(saved.periodEnd);
@@ -319,13 +326,9 @@ export function BillingV2Module() {
     setBillingViewRestored(true);
   }, []);
   useEffect(() => {
-    if (!billingViewRestored) return;
-    if (!clientId && clients[0]) setClientId(clients[0].id);
-  }, [billingViewRestored, clientId, clients]);
-  useEffect(() => {
     if (!billingViewRestored || typeof window === "undefined") return;
     const view = {
-      clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId,
+      clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId, returnToList,
     } satisfies BillingViewState;
     sessionStorage.setItem(billingViewStorageKey, JSON.stringify(view));
 
@@ -346,7 +349,7 @@ export function BillingV2Module() {
       url.hash = "";
     }
     window.history.replaceState(window.history.state, "", url);
-  }, [billingViewRestored, clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId]);
+  }, [billingViewRestored, clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId, returnToList]);
   const query = <T,>(key: unknown[], table: string, configure: (request: any) => any) =>
     useQuery({
       queryKey: key,
@@ -382,6 +385,37 @@ export function BillingV2Module() {
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as BillingEmailDelivery[];
+    },
+  });
+  const [allClientsLimit, setAllClientsLimit] = useState(50);
+  const allClientsCyclesQuery = useQuery({
+    queryKey: ["billing-v2-all-clients-search", allClientsLimit, resultStatusFilter],
+    enabled: billingViewRestored && !clientId && !cycleId,
+    queryFn: async () => {
+      const cycles: Cycle[] = [];
+      let total = 0;
+      for (let offset=0;offset<allClientsLimit;offset+=500) {
+        let request = (supabase.from("billing_v2_cycles" as any) as any)
+          .select("*", {count:"exact"}).eq("is_demo", false);
+        if (resultStatusFilter !== "all") request = request.eq("status",resultStatusFilter);
+        const end = Math.min(offset+499,allClientsLimit-1);
+        const result = await request.order("bulletin_number", {ascending:false}).order("id", {ascending:false})
+          .range(offset,end);
+        if (result.error) throw result.error;
+        total = Number(result.count || 0);
+        cycles.push(...(result.data || []));
+        if ((result.data || []).length < end-offset+1) break;
+      }
+      return {cycles,total};
+    },
+  });
+  const allClientsBranchesQuery = useQuery({
+    queryKey:["billing-v2-all-client-branches"],
+    enabled: billingViewRestored && !clientId,
+    queryFn:async () => {
+      const result = await (supabase.from("client_branches" as any) as any).select("id,name");
+      if (result.error) throw result.error;
+      return (result.data || []) as {id:string;name:string}[];
     },
   });
   const recentCyclesQuery = useQuery({
@@ -1602,7 +1636,20 @@ export function BillingV2Module() {
       .map(([key, rows]) => ({ key, rows }))
       .sort((a, b) => a.rows[0].occurred_on.localeCompare(b.rows[0].occurred_on));
   }, [pendingMovementsQuery.data, pendingResidueId]);
+  const rememberList = () => {
+    if (!cycleId) setReturnToList({clientId,branchId:cycleBranchId,
+      limit:allClientsLimit,status:resultStatusFilter,search:bmSearch});
+  };
+  const backToBulletinList = () => {
+    setCycleId(""); setFocusedMovementId("");
+    if (!returnToList || homeTab === "pendentes") return;
+    setClientId(returnToList.clientId); setCycleBranchId(returnToList.branchId);
+    setAllClientsLimit(returnToList.limit);
+    setResultStatusFilter(returnToList.status); setBmSearch(returnToList.search);
+    setSelectedBulkCycleIds([]);
+  };
   const openRecentCycle = (item: Cycle) => {
+    rememberList();
     setFocusedMovementId("");
     setClientId(item.client_id);
     setCycleBranchId(branchKey(item.branch_id));
@@ -1939,18 +1986,32 @@ export function BillingV2Module() {
       bulletinLabel: existing ? `#${existing.display_number}` : undefined,
     });
   };
-  const previewCycleIds = Array.from(new Set([...clientCycles, ...recentDisplayCycles].map((item) => item.id))).sort();
+  const previewCycleIds = Array.from(new Set([...clientCycles, ...recentDisplayCycles, ...(!clientId ? allClientsCyclesQuery.data?.cycles || [] : [])].map((item) => item.id))).sort();
   const residuePreviewQuery = useQuery({
     queryKey: ["bm-residue-preview", previewCycleIds],
     enabled: previewCycleIds.length > 0,
     queryFn: async () => {
-      const [movementRows, residueRows] = await Promise.all([
-        (supabase.from("billing_v2_movements" as any) as any).select("cycle_id,waste_residue_id").in("cycle_id", previewCycleIds),
-        (supabase.from("waste_residues" as any) as any).select("id,name"),
-      ]);
-      if (movementRows.error) throw movementRows.error;
-      if (residueRows.error) throw residueRows.error;
-      return { movements: movementRows.data || [], residues: residueRows.data || [] };
+      const movements: {cycle_id:string;waste_residue_id:string|null}[] = [];
+      // Read every movement for the displayed BMs, beyond the API page limit.
+      for (let start=0;start<previewCycleIds.length;start+=100) {
+        for (let offset=0; ; offset+=500) {
+          const result = await (supabase.from("billing_v2_movements" as any) as any)
+            .select("id,cycle_id,waste_residue_id").in("cycle_id",previewCycleIds.slice(start,start+100))
+            .order("id").range(offset,offset+499);
+          if (result.error) throw result.error;
+          movements.push(...(result.data || []));
+          if ((result.data || []).length < 500) break;
+        }
+      }
+      const residueIds = [...new Set(movements.flatMap(item => item.waste_residue_id ? [item.waste_residue_id] : []))];
+      const residues: {id:string;name:string}[] = [];
+      for (let start=0;start<residueIds.length;start+=100) {
+        const result = await (supabase.from("waste_residues" as any) as any)
+          .select("id,name").in("id",residueIds.slice(start,start+100));
+        if (result.error) throw result.error;
+        residues.push(...(result.data || []));
+      }
+      return {movements,residues};
     },
   });
   const residueSummary = (id: string) => {
@@ -1962,12 +2023,12 @@ export function BillingV2Module() {
     }
     return [...totals.entries()];
   };
-  const residuePreview = (id: string) => <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Resíduos movimentados">{residueSummary(id).map(([residueId, item]) => <span key={residueId} className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}{!residueSummary(id).length && <span className="text-xs text-muted-foreground">{residuePreviewQuery.isLoading ? "Carregando resíduos…" : "Sem movimentações de resíduo"}</span>}</div>;
-  const resultCycles = clientCycles
+  const residuePreview = (id: string) => <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Resíduos movimentados">{residueSummary(id).map(([residueId, item]) => <span key={residueId} className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}{!residueSummary(id).length && <span className="text-xs text-muted-foreground">{residuePreviewQuery.isLoading ? "Carregando resíduos…" : residuePreviewQuery.error ? "Não foi possível carregar os resíduos" : "Sem movimentações de resíduo"}</span>}</div>;
+  const resultCycles = (clientId ? clientCycles : (allClientsCyclesQuery.data?.cycles || []))
     .filter((item) => !cycleBranchId || branchKey(item.branch_id) === cycleBranchId)
     .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
     .slice()
-    .sort((a, b) => ((a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0)) || (Number(a.bulletin_number || 0) - Number(b.bulletin_number || 0)));
+    .sort((a, b) => Number(b.bulletin_number || 0) - Number(a.bulletin_number || 0));
   const selectedResultCycles = resultCycles.filter((item) => selectedBulkCycleIds.includes(item.id));
   const selectedEditableCycles = selectedResultCycles.filter((item) => item.status !== "closed");
   const selectedPrintableCycles = selectedResultCycles.filter((item) => item.status === "closed");
@@ -1985,15 +2046,25 @@ export function BillingV2Module() {
     if (!confirm(`Finalizar ${selectedEditableCycles.length} boletim(ns) selecionado(s)? Eles continuarão disponíveis para edição e reimpressão.`)) return;
     setIsFinalizingBulk(true);
     try {
-      const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+      const selectedIds = selectedEditableCycles.map(item => item.id);
+      const result = await (supabase.from("billing_v2_cycles" as any) as any)
         .update({ status: "closed", finalized_at: new Date().toISOString() })
-        .in("id", selectedEditableCycles.map((item) => item.id));
-      if (error) throw error;
+        .in("id", selectedIds).neq("status","closed").select("id");
+      if (result.error) throw result.error;
+      const finalizedIds = new Set<string>((result.data || []).map((item:{id:string}) => item.id));
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] }),
+        qc.invalidateQueries({ queryKey: ["billing-v2-cycles"] }),
+        qc.invalidateQueries({ queryKey: ["billing-v2-all-clients-search"] }),
         qc.invalidateQueries({ queryKey: ["billing-v2-recent"] }),
+        qc.invalidateQueries({ queryKey: ["outsourced-financial-cycles"] }),
+        qc.invalidateQueries({ queryKey: ["outsourced-movement-commissions"] }),
+        qc.invalidateQueries({ queryKey: ["outsourced-financial-services"] }),
+        qc.invalidateQueries({ queryKey: ["jacoby-direct-billing-data"] }),
       ]);
-      toast.success(`${selectedEditableCycles.length} boletim(ns) finalizado(s).`);
+      setSelectedBulkCycleIds(current => current.filter(id => !finalizedIds.has(id)));
+      if (!finalizedIds.size) toast.message("Nenhum boletim foi finalizado. Atualize a busca e confira a situação dos selecionados.");
+      else if (finalizedIds.size < selectedIds.length) toast.warning(`${finalizedIds.size} boletim(ns) finalizado(s). Os demais não foram alterados; confira a situação e o acesso a eles.`);
+      else toast.success(`${finalizedIds.size} boletim(ns) finalizado(s).`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível finalizar os boletins selecionados.");
     } finally {
@@ -2103,9 +2174,10 @@ export function BillingV2Module() {
         <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
           <Field label="Cliente">
             <Select
-              value={clientId}
+              value={clientId || "__all_clients__"}
               onValueChange={(value) => {
-                setClientId(value);
+                setClientId(value === "__all_clients__" ? "" : value);
+                setAllClientsLimit(50); setSelectedBulkCycleIds([]);
                 setCycleId("");
                 setCycleBranchId("");
                 setResidueFilterId("all");
@@ -2115,7 +2187,8 @@ export function BillingV2Module() {
                 <SelectValue placeholder="Selecionar cliente" />
               </SelectTrigger>
               <SelectContent>
-                {clients.map((client) => (
+                <SelectItem value="__all_clients__">— Todos os clientes —</SelectItem>
+                {[...clients].sort((a,b) => a.name.localeCompare(b.name,"pt-BR")).map((client) => (
                   <SelectItem key={client.id} value={client.id}>
                     {client.name}
                   </SelectItem>
@@ -2124,13 +2197,15 @@ export function BillingV2Module() {
             </Select>
           </Field>
           <Field label="Filial ou pátio do boletim">
-            {clientHasNoBranches ? <Input value="Matriz — sem filial/pátio cadastrada" disabled /> : <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); }}>
+            {!clientId ? <Input value="Todas as filiais e pátios" disabled /> : clientHasNoBranches ? <Input value="Matriz — sem filial/pátio cadastrada" disabled /> : <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); }}>
               <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue placeholder="Selecionar" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>{branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
               </SelectContent>
             </Select>}
           </Field>
+          <div className="flex flex-wrap gap-2">
+
           <Button
             size="lg"
             className="w-full md:w-auto"
@@ -2140,6 +2215,7 @@ export function BillingV2Module() {
             <FilePlus2 className="mr-2 h-4 w-4" />
             Criar boletim
           </Button>
+          </div>
         </div>
       </Card>
       )}
@@ -2179,15 +2255,16 @@ export function BillingV2Module() {
         <Card className="order-1 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="truncate font-semibold" title={`${clientName}${cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}`}>Resultado da busca · {clientName}{cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Boletins encontrados para o cliente e pátio selecionados.</p>
+              <h2 className="truncate font-semibold" title={`${clientId ? clientName : "Todos os clientes"}${cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}`}>Resultado da busca · {clientId ? clientName : "Todos os clientes"}{cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{clientId ? "Boletins do cliente selecionado, do maior número para o menor." : "Boletins de todas as empresas, do maior número para o menor. Carregamento automático, 50 por vez."}</p>
+              {!clientId && allClientsCyclesQuery.data && <p className="mt-2 text-sm font-medium text-primary">Mostrando {resultCycles.length} de {allClientsCyclesQuery.data.total} boletins · todas as empresas{resultStatusFilter !== "all" ? ` · ${resultStatusFilter === "closed" ? "finalizados" : "em edição"}` : " · todas as situações"}</p>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-muted-foreground">{selectedResultCycles.length} selecionado(s)</span>
+              <span className="text-sm text-muted-foreground">{selectedResultCycles.length} selecionado(s) · {selectedEditableCycles.length} em edição para finalizar</span>
               <Button variant="outline" size="sm" onClick={() => void finalizeSelectedCycles()} disabled={!selectedEditableCycles.length || isFinalizingBulk}>
                 <CheckCircle2 className="mr-2 h-4 w-4" />{isFinalizingBulk ? "Finalizando…" : "Finalizar selecionados"}
               </Button>
-              <Button size="sm" onClick={() => void generateSelectedPdfs()} disabled={!selectedPrintableCycles.length || isGeneratingBulk}>
+              <Button size="sm" onClick={() => void generateSelectedPdfs()} title={!clientId ? "Para baixar PDFs em lote, selecione um cliente." : "Baixar os boletins finalizados selecionados"} disabled={!clientId || !selectedPrintableCycles.length || isGeneratingBulk}>
                 <Download className="mr-2 h-4 w-4" />{isGeneratingBulk ? "Gerando PDFs…" : "Baixar PDFs selecionados (.zip)"}
               </Button>
             </div>
@@ -2205,10 +2282,11 @@ export function BillingV2Module() {
             ))}
           </div>
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="w-10 p-2"><Checkbox aria-label="Selecionar todos os boletins encontrados" checked={resultCycles.length > 0 && resultCycles.every((item) => selectedBulkCycleIds.includes(item.id))} onCheckedChange={(checked) => toggleAllResultCycles(Boolean(checked))} /></th><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
-              {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}{residuePreview(item.id)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(branchKey(item.branch_id)); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
+            <table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="w-10 p-2"><Checkbox aria-label="Selecionar todos os boletins encontrados" disabled={isFinalizingBulk} checked={resultCycles.length > 0 && resultCycles.every((item) => selectedBulkCycleIds.includes(item.id))} onCheckedChange={(checked) => toggleAllResultCycles(Boolean(checked))} /></th><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
+              {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} disabled={isFinalizingBulk} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}{!clientId && <p className="mt-1 text-xs font-normal text-foreground">{clients.find(client => client.id === item.client_id)?.name || "Cliente"}</p>}{residuePreview(item.id)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{!clientId ? allClientsBranchesQuery.data?.find(branch => branch.id === item.branch_id)?.name || "Matriz" : branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{allClientsCyclesQuery.isFetching && !clientId ? "Buscando boletins…" : allClientsCyclesQuery.error && !clientId ? "Não foi possível buscar os boletins. Tente novamente." : "Nenhum boletim encontrado para esta seleção."}</td></tr>}
             </tbody></table>
           </div>
+          {!clientId && (allClientsCyclesQuery.data?.total || 0) > (allClientsCyclesQuery.data?.cycles.length || 0) && <Button className="mt-4" variant="outline" disabled={allClientsCyclesQuery.isFetching} onClick={() => setAllClientsLimit(value => value+50)}>Carregar mais 50 boletins</Button>}
         </Card>
         </div>
       ) : (
@@ -2295,7 +2373,7 @@ export function BillingV2Module() {
       ) : (
         <>
           <Card className="sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-primary/15 p-3 shadow-elegant supports-[backdrop-filter]:bg-card/80 supports-[backdrop-filter]:backdrop-blur">
-            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setCycleId(""); setFocusedMovementId(""); }}>
+            <Button variant="outline" size="sm" className="shrink-0" onClick={backToBulletinList}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               {homeTab === "pendentes" ? "Voltar às pendências" : "Voltar aos boletins"}
             </Button>
