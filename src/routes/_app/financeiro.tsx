@@ -29,6 +29,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FinancialMonthPanel } from "@/components/FinancialMonthPanel";
 import { BillingFlowPreview, type BillingFlowEntry, type BillingFlowSaveInput, type BillingFlowTracking } from "@/components/BillingFlowPreview";
 import type { BillingBulletin } from "@/lib/billing-bulletins";
+import { CYCLE_INVOICE_BUCKET, listFinancialCycleInvoices } from "@/lib/cycle-invoices";
+import { attachServiceInvoiceEntries, type InvoiceServiceLink } from "@/lib/service-invoice-entries";
 
 export const Route = createFileRoute("/_app/financeiro")({ component: FinancialControlPage });
 
@@ -229,6 +231,25 @@ function FinancialControlPage() {
     catalog = servicesCatalogQuery.data || [],
     branches = branchesQuery.data || [],
     residues = residuesQuery.data || [];
+  const invoiceLinksQuery = useQuery({
+    queryKey:["financial-service-invoice-links"],
+    queryFn:async () => {
+      const links: InvoiceServiceLink[] = [];
+      for (let offset=0; ; offset+=500) {
+        const result = await (supabase.from("billing_v2_cycle_services" as any) as any)
+          .select("id,cycle_id,outsourced_company_id,invoice_pdf_path,invoice_pdf_name,amount,net_invoice_amount,commission_rate")
+          .order("id").range(offset,offset+499);
+        if (result.error) throw result.error;
+        links.push(...(result.data || []));
+        if ((result.data || []).length < 500) return links;
+      }
+    },
+  });
+  const cycleNotesQuery = useQuery({
+    queryKey:["financial-cycle-invoices",cycles.map(cycle => cycle.id).sort().join(",")],
+    enabled:cyclesQuery.isSuccess,
+    queryFn:() => listFinancialCycleInvoices(supabase.storage.from(CYCLE_INVOICE_BUCKET),cycles.map(cycle => cycle.id)),
+  });
   const rows = useMemo(
     () =>
       (servicesQuery.data || [])
@@ -407,8 +428,18 @@ function FinancialControlPage() {
         });
       }
     }
-    return [...grouped.values()].sort((a, b) => b.bulletin.localeCompare(a.bulletin));
-  }, [movementCommissionRows, rows, branches, residues, directBillingRows, billingTrackingQuery.data]);
+    return attachServiceInvoiceEntries([...grouped.values()], cycles.map(cycle => {
+      const hash = new URLSearchParams({cliente:cycle.client_id,boletim:cycle.id,patio:cycle.branch_id || "__matriz__",inicio:cycle.period_start,fim:cycle.period_end,subaba:"boletim",residuo:"all"});
+      return {id:cycle.id,companyId:cycle.issuer_type === "outsourced" ? cycle.outsourced_company_id : null,
+        bulletin:`#${String(cycle.bulletin_number || 0).padStart(3,"0")}`,
+        client:clients.find(item => item.id === cycle.client_id)?.name || "Cliente não identificado",
+        branch:branches.find(item => item.id === cycle.branch_id)?.name || "Matriz",
+        serviceUrl:`/portal/residuos?aba=faturamento2#${hash}`};
+    }),cycleNotesQuery.data || [],invoiceLinksQuery.data || [],billingTrackingQuery.data || [],id => {
+      const company = companies.find(item => item.id === id);
+      return id ? company?.trade_name || company?.legal_name || "Terceirizada" : "Jacoby (faturamento direto)";
+    });
+  }, [movementCommissionRows, rows, branches, residues, directBillingRows, billingTrackingQuery.data,cycles,clients,companies,cycleNotesQuery.data,invoiceLinksQuery.data]);
   const saveBillingTracking = useMutation({
     mutationFn: async (input: BillingFlowSaveInput) => {
       const { entry, ...values } = input;
@@ -525,8 +556,8 @@ function FinancialControlPage() {
         <BillingFlowPreview
           entries={billingFlowEntries}
           bulletins={issuedBulletins}
-          isLoading={servicesQuery.isLoading || movementCommissionsQuery.isLoading || cyclesQuery.isLoading || directBillingDataQuery.isLoading || billingTrackingQuery.isLoading}
-          loadError={[servicesQuery, movementCommissionsQuery, cyclesQuery, directBillingDataQuery, billingTrackingQuery, companiesQuery, branchesQuery, servicesCatalogQuery].map((query) => query.error).find((error) => error instanceof Error)?.message || null}
+          isLoading={servicesQuery.isLoading || movementCommissionsQuery.isLoading || cyclesQuery.isLoading || directBillingDataQuery.isLoading || billingTrackingQuery.isLoading || cycleNotesQuery.isLoading || invoiceLinksQuery.isLoading}
+          loadError={[servicesQuery, movementCommissionsQuery, cyclesQuery, directBillingDataQuery, billingTrackingQuery, companiesQuery, branchesQuery, servicesCatalogQuery, cycleNotesQuery, invoiceLinksQuery].map((query) => query.error).find((error) => error instanceof Error)?.message || null}
           isSaving={saveBillingTracking.isPending}
           onSave={(input) => saveBillingTracking.mutateAsync(input).then(() => undefined)}
         />

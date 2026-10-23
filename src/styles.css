@@ -234,3 +234,12 @@
 .tiptap mark, .prose mark { color: inherit; padding: 0 0.1em; border-radius: 2px; }
 .tiptap-wrapper, .tiptap-wrapper * { cursor: text; }
 .tiptap-wrapper button { cursor: pointer; }
+
+@keyframes jacoby-update-blink {
+  0%, 100% { background-color: #fde68a; border-color: #f59e0b; box-shadow: 0 0 0 0 rgb(245 158 11 / 0.4); }
+  50% { background-color: #fbbf24; border-color: #d97706; box-shadow: 0 0 0 5px rgb(245 158 11 / 0.20); }
+}
+.jacoby-update-blink { animation: jacoby-update-blink 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .jacoby-update-blink { animation: none; }
+}

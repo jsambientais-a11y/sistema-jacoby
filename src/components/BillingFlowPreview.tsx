@@ -1,7 +1,9 @@
 import { residueNameKey, uniqueResidueNames } from "@/lib/residue-names";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { billingAgreement, billingCommission } from "@/lib/billing-agreement";
 import { BillingBulletinOverview } from "@/components/BillingBulletinOverview";
+import { ServiceInvoiceFiles } from "@/components/ServiceInvoiceFiles";
+import type { CycleInvoice } from "@/lib/cycle-invoices";
 import type { BillingBulletin } from "@/lib/billing-bulletins";
 import { CalendarClock, CheckCircle2, FileText, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -59,6 +61,9 @@ export type BillingFlowEntry = {
   legacyDueOn?: string | null;
   legacyExpectedOn?: string | null;
   legacyPaidOn?: string | null;
+  pendingService?: boolean;
+  serviceNotes?: CycleInvoice[];
+  serviceUrl?: string;
 };
 export type BillingFlowSaveInput = {
   entry: BillingFlowEntry;
@@ -106,8 +111,8 @@ function invoiceIssuedOn(entry: BillingFlowEntry) {
 }
 
 export function BillingFlowPreview({
-  entries,
-  bulletins,
+  entries: allEntries,
+  bulletins: allBulletins,
   isLoading = false,
   loadError,
   isSaving = false,
@@ -120,8 +125,14 @@ export function BillingFlowPreview({
   isSaving?: boolean;
   onSave: (input: BillingFlowSaveInput) => Promise<void>;
 }) {
-  const [category, setCategory] = useState<BillingFlowCategory | "all">("all");
-  const [selectedId, setSelectedId] = useState("");
+  const [mapContext] = useState(() => {
+    const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+    return { cycle: params.get("mapCycle"), entry: params.get("mapEntry"), category: params.get("mapCategory") };
+  });
+  const entries = mapContext.cycle ? allEntries.filter(entry => entry.cycleId === mapContext.cycle) : allEntries;
+  const bulletins = mapContext.cycle ? allBulletins.filter(bulletin => bulletin.id === mapContext.cycle) : allBulletins;
+  const [category, setCategory] = useState<BillingFlowCategory | "all">(() => categories.some(item => item.id === mapContext.category) ? mapContext.category as BillingFlowCategory : "all");
+  const [selectedId, setSelectedId] = useState(mapContext.entry || "");
   const [selectedResidue, setSelectedResidue] = useState("all");
   const [search, setSearch] = useState("");
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
@@ -137,7 +148,8 @@ export function BillingFlowPreview({
           .toLocaleLowerCase("pt-BR")
           .includes(normalizedSearch)),
   );
-  const selected = visible.find((entry) => entry.id === selectedId) || visible[0];
+  const missingMapEntry = Boolean(mapContext.entry && selectedId === mapContext.entry && !entries.some(entry => entry.id === mapContext.entry));
+  const selected = visible.find((entry) => entry.id === selectedId) || (missingMapEntry ? undefined : visible[0]);
   const receivedCount = entries.filter(isReceived).length;
   const awaitingInvoiceCount = entries.filter((entry) => !invoiceIssuedOn(entry)).length;
   const totalCommission = entries.reduce(
@@ -147,6 +159,7 @@ export function BillingFlowPreview({
 
   return (
     <div className="space-y-5">
+      {mapContext.cycle && <Card className="border-primary/30 bg-primary/5 p-4"><p className="font-semibold">Aberto pelo mapa de impactos · somente o BM selecionado</p><p className="mt-1 text-sm text-muted-foreground">Os dados abaixo pertencem a este boletim. O campo Percentual ou Valor acordado é a configuração do repasse deste lançamento.</p>{missingMapEntry && !isLoading && <p role="alert" className="mt-2 text-sm text-destructive">O lançamento indicado não está disponível nesta consulta. Nenhum outro lançamento foi selecionado em seu lugar.</p>}</Card>}
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="flex items-center gap-3 p-4">
           <span className="rounded-xl bg-primary/10 p-2.5 text-primary">
@@ -276,7 +289,7 @@ export function BillingFlowPreview({
                           ? "Recebido"
                           : invoiceIssuedOn(entry)
                             ? "A receber"
-                            : "NF não cadastrada"}
+                            : entry.serviceNotes?.length ? "Nota anexada" : "NF não cadastrada"}
                       </span>
                     </div>
                     <p className="mt-1 text-sm font-medium">{entry.client}</p>
@@ -286,10 +299,10 @@ export function BillingFlowPreview({
                     <div className="mt-2 flex flex-wrap gap-1" aria-label="Resíduos do BM">{(residuesByCycle.get(entry.cycleId) || []).map((item) => <span key={item.id} className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}</div>
                     <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2 text-xs">
                       <span className="truncate text-muted-foreground">
-                        {entry.itemsCount} item(ns) · {entry.description}
+                        {entry.pendingService ? "Aguardando serviço" : `${entry.itemsCount} item(ns)`} · {entry.description}
                       </span>
                       <strong className="shrink-0 text-primary">
-                        {money.format(
+                        {entry.pendingService && !entry.tracking ? "A informar" : money.format(
                           Number(entry.tracking?.commission_amount ?? entry.currentCommission),
                         )}
                       </strong>
@@ -325,11 +338,16 @@ function BillingFlowDraft({
   isSaving: boolean;
   onSave: (input: BillingFlowSaveInput) => Promise<void>;
 }) {
+  const ruleInput = useRef<HTMLInputElement>(null);
+  const isMapTarget = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mapEntry") === entry.id;
+  useEffect(() => {
+    if (isMapTarget) { ruleInput.current?.scrollIntoView({ block: "center" }); ruleInput.current?.focus({ preventScroll: true }); }
+  }, [entry.id, isMapTarget]);
   const saved = entry.tracking;
   const agreement = billingAgreement(entry);
   const [ruleType, setRuleType] = useState<"percent" | "fixed">(saved?.rule_type || agreement.defaultRule);
   const [ruleValue, setRuleValue] = useState(
-    saved ? String(saved.rule_value) : agreement.requiresAgreement ? "" : String(entry.currentCommission),
+    saved ? String(saved.rule_value) : entry.pendingService || agreement.requiresAgreement ? "" : String(entry.currentCommission),
   );
   const [netInvoiceAmount, setNetInvoiceAmount] = useState(
     saved?.net_invoice_amount == null ? "" : String(saved.net_invoice_amount),
@@ -418,14 +436,15 @@ function BillingFlowDraft({
         <p className="text-sm text-muted-foreground">
           {entry.client} · {entry.branch} · {entry.company}
         </p>
+        {entry.pendingService && <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Nota recebida · aguardando lançamento do serviço. Configure a nota e o repasse aqui; o valor do serviço será preenchido ao lançar no BM.</p>}
         <div className="mt-4 grid gap-3 rounded-lg bg-muted/40 p-3 text-sm sm:grid-cols-3">
           <div>
             <p className="text-muted-foreground">Base do BM</p>
-            <strong>{money.format(entry.baseAmount)}</strong>
+            <strong>{entry.pendingService ? "A informar no serviço" : money.format(entry.baseAmount)}</strong>
           </div>
           <div>
             <p className="text-muted-foreground">Calculado pelo BM</p>
-            <strong>{money.format(entry.currentCommission)}</strong>
+            <strong>{entry.pendingService ? "Aguardando serviço" : money.format(entry.currentCommission)}</strong>
           </div>
           <div>
             <p className="text-muted-foreground">{entry.companyId ? 'Repasse deste registro' : 'Faturamento deste registro'}</p>
@@ -433,6 +452,8 @@ function BillingFlowDraft({
           </div>
         </div>
       </div>
+
+      {Boolean(entry.serviceNotes?.length && entry.serviceUrl) && <ServiceInvoiceFiles files={entry.serviceNotes!} serviceUrl={entry.serviceUrl!} />}
 
       <div className="space-y-3 p-4 sm:p-5">
         <h4 className="font-semibold">1. {entry.companyId ? 'Repasse / comissão' : 'Valor faturado pela Jacoby'}</h4>
@@ -463,6 +484,8 @@ function BillingFlowDraft({
             <Label htmlFor="billing-rule-value">{ruleType === "percent" ? "Percentual (%)" : "Valor acordado (R$)"}</Label>
             <Input
               id="billing-rule-value"
+              ref={ruleInput}
+              className={isMapTarget ? "ring-2 ring-primary ring-offset-2" : undefined}
               type="number"
               min="0"
               step={ruleType === "percent" ? "0.0001" : "0.01"}

@@ -249,6 +249,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <PanelLeft className="h-5 w-5" />
         </Button>
         <span className="font-semibold">Jacoby</span>
+        <div id="app-updates-mobile" />
         {!isClient && <EnvironmentSwitch active="management" />}
         <NotificationBell />
       </div>
@@ -355,6 +356,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="hidden md:flex sticky top-0 z-30 items-center justify-between px-4 py-2 bg-background/80 backdrop-blur border-b">
           {isAdmin || hasPermission("dashboard") ? <Link to="/dashboard" className="inline-flex h-9 w-9 items-center justify-center rounded-md text-destructive transition hover:bg-destructive/10" title="Alertas de documentos"><AlertTriangle className="h-5 w-5" /></Link> : <span />}
           <div className="flex items-center gap-3">
+            <div id="app-updates-desktop" />
             {!isClient && <EnvironmentSwitch active="management" />}
             <NotificationBell />
           </div>

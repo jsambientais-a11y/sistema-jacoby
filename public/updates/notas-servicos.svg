@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420">
+<rect width="960" height="420" rx="24" fill="#f2f7f0"/>
+<g font-family="Arial, sans-serif" fill="#263e2d">
+<text x="40" y="53" font-size="25" font-weight="700">Da nota recebida ao faturamento</text>
+<text x="40" y="82" font-size="16" fill="#5c715f">Arquivo, serviço e valor vinculados ao mesmo boletim</text>
+<g fill="white" stroke="#bfd6ba" stroke-width="2"><rect x="40" y="125" width="255" height="220" rx="16"/><rect x="352" y="125" width="255" height="220" rx="16"/><rect x="665" y="125" width="255" height="220" rx="16"/></g>
+<g font-size="17" font-weight="700"><text x="60" y="162">1. Nota no BM</text><text x="372" y="162">2. Serviço e valor</text><text x="685" y="162">3. Faturamento</text></g>
+<g font-size="15" fill="#5c715f"><text x="60" y="203">Anexe o arquivo recebido</text><text x="60" y="228">Mesmo sem serviço lançado</text><text x="372" y="203">Selecione o serviço</text><text x="372" y="228">Preço do cadastro preenchido</text><text x="685" y="203">Confira a nota e o repasse</text><text x="685" y="228">Acesse o mesmo arquivo</text></g>
+<g fill="#e8f3e4"><rect x="60" y="265" width="215" height="42" rx="9"/><rect x="372" y="265" width="215" height="42" rx="9"/><rect x="685" y="265" width="215" height="42" rx="9"/></g>
+<g font-size="14" fill="#2c7032" font-weight="700"><text x="73" y="291">Aguardando lançamento</text><text x="388" y="291">Valor sugerido: R$ 1.500</text><text x="700" y="291">Configurar serviço no BM</text></g>
+<g stroke="#719a6b" fill="none" stroke-width="3"><path d="M308 236h29m-8-8 8 8-8 8"/><path d="M620 236h29m-8-8 8 8-8 8"/></g>
+<text x="40" y="388" font-size="13" fill="#72846f">Ilustração das novidades · Jacoby Soluções Ambientais</text>
+</g></svg>

@@ -11,6 +11,8 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+import { AppUpdateBanner } from "@/components/AppUpdateBanner";
+
 const isGitHubPages = import.meta.env.VITE_GITHUB_PAGES === "true";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -69,6 +71,7 @@ function RootComponent() {
       <AuthProvider>
         <TooltipProvider>
           {isGitHubPages ? <HeadContent /> : null}
+          <AppUpdateBanner />
           <Outlet />
           <Toaster richColors position="top-right" />
         </TooltipProvider>

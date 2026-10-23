@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import ts from 'typescript';
+const { outputText } = ts.transpileModule(readFileSync(new URL('../src/lib/map-equipment.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}});
+const { mapEquipmentInScope } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const equipment=[{id:'e1',client_id:'test',branch_id:null,name:'Compactador',identification:'01',active:true,default_waste_residue_id:null},{id:'e2',client_id:'test',branch_id:null,name:'Caçamba',identification:'02',active:true,default_waste_residue_id:null},{id:'e3',client_id:'test',branch_id:'p1',name:'Filial',active:true},{id:'e4',client_id:'other',branch_id:null,name:'Outro',active:true},{id:'e5',client_id:'test',branch_id:null,name:'Antigo',active:false}];
+test('dois equipamentos sem filial aparecem sem precisar de residuo ou BM',()=>assert.deepEqual(mapEquipmentInScope(equipment,'test','general').map(e=>e.id),['e1','e2']));
+test('filial e cliente sao respeitados sem misturar cadastros gerais',()=>{assert.deepEqual(mapEquipmentInScope(equipment,'test','p1').map(e=>e.id),['e3']);assert.equal(mapEquipmentInScope(equipment,'test',null).length,3)});
+test('desativados ficam ocultos por padrao e podem ser incluidos sem modificar registros',()=>{const before=structuredClone(equipment);assert.equal(mapEquipmentInScope(equipment,'test','general',true).length,3);assert.deepEqual(equipment,before)});

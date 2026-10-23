@@ -1,0 +1,13 @@
+{
+  "version": "2026.10.23.1",
+  "title": "Notas e serviços conectados ao faturamento",
+  "summary": "Receba a nota no BM e acompanhe o lançamento do serviço pelo Faturamento.",
+  "changes": [
+    "A nota aparece em Faturamento › Serviços assim que é anexada, mesmo antes de lançar o serviço.",
+    "O arquivo fica disponível para baixar, conferir e configurar pelo mesmo BM.",
+    "Ao selecionar o serviço, o formulário preenche o valor cadastrado e permite ajustar o preço.",
+    "Os anexos aceitam qualquer tipo de arquivo, com limite de 15 MB por arquivo."
+  ],
+  "image": "updates/notas-servicos.svg",
+  "imageAlt": "Ilustração do fluxo: nota anexada ao BM, serviço com valor cadastrado e conferência no faturamento."
+}

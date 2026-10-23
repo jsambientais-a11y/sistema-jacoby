@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
+import ts from 'typescript';
+const {outputText}=ts.transpileModule(readFileSync(new URL('../src/lib/service-invoice-entries.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}});
+const {attachServiceInvoiceEntries:attach}=await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const cycle={id:'bm',companyId:'company',bulletin:'#218',client:'Empresa teste',branch:'Matriz',serviceUrl:'/bm/218'};
+const note={cycleId:'bm',path:'cycle-invoices/bm/nota.xml',name:'nota.xml',createdAt:null,size:100};
+const company=id=>id || 'Jacoby';
+const link={cycle_id:'bm',outsourced_company_id:'company',invoice_pdf_path:note.path,invoice_pdf_name:note.name,amount:1500,net_invoice_amount:null,commission_rate:10};
+test('nota sem servico aparece para configurar sem inventar valor de BM',()=>{const [row]=attach([], [cycle],[note],[],[],company);assert.equal(row.id,'bm:service:company');assert.equal(row.pendingService,true);assert.equal(row.itemsCount,0);assert.equal(row.baseAmount,0);assert.equal(row.serviceNotes[0].path,note.path);assert.equal(row.serviceUrl,'/bm/218')});
+test('nota antes e depois do servico conserva o mesmo registro de conferencia',()=>{const tracking={cycle_id:'bm',category:'service',source_key:'company',rule_type:'percent',rule_value:10,invoice_number:'NF10'};const [before]=attach([], [cycle],[note],[],[tracking],company);const [after]=attach([], [cycle],[note],[link],[tracking],company);assert.equal(before.id,after.id);assert.equal(after.pendingService,false);assert.equal(after.baseAmount,1500);assert.equal(after.currentCommission,150);assert.equal(after.tracking.invoice_number,'NF10');assert.equal(after.serviceNotes.length,1)});
+test('nota nao duplica total do servico ja existente ou seus arquivos',()=>{const entry={id:'bm:service:company',cycleId:'bm',companyId:'company',category:'service',baseAmount:1500,currentCommission:150,itemsCount:1,bulletin:'#218'};const rows=attach([entry], [cycle],[note,note],[link],[],company);assert.equal(rows.length,1);assert.equal(rows[0].baseAmount,1500);assert.equal(rows[0].itemsCount,1);assert.equal(rows[0].serviceNotes.length,1);assert.equal(entry.serviceNotes,undefined)});
+test('anexos antigos por servico continuam visiveis e outro BM nao vaza',()=>{const [row]=attach([], [cycle],[],[link,{...link,cycle_id:'another',invoice_pdf_path:'another-note'}],[],company);assert.equal(row.serviceNotes.length,1);assert.equal(row.serviceNotes[0].path,note.path)});
+test('empresa da nota segue o servico vinculado, com Jacoby direto separado',()=>{const rows=attach([], [cycle],[note],[{...link,outsourced_company_id:null}],[],company);assert.equal(rows.length,1);assert.equal(rows[0].companyId,null);assert.equal(rows[0].id,'bm:service:jacoby');assert.equal(rows[0].baseAmount,1500)});

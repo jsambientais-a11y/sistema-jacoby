@@ -6,7 +6,10 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+import { appVersion, appVersionPlugin } from "./build/app-version";
+
 export default defineConfig({
+  vite: { define: { __JACOBY_BUILD_ID__: JSON.stringify(appVersion.id) }, plugins: [appVersionPlugin()] },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this

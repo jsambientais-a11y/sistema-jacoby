@@ -23,6 +23,9 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { useRouterState } from "@tanstack/react-router";
 import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
 import { BillingV2Module } from "@/components/BillingV2Module";
+import { ClientServicesCatalog } from "@/components/ClientServicesCatalog";
+import { EquipmentLinks } from "@/components/EquipmentLinks";
+import { ResidueImpactMap } from "@/components/ResidueImpactMap";
 
 const WasteReportCharts = lazy(() =>
   import("@/components/WasteReportCharts").then((module) => ({ default: module.WasteReportCharts })),
@@ -94,7 +97,7 @@ type OutsourcedCompany = { id: string; legal_name: string; trade_name: string | 
 type OutsourcedCompanyService = {
   outsourced_company_id: string;
   waste_service_id: string;
-  waste_services?: { id: string; name: string; active: boolean; branch_id: string | null } | null;
+  waste_services?: Service | null;
 };
 type OutsourcedCommissionSetting = {
   id: string;
@@ -305,7 +308,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const canConfigureMovements = isAdmin || hasPermission("movement_settings");
   const [clientId, setClientId] = useState(() => {
     if (typeof window === "undefined") return "";
-    return sessionStorage.getItem("jacoby:faturamento:cliente") || "";
+    return new URLSearchParams(window.location.search).get("mapCliente") || sessionStorage.getItem("jacoby:faturamento:cliente") || "";
   });
   const [reportId, setReportId] = useState("");
   const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
@@ -328,6 +331,10 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
           ? "equipamentos"
           : (catalogTab ?? "painel");
   const [view, setView] = useState<string>(targetView);
+  const [configurationTab, setConfigurationTab] = useState(() => {
+    const tab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("mapConfig") : null;
+    return tab && ["equipamentos", "servicos", "residuos", "valores", "comissionamento"].includes(tab) ? tab : "equipamentos";
+  });
   useEffect(() => setView(targetView), [targetView]);
   const [resForm, setResForm] = useState({
     standardId: "",
@@ -385,6 +392,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   );
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [showServiceForm, setShowServiceForm] = useState(false);
+  const serviceFormSection = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (showServiceForm || editingService) serviceFormSection.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [showServiceForm, editingService]);
   const [editingMove, setEditingMove] = useState<Movement | null>(null);
   const [editingPlacement, setEditingPlacement] = useState<Movement | null>(null);
   useEffect(() => {
@@ -402,7 +412,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     );
   }, [isClient, linked, clientId, clients]);
   useEffect(() => {
-    if (!isClient && clientId) sessionStorage.setItem("jacoby:faturamento:cliente", clientId);
+    if (!isClient && clientId && !new URLSearchParams(window.location.search).has("mapCliente")) {
+      sessionStorage.setItem("jacoby:faturamento:cliente", clientId);
+    }
   }, [isClient, clientId]);
   const clientQuery = <T,>(key: string, table: string) =>
     useQuery({
@@ -429,6 +441,23 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     },
   });
   const { data: equipment = [] } = clientQuery<Equipment>("waste-equipment", "waste_equipment");
+  const openedMapEquipment = useRef("");
+  useEffect(() => {
+    const target = new URLSearchParams(window.location.search).get("mapEquipment");
+    if (!canConfigureMovements || !target || openedMapEquipment.current === target) return;
+    const item = equipment.find(row => row.id === target);
+    if (!item) return;
+    openedMapEquipment.current = target;
+    setEditingEquipment(item);
+    setEqForm({
+      branchId: branchKey(item.branch_id), identification: item.identification || "",
+      name: item.name, type: item.equipment_type,
+      capacity: item.capacity_value !== null ? String(item.capacity_value) : item.capacity_m3 === null ? "" : String(item.capacity_m3),
+      capacityUnit: item.capacity_value !== null ? item.capacity_unit : "m3",
+      rentalRate: String(Number(item.monthly_rental_rate || 0)),
+    });
+  }, [equipment, canConfigureMovements]);
+
   const { data: equipmentOptions = [] } = useQuery({
     queryKey: ["waste-equipment-options"],
     enabled: canConfigureMovements,
@@ -459,7 +488,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     enabled: canConfigureMovements,
     queryFn: async () => {
       const { data, error } = await (supabase.from("outsourced_company_services" as any) as any)
-        .select("outsourced_company_id,waste_service_id,waste_services(id,name,active,branch_id)");
+        .select("outsourced_company_id,waste_service_id,waste_services(id,client_id,name,default_rate,active,branch_id)");
       if (error) throw error;
       return (data || []) as OutsourcedCompanyService[];
     },
@@ -606,7 +635,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const serviceRateForClient = (serviceId: string) =>
     Number(clientServiceRates.find((rate) => rate.waste_service_id === serviceId)?.default_rate || 0);
   const refreshClient = () =>
-    ["waste-residues", "waste-equipment", "waste-services", "waste-client-service-rates", "client-branches"].forEach(
+    ["waste-residues", "waste-equipment", "waste-services", "waste-client-service-rates", "billing-v2-services", "billing-v2-client-service-rates", "client-branches"].forEach(
       (key) => void qc.invalidateQueries({ queryKey: [key, clientId] }),
     );
   const refreshReport = () =>
@@ -835,6 +864,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     },
     onSuccess: () => {
       toast.success(editingService ? "Serviço atualizado." : "Serviço cadastrado.");
+      setShowServiceForm(false);
       setEditingService(null);
       setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0", branchId: "" });
       refreshClient();
@@ -975,30 +1005,39 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const removeRecord = async (table: string, id: string, refresh: () => void, label: string) => {
     if (!window.confirm(`Excluir ${label}?`)) return;
     const { error } = await (supabase.from(table as any) as any).delete().eq("id", id);
-    if (error) toast.error(error.message);
+    if (error?.code === "23503") {
+      toast.error(
+        table === "waste_equipment"
+          ? "Não é possível excluir este equipamento: ele já está em uso."
+          : "Não é possível excluir este cadastro: ele possui registros vinculados.",
+        {
+          description:
+            table === "waste_equipment"
+              ? "Este equipamento está vinculado a colocações, movimentações ou boletins de medição. A exclusão foi bloqueada para preservar o histórico. Para deixar de utilizá-lo, desative o cadastro. Nenhum dado foi excluído."
+              : "A exclusão foi bloqueada para preservar o histórico dos registros vinculados. Nenhum dado foi excluído.",
+          duration: 12000,
+        },
+      );
+    } else if (error) toast.error(error.message);
     else {
       toast.success(`${label} excluído.`);
       refresh();
     }
   };
   const deleteService = async (service: Service) => {
-    if (!window.confirm(`Excluir ${service.name} e seus lançamentos de teste nos demonstrativos?`))
-      return;
-    const { error: reportServiceError } = await (
-      supabase.from("waste_report_services" as any) as any
-    )
-      .delete()
-      .eq("waste_service_id", service.id);
-    if (reportServiceError) {
-      toast.error(reportServiceError.message);
-      return;
-    }
+    if (!window.confirm(`Excluir o cadastro do serviço "${service.name}"? O serviço pode ser compartilhado entre clientes. Se houver lançamentos vinculados, a exclusão será bloqueada para preservar o histórico.`)) return;
     const { error } = await (supabase.from("waste_services" as any) as any)
       .delete()
       .eq("id", service.id);
-    if (error) toast.error(error.message);
+    if (error?.code === "23503") {
+      toast.error("Não é possível excluir este serviço: existem lançamentos vinculados.", {
+        description: "O serviço está sendo usado em boletins ou demonstrativos. Clique em Ver vínculos para identificar os registros. Nenhum lançamento foi apagado.",
+        duration: 12000,
+      });
+    } else if (error) toast.error(error.message);
     else {
       toast.success("Serviço excluído.");
+      void qc.invalidateQueries({ queryKey: ["outsourced-company-services"] });
       refreshClient();
       refreshReport();
     }
@@ -1389,7 +1428,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       {catalogTab ? (
         <Card
           className={
-            catalogTab === "faturamento" ? "grid gap-3 p-4 md:grid-cols-3" : "max-w-xl p-4"
+            catalogTab === "configuracoes" && configurationTab === "mapa-impactos" ? "hidden" : catalogTab === "faturamento" ? "grid gap-3 p-4 md:grid-cols-3" : "max-w-xl p-4"
           }
         >
           <Field label="Cliente">
@@ -1795,8 +1834,8 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
           />
         </TabsContent>
         <TabsContent value="equipamentos" className="space-y-4">
-          <Tabs defaultValue="equipamentos" className="space-y-4">
-            <TabsList className="h-auto rounded-none bg-transparent p-0">
+          <Tabs value={configurationTab} onValueChange={setConfigurationTab} className="space-y-4">
+            <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-none bg-transparent p-0">
               <TabsTrigger
                 value="equipamentos"
                 className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
@@ -1827,7 +1866,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               >
                 Comissionamento
               </TabsTrigger>
+              {canConfigureMovements && <TabsTrigger value="mapa-impactos" className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary">Mapa e impactos</TabsTrigger>}
             </TabsList>
+            {canConfigureMovements && <TabsContent value="mapa-impactos"><ResidueImpactMap clients={clients} clientId={clientId} onClientChange={setClientId} /></TabsContent>}
             <TabsContent value="equipamentos" className="space-y-4">
               <BillingImpactNote>
                 <strong>Alimenta o Boletim de Medição →</strong> o <strong>Valor da locação</strong> cadastrado aqui vira a linha <strong>Locação de equipamentos</strong> do BM. Os equipamentos também aparecem como opção nas abas <strong>Locação</strong> e <strong>Movimentações</strong> do boletim. O valor por troca fica na aba <strong>Troca</strong>.
@@ -1968,6 +2009,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       ? `${n(e.capacity_m3)} m³`
                       : "—",
                   <div className="flex gap-1">
+                    <EquipmentLinks equipmentId={e.id} clientId={clientId} label={e.identification || e.name} />
                     <Button
                       size="icon"
                       variant="ghost"
@@ -2008,11 +2050,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </TabsContent>
             <TabsContent value="servicos" className="space-y-4">
               <BillingImpactNote>
-                <span className="block font-semibold text-foreground">Como cadastrar um serviço</span>
-                <span className="mt-1 block"><strong>1. Serviço base:</strong> informe o serviço, a matriz/filial/pátio e o valor padrão.</span>
-                <span className="block"><strong>2. Valor específico (opcional):</strong> use somente se esse serviço tiver outro valor para determinada terceirizada ou filial/pátio. Nesse caso, o valor específico substitui o padrão apenas naquela combinação.</span>
-                <span className="mt-1 block text-xs">Exemplo: valor padrão R$ 300; Cortes no Pátio 1 por R$ 250. No BM da Cortes para o Pátio 1 será usado R$ 250; nos demais casos, R$ 300.</span>
+                Os serviços cadastrados aqui alimentam a aba <strong>Serviços do BM</strong>. Configure primeiro o valor padrão do cliente; use valores específicos abaixo somente quando houver uma exceção por terceirizada ou filial.
               </BillingImpactNote>
+              {(showServiceForm || editingService) && <div ref={serviceFormSection} className="scroll-mt-5">
               <Card className="p-4">
                 <div className="flex items-start gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">1</span>
@@ -2023,6 +2063,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     <p className="mt-0.5 text-sm text-muted-foreground">
                       Informe o serviço, quem o executa, onde ele pode ser usado e seu valor padrão para este cliente.
                     </p>
+                    {editingService && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nome, abrangência e vínculos com terceirizadas fazem parte do cadastro base e podem afetar outros clientes. Para alterar somente o valor deste cliente, use Alterar valor na lista.</p>}
                   </div>
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_minmax(210px,1.2fr)_minmax(190px,1fr)_minmax(140px,0.7fr)_auto]">
@@ -2069,10 +2110,11 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     <Button onClick={() => addService.mutate()}>
                       {editingService ? "Salvar serviço" : "Cadastrar serviço"}
                     </Button>
-                    {editingService && (
+                    {(editingService || showServiceForm) && (
                       <Button
                         variant="outline"
                         onClick={() => {
+                          setShowServiceForm(false);
                           setEditingService(null);
                           setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0", branchId: "" });
                         }}
@@ -2083,35 +2125,19 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   </div>
                 </div>
               </Card>
-              <ActionTable
-                headers={["Serviço", "Empresa terceirizada", "Abrangência", "Valor padrão", "Ações"]}
-                rows={serviceCatalog.map((service) => [
-                  service.name,
-                  outsourcedCompaniesForService(service.id),
-                  branches.find((branch) => branch.id === service.branch_id)?.name || "Matriz (serviço geral)",
-                  money(serviceRateForClient(service.id)),
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title="Editar"
-                      onClick={() => {
-                        setEditingService(service);
-                        setServiceForm({ name: service.name, outsourcedCompanyId: outsourcedCompanyForService(service.id), rate: String(serviceRateForClient(service.id)), branchId: branchKey(service.branch_id) });
-                      }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title="Excluir"
-                      onClick={() => void deleteService(service)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>,
-                ])}
+              </div>}
+              <ClientServicesCatalog
+                key={clientId}
+                clientId={clientId}
+                clientName={clients.find(item => item.id === clientId)?.name || "cliente selecionado"}
+                services={serviceCatalog}
+                ownedIds={activeServices.map(item => item.id)}
+                rates={clientServiceRates}
+                branches={branches}
+                companyName={outsourcedCompaniesForService}
+                onCreate={() => { setEditingService(null); setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0", branchId: "" }); setShowServiceForm(true); serviceFormSection.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                onEdit={service => { setEditingService(service as Service); setServiceForm({ name: service.name, outsourcedCompanyId: outsourcedCompanyForService(service.id), rate: String(serviceRateForClient(service.id)), branchId: branchKey(service.branch_id) }); serviceFormSection.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                onDelete={service => void deleteService(service as Service)}
               />
               <ServiceRateOverridesPanel
                 clientId={clientId}
