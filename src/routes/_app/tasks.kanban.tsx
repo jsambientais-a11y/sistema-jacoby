@@ -81,13 +81,14 @@ import {
   useUserColumnOrder,
   useUserTaskOrder,
   useSubtasks,
+  saveLocalColumnOrder,
   type Task,
   type KanbanColumn,
 } from "@/hooks/use-data";
 import { TaskCard } from "@/components/TaskCard";
 import { TaskDialog } from "@/components/TaskDialog";
 import { TagManagerDialog } from "@/components/TagManagerDialog";
-import { TaskFilters, applyTaskFilters, type TaskFilterValue } from "@/components/TaskFilters";
+import { FilterGroup, TaskFilters, applyTaskFilters, type TaskFilterValue } from "@/components/TaskFilters";
 import { CardFieldsPopover } from "@/components/CardFieldsPopover";
 import { useBoardPreferences, useUpdateBoardPreferences } from "@/hooks/use-board-preferences";
 import { toast } from "sonner";
@@ -124,7 +125,7 @@ function SortableTaskCard({
   } as CSSProperties;
 
   return (
-    <div ref={setNodeRef} style={style} className={minimal ? "w-[clamp(15rem,18vw,19rem)] max-w-full min-w-0 shrink-0" : "w-72 max-w-full min-w-0 shrink-0"}>
+    <div ref={setNodeRef} style={style} className={`${minimal ? "w-[clamp(15rem,18vw,19rem)]" : "w-72"} max-w-full min-w-0 shrink-0 animate-in fade-in slide-in-from-bottom-1 duration-300`}>
       <TaskCard
         task={task}
         columns={columns}
@@ -204,9 +205,9 @@ function CompletedColumn({ taskIds, count, children, orientation, minimal }: any
       >
         <div
           ref={setNodeRef}
-          className={`rounded-lg border-2 border-solid p-2 transition ${
+          className={`rounded-xl border border-dashed p-2 transition-all duration-200 ease-out ${
             isVertical ? "flex flex-col gap-2" : "kanban-lane-scroll flex flex-nowrap items-start gap-2 overflow-x-auto pb-2"
-          } ${isOver ? "border-emerald-500 bg-emerald-500/10" : "border-emerald-500/30 bg-emerald-500/5"}`}
+          } ${isOver ? "border-emerald-500 bg-emerald-500/10 ring-4 ring-emerald-500/15" : "border-emerald-500/35 bg-emerald-500/[0.04]"}`}
           style={{ minHeight: isVertical ? 200 : 120 }}
         >
           {children}
@@ -255,13 +256,13 @@ function SortableColumn({
       style={style}
       className={isVertical ? (minimal ? "flex w-[clamp(15rem,18vw,19rem)] shrink-0 flex-col" : "flex w-fit min-w-72 shrink-0 flex-col") : "flex w-full flex-col"}
     >
-      <div className="mb-2 flex items-center justify-between px-1">
-        <div className="flex items-center gap-1.5">
+      <div className="group/colhead mb-2 flex items-center justify-between px-1">
+        <div className="flex min-w-0 items-center gap-1.5">
           {canManage && (
             <span
               {...attributes}
               {...listeners}
-              className="inline-flex h-6 w-6 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-muted active:cursor-grabbing dark:text-slate-100 dark:hover:bg-white/10"
+              className="inline-flex h-6 w-6 cursor-grab items-center justify-center rounded-md text-muted-foreground opacity-40 transition hover:bg-muted group-hover/colhead:opacity-100 active:cursor-grabbing dark:text-slate-100 dark:hover:bg-white/10"
               title="Arrastar coluna"
             >
               <GripVertical className="h-4 w-4" />
@@ -271,9 +272,9 @@ function SortableColumn({
             className="h-3 w-3 rounded-full dark:ring-2 dark:ring-white/45 dark:shadow-[0_0_12px_rgba(255,255,255,0.32)]"
             style={{ background: col.color || "#1e3a8a" }}
           />
-          <h3 className="font-semibold">{col.name}</h3>
+          <h3 className="truncate font-semibold tracking-tight">{col.name}</h3>
           <span
-            className="rounded-full px-2 py-0.5 text-xs font-semibold dark:ring-1 dark:ring-white/45 dark:shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+            className="rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums transition-all duration-300 dark:ring-1 dark:ring-white/45 dark:shadow-[0_0_10px_rgba(255,255,255,0.2)]"
             style={{
               color: "var(--foreground)",
               backgroundColor: `${col.color || "#1e3a8a"}40`,
@@ -286,8 +287,9 @@ function SortableColumn({
           <Button
             size="icon"
             variant="ghost"
-            className="h-7 w-7 dark:text-slate-100 dark:hover:bg-white/10"
+            className="h-7 w-7 transition-transform hover:rotate-90 hover:text-primary dark:text-slate-100 dark:hover:bg-white/10"
             onClick={onAdd}
+            title="Nova tarefa nesta coluna"
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -322,15 +324,29 @@ function SortableColumn({
       >
         <div
           ref={setDropRef}
-          className={`rounded-lg border-2 border-solid border-l-4 p-2 transition ${
+          className={`rounded-xl border p-2 transition-all duration-200 ease-out ${
             isVertical ? "flex flex-col gap-3" : "kanban-lane-scroll flex flex-nowrap items-start gap-4 overflow-x-auto pb-2"
-          } ${isOver ? "border-primary bg-primary/5" : "border-transparent bg-muted/40"}`}
+          } ${isOver ? "border-primary/60 bg-primary/[0.06] ring-4 ring-primary/15" : "border-transparent"}`}
           style={{
             minHeight: isVertical ? 200 : 120,
-            borderLeftColor: col.color || "#1e3a8a",
+            backgroundColor: isOver ? undefined : `color-mix(in oklab, ${col.color || "var(--primary)"} 6%, var(--muted))`,
+            boxShadow: `inset 0 2px 0 0 color-mix(in oklab, ${col.color || "var(--primary)"} 55%, transparent)`,
           }}
         >
           {children}
+          {count === 0 && !isOver && (
+            <div className={`flex items-center justify-center rounded-lg border border-dashed border-border/80 px-3 text-center text-xs text-muted-foreground ${isVertical ? "min-h-24 flex-col" : "min-h-20 w-64 shrink-0"}`}>
+              Arraste uma tarefa para cá
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onAdd}
+            className={`group/add flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-transparent text-xs font-medium text-muted-foreground transition-all duration-200 hover:border-primary/40 hover:bg-background/70 hover:text-primary ${isVertical ? "h-9 w-full" : "h-20 w-40"}`}
+          >
+            <Plus className="h-3.5 w-3.5 transition-transform duration-200 group-hover/add:rotate-90" />
+            Adicionar tarefa
+          </button>
         </div>
       </SortableContext>
     </div>
@@ -671,6 +687,11 @@ function KanbanPage() {
     return map;
   }, [sortedTasks, columns]);
 
+  const totalVisibleTasks = useMemo(
+    () => [...tasksByCol.values()].reduce((sum, list) => sum + list.length, 0),
+    [tasksByCol],
+  );
+
   const columnIds = useMemo(() => columns.map((c) => `col:${c.id}`), [columns]);
 
   const collisionDetectionStrategy: CollisionDetection = (args) => {
@@ -749,7 +770,11 @@ function KanbanPage() {
       const { error } = await supabase
         .from("user_column_order")
         .upsert(rows, { onConflict: "user_id,column_id" });
-      if (error) toast.error(error.message);
+      if (error) {
+        // Sem a tabela no banco, a ordem fica salva neste navegador em vez de voltar ao padrão.
+        saveLocalColumnOrder(user.id, rows.map(({ column_id, position }) => ({ column_id, position })));
+        return;
+      }
       qc.invalidateQueries({ queryKey: ["user_column_order"] });
       return;
     }
@@ -1196,9 +1221,14 @@ function KanbanPage() {
 
   return (
     <div className="flex h-[calc(100dvh-3rem)] min-h-0 flex-col md:h-[calc(100dvh-49px)]">
-      <header className="shrink-0 border-b bg-background px-3 py-2">
-        <div className="flex items-center justify-end gap-2">
-          <div className="flex flex-wrap gap-2">
+      <header className="shrink-0 border-b bg-background px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-display text-base font-bold tabular-nums text-foreground">{totalVisibleTasks}</span>{" "}
+            {totalVisibleTasks === 1 ? "tarefa em andamento" : "tarefas em andamento"}
+            {completedTasks.length > 0 && <span> · {completedTasks.length} concluídas</span>}
+          </p>
+          <div className="flex flex-wrap gap-2 [&_button]:h-8 [&_button]:text-xs">
             <Button variant="outline" onClick={() => void exportPdf()} disabled={exportingPdf}>
               <FileDown className="mr-2 h-4 w-4" />
               {exportingPdf ? "Gerando…" : "Exportar PDF"}
@@ -1228,13 +1258,13 @@ function KanbanPage() {
             </Button>
           </div>
         </div>
-        <div className="mt-2 space-y-1">
+        <div className="mt-3">
           <TaskFilters filters={filters} onChange={setFilters}>
-            <div className="flex items-center justify-end gap-2">
+            <FilterGroup label="Exibição" className="order-last ml-auto">
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 gap-1"
+                className="h-8 gap-1 text-xs"
                 onClick={() => {
                   const previous = orientation;
                   const next = previous === "horizontal" ? "vertical" : "horizontal";
@@ -1263,7 +1293,7 @@ function KanbanPage() {
               <Button
                 size="sm"
                 variant={minimalCards ? "default" : "outline"}
-                className="h-7 gap-1"
+                className="h-8 gap-1 text-xs"
                 onClick={toggleMinimalCards}
                 title={minimalCards ? "Exibir cards completos" : "Exibir cards minimalistas"}
               >
@@ -1273,44 +1303,42 @@ function KanbanPage() {
                   <PanelTop className="h-3.5 w-3.5" />
                 )}
                 {minimalCards ? "Completo" : "Minimalista"}
-              </Button>{" "}
+              </Button>
               <CardFieldsPopover />
-            </div>
-            <div className="mr-3 inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Concluídas no período</span>
+            </FilterGroup>
+            <FilterGroup label="Concluídas" className="text-xs text-muted-foreground">
               <Input
                 type="date"
                 value={completedRange.start}
                 onChange={(e) =>
                   setCompletedRange((range) => ({ ...range, start: e.target.value }))
                 }
-                className="h-7 w-36"
+                className="h-8 w-36 text-xs md:text-xs"
               />
               <span>até</span>
               <Input
                 type="date"
                 value={completedRange.end}
                 onChange={(e) => setCompletedRange((range) => ({ ...range, end: e.target.value }))}
-                className="h-7 w-36"
+                className="h-8 w-36 text-xs md:text-xs"
               />
               {completedRange.start || completedRange.end ? (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7"
+                  className="h-8"
                   onClick={() => setCompletedRange({ start: "", end: "" })}
                 >
                   Limpar período
                 </Button>
               ) : null}
-            </div>
-            <div className="inline-flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Ordenar:</span>
+            </FilterGroup>
+            <FilterGroup label="Ordenar">
               <Select
                 value={sort.field}
                 onValueChange={(v) => setSort((s) => ({ ...s, field: v as SortField }))}
               >
-                <SelectTrigger className="h-7 w-44">
+                <SelectTrigger className="h-8 w-44 text-xs">
                   <SelectValue placeholder="1º critério" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1324,7 +1352,7 @@ function KanbanPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7"
+                className="h-8"
                 onClick={() =>
                   setSort((s) => ({ ...s, direction: s.direction === "asc" ? "desc" : "asc" }))
                 }
@@ -1341,7 +1369,7 @@ function KanbanPage() {
                 value={sort2.field}
                 onValueChange={(v) => setSort2((s) => ({ ...s, field: v as SortField | "none" }))}
               >
-                <SelectTrigger className="h-7 w-44">
+                <SelectTrigger className="h-8 w-44 text-xs">
                   <SelectValue placeholder="2º critério" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1356,7 +1384,7 @@ function KanbanPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7"
+                  className="h-8"
                   onClick={() =>
                     setSort2((s) => ({ ...s, direction: s.direction === "asc" ? "desc" : "asc" }))
                   }
@@ -1369,7 +1397,7 @@ function KanbanPage() {
                   )}
                 </Button>
               )}
-            </div>
+            </FilterGroup>
           </TaskFilters>
         </div>
       </header>
@@ -1487,7 +1515,7 @@ function KanbanPage() {
           </SortableContext>
           <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" }}>
             {activeTask && (
-              <div className="w-72 rotate-1 rounded-xl border bg-background p-4 shadow-xl opacity-95">
+              <div className="w-72 rotate-2 scale-105 cursor-grabbing rounded-xl border border-primary/40 bg-background p-4 shadow-2xl ring-4 ring-primary/10">
                 <p className="text-xs font-medium text-primary">Movendo tarefa</p>
                 <p className="mt-1 font-semibold leading-snug">{activeTask.title}</p>
                 {activeTask.due_date && <p className="mt-2 text-xs text-muted-foreground">Prazo: {activeTask.due_date}</p>}

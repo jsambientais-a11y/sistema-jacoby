@@ -26,20 +26,20 @@ import {
   Recycle,
   MapPinned,
   KeyRound,
-  FolderOpen,
   AlertTriangle,
   ClipboardCheck,
   HandCoins,
+  Wallet,
 } from "lucide-react";
 import { EnvironmentSwitch } from "@/components/EnvironmentSwitch";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import jacobyLogo from "@/assets/jacoby-logo.webp";
-import jacobyLogoFull from "@/assets/jacoby-logo-transparent.png";
+import jacobyLogoFull from "@/assets/jacoby-logo.svg";
+import jacobyLogoDark from "@/assets/jacoby-logo-dark.svg";
+import { JacobyMark } from "@/components/JacobyMark";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
-import { FILES_OWNER_ID } from "@/lib/files-access";
 
 function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -60,7 +60,6 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
-  ownerOnly?: boolean;
   permission?: string;
   tab?: "faturamento2" | "configuracoes";
 };
@@ -71,9 +70,9 @@ const allNav: readonly NavItem[] = [
   { to: "/clients", label: "Clientes", icon: Building2, permission: "clients" },
   { to: "/terceirizados", label: "Terceirizados", icon: Factory, permission: "outsourced" },
   { to: "/portal/documentos", label: "Documentos", icon: FileText, permission: "documents" },
-  { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true, ownerOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/financeiro", label: "Faturamento", icon: HandCoins, permission: "billing" },
+  { to: "/contas-a-receber", label: "Financeiro", icon: Wallet, permission: "billing" },
   { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, permission: "movement_settings", tab: "configuracoes" },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
   { to: "/trash", label: "Lixeira", icon: Trash2, permission: "trash" },
@@ -86,7 +85,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     const visibleItems = allNav.filter(
       (item) =>
         (!item.adminOnly || isAdmin) &&
-        (!item.ownerOnly || user?.id === FILES_OWNER_ID) &&
         (item.to === "/portal" ? isClient || hasPermission("portal_units") || hasPermission("portal_reports") : !item.permission || hasPermission(item.permission)),
     );
     // Para a equipe interna, o Portal do Cliente é um bloco auxiliar e fica no
@@ -137,21 +135,23 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className={`jacoby-sidebar-brand ${sidebarOpen ? "px-4 py-5" : "px-2 py-5"}`}>
           {sidebarOpen ? (
             <>
-              <img
-                src={jacobyLogoFull}
-                alt="Jacoby Soluções Ambientais"
-                className="jacoby-sidebar-brand__full"
-              />
-              <span className="jacoby-sidebar-brand__caption">Gestão ambiental integrada</span>
+              <Link to="/dashboard" className="jacoby-sidebar-brand__link" title="Ir para o início">
+                <img
+                  src={jacobyLogoFull}
+                  alt="Jacoby Soluções Ambientais"
+                  className="jacoby-sidebar-brand__full dark:hidden"
+                />
+                <img
+                  src={jacobyLogoDark}
+                  alt="Jacoby Soluções Ambientais"
+                  className="jacoby-sidebar-brand__full hidden dark:block"
+                />
+              </Link>
             </>
           ) : (
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-black">
-              <img
-                src={jacobyLogo}
-                alt="Jacoby Soluções"
-                className="h-full w-full object-contain"
-              />
-            </div>
+            <Link to="/dashboard" className="group rounded-xl" title="Ir para o início">
+              <JacobyMark className="h-10 w-10" />
+            </Link>
           )}
         </div>
 
@@ -171,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {nav.map((n) => {
             if (n.to === "/portal")
               return (
-                <PortalNavGroup expanded={sidebarOpen} active={portalActive} isClient={isClient} hasPermission={hasPermission} />
+                <PortalNavGroup key="portal" expanded={sidebarOpen} active={portalActive} isClient={isClient} hasPermission={hasPermission} />
               );
             const Active = n.tab
               ? pathname === n.to && activeWasteTab === n.tab
@@ -179,10 +179,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             const Icon = n.icon;
             return (
               <Link
-                key={n.to}
+                key={`${n.to}:${n.tab ?? ""}`}
                 to={n.to}
                 search={n.tab ? { aba: n.tab } : undefined}
-                className={`flex items-center gap-3 rounded-lg transition ${
+                data-active={Active}
+                className={`jacoby-nav-link flex items-center gap-3 rounded-lg ${
                   sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
                 } ${
                   Active
@@ -227,7 +228,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 onClick={toggle}
                 title={theme === "dark" ? "Modo claro" : "Modo escuro"}
               >
-                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                {theme === "dark" ? <Sun key="sun" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" /> : <Moon key="moon" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" />}
               </Button>
               <Button
                 size="icon"
@@ -248,7 +249,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Button size="icon" variant="ghost" onClick={() => setSidebarOpen((o) => !o)}>
           <PanelLeft className="h-5 w-5" />
         </Button>
-        <span className="font-semibold">Jacoby</span>
+        <span className="group flex items-center gap-2 font-display font-bold tracking-tight text-primary"><JacobyMark className="h-7 w-7" />Jacoby</span>
         <div id="app-updates-mobile" />
         {!isClient && <EnvironmentSwitch active="management" />}
         <NotificationBell />
@@ -262,15 +263,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             style={{ background: "var(--gradient-sidebar)" }}
           >
             <div className="flex items-center justify-between px-5 py-4">
-              <div className="flex items-center gap-2">
-                <div className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black h-9 w-9">
-                  <img
-                    src={jacobyLogo}
-                    alt="Jacoby Soluções"
-                    className="h-full w-full object-contain"
-                  />
-                </div>
-                <span className="text-lg font-semibold">Jacoby</span>
+              <div className="group flex items-center gap-2">
+                <JacobyMark className="h-9 w-9 shrink-0" />
+                <span className="font-display text-lg font-bold tracking-tight text-primary">Jacoby</span>
               </div>
               <Button size="icon" variant="ghost" onClick={() => setSidebarOpen(false)}>
                 <PanelLeft className="h-5 w-5" />
@@ -281,6 +276,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 if (n.to === "/portal")
                   return (
                     <PortalNavGroup
+                      key="portal"
                       expanded
                       active={portalActive}
                       isClient={isClient}
@@ -294,11 +290,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                 const Icon = n.icon;
                 return (
                   <Link
-                    key={n.to}
+                    key={`${n.to}:${n.tab ?? ""}`}
                     to={n.to}
                     search={n.tab ? { aba: n.tab } : undefined}
                     onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                    data-active={Active}
+                    className={`jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${
                       Active
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : "text-sidebar-foreground hover:bg-sidebar-accent/50"
@@ -334,7 +331,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   onClick={toggle}
                   title={theme === "dark" ? "Modo claro" : "Modo escuro"}
                 >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  {theme === "dark" ? <Sun key="sun" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" /> : <Moon key="moon" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" />}
                 </Button>
                 <Button
                   size="icon"
@@ -384,7 +381,7 @@ function PortalNavGroup({
   const { data: portalTasks = [] } = useTasks();
   const hasPendingRequests = isClient && portalTasks.some((task) => task.client_portal_visible && task.client_document_request && task.status !== "done");
   const item =
-    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
+    "jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
   if (!expanded)
     return (
       <div
@@ -397,11 +394,12 @@ function PortalNavGroup({
   return (
     <Collapsible defaultOpen={active} className="space-y-1">
       <CollapsibleTrigger
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
+        data-active={active}
+        className={`jacoby-nav-link group/portal flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
       >
         <PanelsTopLeft className="h-4 w-4" />
         <span className="flex-1 text-left">Portal do Cliente</span>
-        <ChevronDown className="h-4 w-4" />
+        <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/portal:rotate-180" />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-1 pl-4">
         {isClient && <Link to="/portal/movimentacoes" onClick={onNavigate} className={item}>

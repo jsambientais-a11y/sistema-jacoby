@@ -9,7 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { createLocalPreviewAccount, hasLocalPreviewAccounts, isStaticPreview, signInLocalPreviewAccount, useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import jacobyLogoTransparent from "@/assets/jacoby-logo-transparent.png";
+import jacobyLogoTransparent from "@/assets/jacoby-logo.svg";
+import jacobyLogoDark from "@/assets/jacoby-logo-dark.svg";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
@@ -88,7 +89,12 @@ function AuthPage() {
           <img
             src={jacobyLogoTransparent}
             alt="Jacoby Soluções"
-            className="h-auto w-52 object-contain object-left"
+            className="h-auto w-56 object-contain object-left dark:hidden"
+          />
+          <img
+            src={jacobyLogoDark}
+            alt="Jacoby Soluções"
+            className="hidden h-auto w-56 object-contain object-left dark:block"
           />
         </div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>

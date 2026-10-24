@@ -21,10 +21,15 @@ import { AttachmentPreviewDialog } from "@/components/AttachmentPreviewDialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { RichTextEditor } from "@/components/RichTextEditor";
 
+import { SaveProcessTemplate } from "@/components/SaveProcessTemplate";
+import { useProcessTemplates } from "@/hooks/use-process-templates";
+import { instantiateProcessSteps, type ProcessTemplate } from "@/lib/task-process-templates";
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   task?: Task | null;
+  initialTemplate?: ProcessTemplate | null;
   defaultColumnId?: string | null;
 }
 
@@ -40,13 +45,26 @@ const normalizeDueTime = (time: string | null) => time?.slice(0, 5) ?? "";
 interface Attachment { id: string; file_name: string; storage_path: string; mime_type: string | null; size_bytes: number | null; }
 const LINK_MIME = "text/uri-list";
 
-export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props) {
+export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialTemplate }: Props) {
   const qc = useQueryClient();
   const { user, isAdmin } = useAuth();
   const { data: cols } = useColumns();
   const { data: clients } = useClients();
   const { data: profiles } = useTaskProfiles();
 
+  const templates = useProcessTemplates();
+  const [templateDraft, setTemplateDraft] = useState<ProcessTemplate | null>(null);
+  const [templateStepDates, setTemplateStepDates] = useState<string[]>([]);
+  const applyTemplate = (model:ProcessTemplate) => {
+    setTemplateDraft({...structuredClone(model),steps:model.steps.map(step=>({...step,assigneeId:null,offsetDays:null}))});
+    setTemplateStepDates(model.steps.map(()=>""));
+    setTitle(model.title);setDescription("");
+    setPriority(model.priority as Task["priority"]);setStatus("todo");
+    setColumnId(defaultColumnId || cols?.[0]?.id || "");
+    setClientId("");setDueDate("");setDueTime("");setCollaboratorIds([]);
+    setAssigneeId(user?.id || "");
+    setClientPortalVisible(false);setClientDocumentRequest(false);setRecurrenceEnabled(false);
+  };
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<Task["status"]>("todo");
@@ -94,6 +112,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
 
   useEffect(() => {
     if (!open) return;
+    setTemplateDraft(null);
     if (task) {
       setTitle(task.title);
       setDescription(task.description ?? "");
@@ -115,7 +134,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
       loadRelated(task.id);
     } else {
       setTitle(""); setDescription(""); setStatus("todo"); setPriority("medium");
-      setColumnId(defaultColumnId ?? ""); setClientId(""); setAssigneeId(""); setCollaboratorIds([]); setDueDate(""); setDueTime(""); setClientPortalVisible(false); setClientDocumentRequest(false);
+      setColumnId(defaultColumnId ?? ""); setClientId(""); setAssigneeId(user?.id || ""); setCollaboratorIds([]); setDueDate(""); setDueTime(""); setClientPortalVisible(false); setClientDocumentRequest(false);
       currentTaskIdRef.current = null;
       setCurrentTaskId(null);
       setSubtasks([]); setComments([]); setAttachments([]); setNewCommentTitle(""); setNewComment(""); setOpenComments({});
@@ -127,8 +146,9 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
       setRecurrenceEnd("");
       setRecurrenceOffsets({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 });
     }
+    if (!task && initialTemplate) applyTemplate(initialTemplate);
 
-  }, [open, task, defaultColumnId]);
+  }, [open, task, defaultColumnId, initialTemplate]);
 
   const loadRelated = async (taskId: string) => {
     const [s, c, a] = await Promise.all([
@@ -236,6 +256,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
   const ensureTask = async (): Promise<string | null> => {
     const existingId = currentTaskIdRef.current ?? currentTaskId;
     if (existingId) return existingId;
+    if (templateDraft) { toast.message("Salve o novo processo para começar a atualizar as etapas e anexos."); return null; }
     const authenticated = await getAuthenticatedUser();
     if (!authenticated) return null;
     if (!title.trim()) { toast.error("Defina um título antes de adicionar itens"); return null; }
@@ -295,6 +316,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
     const authenticated = await getAuthenticatedUser();
     if (!authenticated) return;
     const existingTaskId = currentTaskIdRef.current ?? currentTaskId;
+    if (templateDraft && !clientId) { toast.error("Selecione o cliente do novo processo."); return; }
     if (!existingTaskId && !recurrenceEnabled && !dueDate) {
       toast.error("Prazo é obrigatório para criar uma tarefa");
       return;
@@ -308,6 +330,29 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
         await syncCollaborators(existingTaskId);
         await supabase.from("task_history").insert({ task_id: existingTaskId, user_id: authenticated.user.id, action: "updated" });
         if (!(await commitPendingSubtask(existingTaskId))) return;
+      } else if (templateDraft) {
+        const taskId=crypto.randomUUID();
+        const rows=instantiateProcessSteps(templateDraft,taskId,dueDate,true,()=>crypto.randomUUID()).map((row,index)=>({...row,due_date:deadlineToIso(templateStepDates[index] || "")}));
+        if (newSubtask.trim()) rows.push({id:crypto.randomUUID(),task_id:taskId,title:newSubtask.trim(),notes:null,done:false,position:rows.length,assignee_id:newSubtaskAssignee || null,due_date:deadlineToIso(newSubtaskDue)});
+        const knownPeople=new Set((profiles||[]).map(profile=>profile.id));
+        const created=await authenticated.client.from("tasks").insert({id:taskId,...payload,status:"todo",completed_at:null,created_by:authenticated.user.id});
+        if(created.error)throw created.error;
+        try {
+          if(rows.length) {
+            const inserted=await authenticated.client.from("subtasks").insert(rows.map(row=>({...row,assignee_id:row.assignee_id && knownPeople.has(row.assignee_id) ? row.assignee_id : null})));
+            if(inserted.error)throw inserted.error;
+          }
+          await syncCollaborators(taskId);
+        } catch(error) {
+          const rollback=await authenticated.client.from("tasks").delete().eq("id",taskId).eq("created_by",authenticated.user.id).select("id");
+          if(rollback.error || !rollback.data?.some(row=>row.id===taskId)) {
+            currentTaskIdRef.current=taskId;setCurrentTaskId(taskId);
+            throw new Error("O processo foi criado, mas algumas etapas falharam. Não crie novamente: confira a tarefa já criada.");
+          }
+          throw error;
+        }
+        currentTaskIdRef.current=taskId;setCurrentTaskId(taskId);
+        await authenticated.client.from("task_history").insert({task_id:taskId,user_id:authenticated.user.id,action:"created"});
       } else if (recurrenceEnabled) {
         if (newSubtask.trim()) {
           toast.error("Para subtarefas com responsável, crie uma tarefa única ou adicione após criar as recorrências.");
@@ -354,7 +399,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
         await syncCollaborators(taskId);
         if (!(await commitPendingSubtask(taskId))) return;
       }
-      toast.success(currentTaskId || task ? "Tarefa atualizada" : "Tarefa criada");
+      toast.success(templateDraft && !task ? "Novo processo criado a partir do modelo." : currentTaskId || task ? "Tarefa atualizada" : "Tarefa criada");
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["tasks"] }),
         qc.invalidateQueries({ queryKey: ["subtasks"] }),
@@ -545,10 +590,25 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{task ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3 pr-6"><DialogTitle>{task ? "Editar tarefa" : templateDraft ? "Novo processo a partir de modelo" : "Nova tarefa"}</DialogTitle>
+            {task && <SaveProcessTemplate taskId={task.id} title={task.title} disabled={saving}/>}</div>
         </DialogHeader>
 
         <div className="space-y-4">
+          {!task && !currentTaskId && <section className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <Label>Usar um modelo de processo</Label>
+            <Select value={templateDraft?.id || "__blank__"} onValueChange={id=>{
+              const model=templates.data?.find(item=>item.id===id);
+              if(model) applyTemplate(model);
+              else {setTemplateDraft(null);setTitle("");setDescription("");setAssigneeId(user?.id || "");}
+            }}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="__blank__">Criar sem modelo</SelectItem>{templates.data?.map(model=><SelectItem key={model.id} value={model.id}>{model.name} · {model.steps.length} etapas</SelectItem>)}</SelectContent></Select>
+            {templates.error && <p className="text-xs text-destructive">{templates.error.message}</p>}
+            {templateDraft ? <>
+              <p className="text-xs text-muted-foreground">Escolha um novo cliente e prazo. Todas as etapas começam pendentes e a descrição começa vazia. As tarefas criadas seguem o fluxo normal do sistema.</p>
+              <p className="text-xs text-muted-foreground">O responsável inicial do card é você. Defina os prazos e os responsáveis das subtarefas; os do modelo anterior não são copiados.</p>
+              <p className="text-xs text-muted-foreground">As etapas foram preenchidas na aba Subtarefas abaixo.</p>
+            </> : <p className="text-xs text-muted-foreground">Para salvar um padrão, abra uma tarefa existente e escolha Salvar como modelo.</p>}
+          </section>}
           <div className="space-y-2">
             <Label>Título *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="O que precisa ser feito?" />
@@ -652,7 +712,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
               </Select>
             </div>
             <div className="space-y-2">
-              <Label className="text-xs">Cliente</Label>
+              <Label className="text-xs">Cliente{templateDraft ? " *" : ""}</Label>
               <Select value={clientId || "none"} onValueChange={(v) => setClientId(v === "none" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="Nenhum" /></SelectTrigger>
                 <SelectContent>
@@ -709,7 +769,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
             />
           </div>
 
-          {!currentTaskId && (
+          {!currentTaskId && !templateDraft && (
             <div className="space-y-3 rounded-md border bg-muted/20 p-3">
               <label className="flex items-center gap-2 text-sm font-medium">
                 <Checkbox checked={recurrenceEnabled} onCheckedChange={(v) => setRecurrenceEnabled(!!v)} />
@@ -773,11 +833,21 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
 
             <Tabs defaultValue="subtasks">
               <TabsList>
-                <TabsTrigger value="subtasks">Subtarefas ({subtasks.length})</TabsTrigger>
+                <TabsTrigger value="subtasks">Subtarefas ({!currentTaskId && templateDraft ? templateDraft.steps.length : subtasks.length})</TabsTrigger>
                 <TabsTrigger value="comments">Comentários ({comments.length})</TabsTrigger>
                 <TabsTrigger value="files">Arquivos ({attachments.length})</TabsTrigger>
               </TabsList>
               <TabsContent value="subtasks" className="space-y-2">
+                {!currentTaskId && templateDraft && <>
+              <ol className="space-y-3">{templateDraft.steps.map((step,index)=><li key={index} className="space-y-2 rounded-md border bg-background p-3">
+                <div className="flex items-center gap-2"><span className="w-5 text-xs text-muted-foreground">{index+1}.</span><Input aria-label={`Etapa ${index+1} do novo processo`} className="h-8 text-sm" value={step.title} onChange={event=>setTemplateDraft({...templateDraft,steps:templateDraft.steps.map((item,i)=>i===index?{...item,title:event.target.value}:item)})}/></div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="space-y-1"><Label className="text-xs">Prazo da etapa</Label><Input type="date" aria-label={`Prazo da etapa ${index+1}`} value={templateStepDates[index] || ""} onChange={event=>setTemplateStepDates(dates=>templateDraft.steps.map((_,i)=>i===index?event.target.value:dates[i] || ""))}/></div>
+                  <div className="space-y-1"><Label className="text-xs">Responsável da etapa</Label><Select value={step.assigneeId || "none"} onValueChange={value=>setTemplateDraft({...templateDraft,steps:templateDraft.steps.map((item,i)=>i===index?{...item,assigneeId:value==="none"?null:value}:item)})}><SelectTrigger aria-label={`Responsável da etapa ${index+1}`}><SelectValue/></SelectTrigger><SelectContent><SelectItem value="none">Definir depois</SelectItem>{profiles?.map(profile=><SelectItem key={profile.id} value={profile.id}>{profile.full_name || profile.email}</SelectItem>)}</SelectContent></Select></div>
+                </div>
+              </li>)}</ol>
+              <p className="text-xs text-muted-foreground">Você pode definir cada etapa agora ou depois de criar o card. Ajustes deste roteiro não alteram o modelo salvo.</p>
+                </>}
                 {subtasks.map(s => {
                   const dueStr = s.due_date ? format(new Date(s.due_date), "yyyy-MM-dd") : "";
                   const historyOpen = subDueOpen[s.id];
@@ -986,7 +1056,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-              <Button onClick={save} disabled={saving}>{saving ? "Salvando…" : "Salvar"}</Button>
+              <Button onClick={save} disabled={saving}>{saving ? "Salvando…" : templateDraft && !currentTaskId ? "Criar processo" : "Salvar"}</Button>
             </div>
           </div>
         </div>

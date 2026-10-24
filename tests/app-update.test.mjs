@@ -9,3 +9,12 @@ test('recarga preserva rota parametros e BM sem acumular identificadores',()=>{c
 test('recarga suporta o prefixo da publicacao no GitHub Pages',()=>{assert.equal(new URL(updateReloadUrl('https://example.github.io/sistema-jacoby/financeiro','version')).pathname,'/sistema-jacoby/financeiro')});
 
 test('aviso fica atual depois da recarga e volta com nova publicacao',()=>{assert.equal(updateStatus(false,true,false,false),'available');assert.equal(updateStatus(false,true,true,false),'current');assert.equal(updateStatus(false,false,false,false),'checking');assert.equal(updateStatus(false,false,false,true),'current');assert.equal(updateStatus(true,false,false,true),'available')});
+
+test('notas com seções validam imagem e itens; seção inválida é descartada sem perder as notas',()=>{
+  const base={title:'T',summary:'S',changes:['a'],image:'updates/capa.svg',imageAlt:'capa'};
+  const ok=parseAppVersion({id:'v2',builtAt:'2026-10-24T12:00:00Z',releaseNotes:{...base,sections:[{title:'Financeiro',description:'d',image:'updates/financeiro.svg',imageAlt:'f',items:['baixa']}]}});
+  assert.equal(ok.releaseNotes.sections.length,1);
+  const bad=parseAppVersion({id:'v2',builtAt:'2026-10-24T12:00:00Z',releaseNotes:{...base,sections:[{title:'X',description:'d',image:'https://evil/x.svg',imageAlt:'x',items:['i']}]}});
+  assert.equal(bad.releaseNotes.title,'T');
+  assert.equal(bad.releaseNotes.sections,undefined);
+});

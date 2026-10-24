@@ -1,13 +1,70 @@
 {
-  "version": "2026.10.23.1",
-  "title": "Notas e serviços conectados ao faturamento",
-  "summary": "Receba a nota no BM e acompanhe o lançamento do serviço pelo Faturamento.",
+  "version": "2026.10.24.1",
+  "title": "Sistema de cara nova e aba Financeiro",
+  "summary": "Visual renovado, Gestão de Projetos mais organizada, PDF do BM redesenhado e uma nova aba com tudo que a Jacoby tem a receber.",
   "changes": [
-    "A nota aparece em Faturamento › Serviços assim que é anexada, mesmo antes de lançar o serviço.",
-    "O arquivo fica disponível para baixar, conferir e configurar pelo mesmo BM.",
-    "Ao selecionar o serviço, o formulário preenche o valor cadastrado e permite ajustar o preço.",
-    "Os anexos aceitam qualquer tipo de arquivo, com limite de 15 MB por arquivo."
+    "Novo logo da Jacoby, verde mais forte e nova fonte em todo o sistema, com botões, campos e menus mais responsivos.",
+    "Gestão de Projetos: busca por título, filtros organizados com etiquetas removíveis e Kanban, Lista e Calendário mais claros.",
+    "Boletim de Medição: PDF redesenhado, com logos sem distorção, nomes completos dos equipamentos e numeração de páginas.",
+    "Visualizar BM e os anexos agora abrem dentro do sistema, com botões para baixar ou abrir em nova aba.",
+    "Nova aba Financeiro: tudo que a Jacoby tem a receber, de todos os meses, com o detalhamento de cada valor e baixa do recebimento em um clique.",
+    "Correções: PDF de boletins da Matriz voltou a ser gerado e a reordenação de colunas do Kanban voltou a funcionar."
   ],
-  "image": "updates/notas-servicos.svg",
-  "imageAlt": "Ilustração do fluxo: nota anexada ao BM, serviço com valor cadastrado e conferência no faturamento."
+  "image": "updates/2026-10-24-capa.svg",
+  "imageAlt": "Capa da atualização com as quatro áreas renovadas: visual, projetos, boletim de medição e financeiro.",
+  "sections": [
+    {
+      "title": "Visual renovado",
+      "description": "A identidade da Jacoby ficou mais forte e nítida em todas as telas.",
+      "image": "updates/2026-10-24-visual.svg",
+      "imageAlt": "Menu lateral com o novo logo, paleta de cores verde e a nova fonte do sistema.",
+      "items": [
+        "Novo logo em vetor, sem fundo branco: nítido em qualquer tela, no tema escuro e nos PDFs.",
+        "Verde mais forte nos botões, menus e destaques, e nova fonte (Plus Jakarta Sans) em todo o sistema.",
+        "Botões, campos, menus e cartões reagem ao passar o mouse e ao clicar, deixando claro onde você está.",
+        "No menu recolhido e no celular aparece o símbolo da Jacoby (folhas e borboleta)."
+      ]
+    },
+    {
+      "title": "Gestão de Projetos",
+      "description": "Filtros organizados e as três visualizações mais fáceis de ler.",
+      "image": "updates/2026-10-24-projetos.svg",
+      "imageAlt": "Barra de filtros com busca e etiquetas de filtro, e colunas do Kanban com cartões.",
+      "items": [
+        "Busca por título da tarefa e filtros do mesmo tamanho; o filtro aplicado fica verde.",
+        "Cada filtro aplicado vira uma etiqueta com X para remover só ele, e Limpar filtros remove todos.",
+        "Kanban: colunas mais limpas, Adicionar tarefa em cada coluna e destaque ao arrastar um cartão.",
+        "Lista: linhas mais legíveis, com responsável, status e prazo vencido em destaque.",
+        "Calendário: dia de hoje em destaque, cor do cliente e +N mais para ver todas as tarefas do dia."
+      ]
+    },
+    {
+      "title": "Boletim de Medição e PDF",
+      "description": "O PDF do BM foi redesenhado e agora é o mesmo para a equipe e para o cliente.",
+      "image": "updates/2026-10-24-boletim.svg",
+      "imageAlt": "PDF do boletim com cabeçalho verde, cartões das empresas, tabela de itens e total destacado.",
+      "items": [
+        "Logos das empresas sem distorção, com até 3 empresas: gerenciadora, nota do serviço e tratamento.",
+        "Nomes completos dos equipamentos, total em destaque e Página X de Y em todas as páginas.",
+        "O Portal do Cliente passa a gerar exatamente o mesmo PDF que a equipe vê.",
+        "Visualizar BM, notas e anexos abrem dentro do sistema, com Baixar e Abrir em nova aba.",
+        "Abas do boletim com ícones e tabelas com cores para facilitar a leitura."
+      ]
+    },
+    {
+      "title": "Nova aba Financeiro",
+      "description": "Tudo que a Jacoby tem a receber, puxado do Faturamento, em um só lugar.",
+      "image": "updates/2026-10-24-financeiro.svg",
+      "imageAlt": "Tela do Financeiro com totais em aberto, vencido e recebido, lista de recebíveis e o botão Dar baixa.",
+      "items": [
+        "BM emitido pela Jacoby entra com o valor do cliente; BM de terceirizada entra com a comissão da Jacoby.",
+        "Filtro de período (por mês ou de uma data até outra) e um quadro mês a mês com o previsto e o recebido em cada mês. O mesmo filtro de período também está no Faturamento.",
+        "Mostra o que está em aberto em todos os meses, com os vencidos no topo e os que estão sem previsão.",
+        "Clique em qualquer lançamento para ver de onde vem o valor, item por item, com a conta feita e a conferência da nota.",
+        "Filtros por cliente, por quem fatura (Jacoby ou cada terceirizada) e por origem.",
+        "Dar baixa com a data em que o valor caiu na conta; a baixa aparece também no Faturamento.",
+        "Repasses que dependem de acordo pedem a conferência no Faturamento antes da baixa."
+      ]
+    }
+  ]
 }

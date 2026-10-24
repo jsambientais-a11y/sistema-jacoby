@@ -4,7 +4,6 @@ import { format, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -167,155 +166,187 @@ function ListPage() {
 
   return (
     <div className="space-y-4 p-6">
-      <header className="flex items-center justify-end gap-3 flex-wrap">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          <span className="font-display text-base font-bold tabular-nums text-foreground">{list.length}</span>{" "}
+          {list.length === 1 ? "tarefa" : "tarefas"}
+        </p>
         <Button
           onClick={() => {
             setEdit(null);
             setOpen(true);
           }}
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="h-4 w-4" />
           Nova tarefa
         </Button>
       </header>
       <TaskFilters filters={filters} onChange={setFilters} />
 
       {selectedTaskIds.size > 0 && (
-        <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-          <span>{selectedTaskIds.size} tarefa(s) selecionada(s)</span>
-          <Button size="sm" variant="destructive" onClick={() => void moveSelectedToTrash()}>
-            <Trash2 className="mr-2 h-4 w-4" />Mover para a lixeira
-          </Button>
+        <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-accent/50 px-3 py-2 text-sm animate-in fade-in slide-in-from-top-1 duration-200">
+          <span className="font-medium text-accent-foreground">
+            <span className="tabular-nums">{selectedTaskIds.size}</span> tarefa(s) selecionada(s)
+          </span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setSelectedTaskIds(new Set())}>
+              Cancelar
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => void moveSelectedToTrash()}>
+              <Trash2 className="h-4 w-4" />Mover para a lixeira
+            </Button>
+          </div>
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border bg-card">
-        <table className="w-full table-fixed border-collapse text-xs">
-          <thead className="border-b bg-muted/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <table className="w-full table-fixed border-collapse text-sm">
+          <thead className="sticky top-0 z-10 border-b bg-muted/60 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
             <tr>
-              <th className="w-10 border-r px-2 py-2 text-center">
+              <th className="w-10 px-3 py-2.5 text-center">
                 <Checkbox
                   aria-label="Selecionar todas as tarefas visíveis"
                   checked={allVisibleSelected}
                   onCheckedChange={(checked) => selectAllVisibleTasks(checked === true)}
                 />
               </th>
-              <th className="w-[29%] border-r px-2 py-2">Tarefa</th>
-              <th className="w-[11%] border-r px-2 py-2">Cliente</th>
-              <th className="w-[13%] border-r px-2 py-2">Responsável</th>
-              <th className="w-[12%] border-r px-2 py-2">Colaboradores</th>
-              <th className="w-[10%] border-r px-2 py-2">Status</th>
-              <th className="w-[10%] border-r px-2 py-2">Prioridade</th>
-              <th className="w-[10%] border-r px-2 py-2">Prazo</th>
-              <th className="w-[5%] px-1 py-2 text-center">Ações</th>
+              <th className="w-[29%] px-3 py-2.5">Tarefa</th>
+              <th className="w-[12%] px-3 py-2.5">Cliente</th>
+              <th className="w-[13%] px-3 py-2.5">Responsável</th>
+              <th className="w-[10%] px-3 py-2.5">Colaboradores</th>
+              <th className="w-[11%] px-3 py-2.5">Status</th>
+              <th className="w-[9%] px-3 py-2.5">Prioridade</th>
+              <th className="w-[10%] px-3 py-2.5">Prazo</th>
+              <th className="w-[6%] px-2 py-2.5 text-center"><span className="sr-only">Ações</span></th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-10 text-center text-muted-foreground">
-                  Nenhuma tarefa
+                <td colSpan={9} className="py-16 text-center">
+                  <p className="font-medium">Nenhuma tarefa encontrada</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Ajuste os filtros ou crie uma nova tarefa.</p>
                 </td>
               </tr>
             ) : list.map((t) => {
               const client = clients.find((c) => c.id === t.client_id);
               const assignee = profiles.find((p) => p.id === t.assignee_id);
               const statusColumn = columns.find((column) => column.id === t.column_id);
-              const overdue = t.due_date && isPast(new Date(t.due_date)) && t.status !== "done";
+              const done = t.completed_at !== null;
+              const overdue = t.due_date && isPast(new Date(t.due_date)) && t.status !== "done" && !done;
+              const selected = selectedTaskIds.has(t.id);
               const taskCollaborators = collaborators.filter((collaborator) => collaborator.task_id === t.id).map((collaborator) => profiles.find((profile) => profile.id === collaborator.collaborator_id)).filter(Boolean);
 
               return (
                 <tr
                   key={t.id}
-                  className="cursor-pointer border-t hover:bg-muted/30"
+                  className={`group cursor-pointer border-t transition-colors duration-150 ${selected ? "bg-accent/50" : "hover:bg-accent/30"} ${done ? "text-muted-foreground" : ""}`}
                   onClick={() => {
                     setEdit(t);
                     setOpen(true);
                   }}
                 >
-                  <td className="border-r px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
+                  <td className="px-3 py-2.5 text-center" onClick={(event) => event.stopPropagation()}>
                     <Checkbox
                       aria-label={`Selecionar tarefa ${t.title}`}
-                      checked={selectedTaskIds.has(t.id)}
+                      checked={selected}
                       onCheckedChange={(checked) => toggleTaskSelection(t.id, checked === true)}
                     />
                   </td>
-                  <td className="border-r px-2 py-2 font-medium"><span className="block truncate">{t.title}</span></td>
-                  <td className="border-r px-2 py-2">
+                  <td className="px-3 py-2.5">
+                    <span className={`block truncate font-medium transition-colors group-hover:text-primary ${done ? "line-through decoration-muted-foreground/50" : ""}`}>{t.title}</span>
+                  </td>
+                  <td className="px-3 py-2.5">
                     {client ? (
-                      <Badge variant="outline" style={{ borderColor: client.color ?? undefined }}>
-                        {client.name}
-                      </Badge>
+                      <span className="flex min-w-0 items-center gap-1.5 text-xs">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: client.color || "var(--primary)" }} />
+                        <span className="truncate">{client.name}</span>
+                      </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="border-r px-2 py-2 text-muted-foreground">
-                    {assignee?.full_name || assignee?.email || "—"}
+                  <td className="px-3 py-2.5">
+                    {assignee ? (
+                      <span className="flex min-w-0 items-center gap-2 text-xs">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={assignee.avatar_url || undefined} alt={assignee.full_name || assignee.email || "Usuário"} />
+                          <AvatarFallback className="bg-accent text-[9px] font-semibold text-accent-foreground">
+                            {(assignee.full_name || assignee.email || "?").slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate">{assignee.full_name || assignee.email}</span>
+                      </span>
+                    ) : <span className="text-muted-foreground">—</span>}
                   </td>
-                  <td className="border-r px-2 py-2">
+                  <td className="px-3 py-2.5">
                     {taskCollaborators.length > 0 ? (
-                      <div className="flex -space-x-1" title={taskCollaborators.map((p: any) => p.full_name || p.email).join(", ")}>
+                      <div className="flex -space-x-1.5" title={taskCollaborators.map((p: any) => p.full_name || p.email).join(", ")}>
                         {taskCollaborators.slice(0, 3).map((person: any) => {
                           const name = person.full_name || person.email || "Usuário";
-                          return <Avatar key={person.id} className="h-5 w-5 border border-background"><AvatarImage src={person.avatar_url || undefined} alt={name} /><AvatarFallback className="text-[8px]">{name.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>;
+                          return <Avatar key={person.id} className="h-6 w-6 border-2 border-card transition-transform group-hover:translate-x-0.5"><AvatarImage src={person.avatar_url || undefined} alt={name} /><AvatarFallback className="text-[9px]">{name.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>;
                         })}
-                        {taskCollaborators.length > 3 ? <span className="ml-1 text-[10px] text-muted-foreground">+{taskCollaborators.length - 3}</span> : null}
+                        {taskCollaborators.length > 3 ? <span className="ml-2 self-center text-[11px] text-muted-foreground">+{taskCollaborators.length - 3}</span> : null}
                       </div>
                     ) : <span className="text-muted-foreground">—</span>}
                   </td>
-                  <td className="border-r px-2 py-2">
+                  <td className="px-3 py-2.5">
                     {statusColumn ? (
-                      <Badge variant="outline" className="max-w-full truncate" style={{ borderColor: statusColumn.color || undefined, color: statusColumn.color || undefined }}>
-                        {statusColumn.name}
-                      </Badge>
+                      <span
+                        className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full px-2 py-0.5 text-[11px] font-medium"
+                        style={{ background: `color-mix(in oklab, ${statusColumn.color || "var(--primary)"} 14%, transparent)` }}
+                      >
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: statusColumn.color || "var(--primary)" }} />
+                        <span className="truncate">{statusColumn.name}</span>
+                      </span>
                     ) : <span className="text-muted-foreground">—</span>}
                   </td>
-                  <td className="border-r px-2 py-2">
+                  <td className="px-3 py-2.5">
                     {t.priority ? (
-                      <Badge
-                        variant="outline"
-                        style={{
-                          borderColor: priorityColors[t.priority],
-                          color: priorityColors[t.priority],
-                        }}
-                      >
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: priorityColors[t.priority] }}>
+                        <span className="h-2 w-2 rounded-full" style={{ background: priorityColors[t.priority] }} />
                         {priorityLabels[t.priority]}
-                      </Badge>
+                      </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className={`border-r px-2 py-2 whitespace-nowrap ${overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}>
-                    {t.due_date
-                      ? `${format(new Date(t.due_date), "dd MMM yyyy", { locale: ptBR })}${t.due_time ? ` · ${t.due_time.slice(0, 5)}` : ""}`
-                      : "—"}
+                  <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums">
+                    {t.due_date ? (
+                      <span className={overdue ? "inline-flex rounded-full bg-destructive/10 px-2 py-0.5 font-medium text-destructive" : "text-muted-foreground"}>
+                        {format(new Date(t.due_date), "dd MMM yyyy", { locale: ptBR })}
+                        {t.due_time ? ` · ${t.due_time.slice(0, 5)}` : ""}
+                      </span>
+                    ) : <span className="text-muted-foreground">—</span>}
                   </td>
                   <td className="px-1 py-2 text-center">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title="Concluir tarefa"
-                      disabled={t.completed_at !== null}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void completeTask(t.id);
-                      }}
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      title="Mover para a lixeira"
-                      className="text-destructive"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void moveToTrash(t);
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex justify-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 hover:text-primary"
+                        title="Concluir tarefa"
+                        disabled={done}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void completeTask(t.id);
+                        }}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Mover para a lixeira"
+                        className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void moveToTrash(t);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );

@@ -47,85 +47,94 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
   --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
 }
 
 :root {
   --radius: 0.75rem;
-  /* Identidade Jacoby: branco orgânico, verde folha e amarelo borboleta. */
-  --background: #fbfcf8;
-  --foreground: #334334;
+  /* Identidade Jacoby: branco orgânico, verde folha intenso e amarelo borboleta. */
+  --background: #fafcf8;
+  --foreground: #1e2d21;
   --card: #ffffff;
-  --card-foreground: #334334;
+  --card-foreground: #1e2d21;
   --popover: #ffffff;
-  --popover-foreground: #334334;
+  --popover-foreground: #1e2d21;
 
-  --primary: #347a2b;
+  --primary: #17803a;
   --primary-foreground: #ffffff;
-  --primary-glow: #66a947;
+  --primary-glow: #2fae4e;
 
-  --secondary: #f4f8ef;
-  --secondary-foreground: #42663a;
-  --muted: #f5f7f2;
-  --muted-foreground: #71806f;
-  --accent: #e2f2d7;
-  --accent-foreground: #326a2b;
+  --secondary: #eef7ec;
+  --secondary-foreground: #1f5d2e;
+  --muted: #f2f6f0;
+  --muted-foreground: #5f6f61;
+  --accent: #d6f1da;
+  --accent-foreground: #11692f;
 
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.98 0 0);
-  --success: #4e9b54;
+  --success: #1f9a49;
   --warning: #e6ad4b;
-  --info: #4da9d6;
+  --info: #3a9fd0;
 
-  --border: #e3e9df;
-  --input: #e8eee4;
-  --ring: #67a947;
+  --border: #dde7da;
+  --input: #d6e2d3;
+  --ring: #22a04a;
 
-  --chart-1: #347a2b;
-  --chart-2: #75a743;
+  --chart-1: #17803a;
+  --chart-2: #4caf3f;
   --chart-3: #e5b450;
   --chart-4: #db795e;
-  --chart-5: #66b5a6;
+  --chart-5: #3fae9a;
 
   --sidebar: #ffffff;
-  --sidebar-foreground: #334334;
-  --sidebar-primary: #347a2b;
+  --sidebar-foreground: #1e2d21;
+  --sidebar-primary: #17803a;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e0f1d5;
-  --sidebar-accent-foreground: #347a2b;
-  --sidebar-border: #e3e9df;
-  --sidebar-ring: #67a947;
+  --sidebar-accent: #cdeed3;
+  --sidebar-accent-foreground: #0f5f2a;
+  --sidebar-border: #dde7da;
+  --sidebar-ring: #22a04a;
 
-  --gradient-primary: linear-gradient(135deg, #347a2b, #4d963b);
-  --gradient-sidebar: linear-gradient(180deg, #ffffff, #fbfcf8);
-  --shadow-elegant: 0 10px 30px -10px color-mix(in oklab, var(--primary) 30%, transparent);
+  --gradient-primary: linear-gradient(135deg, #146f33, #22a04a);
+  --gradient-sidebar: linear-gradient(180deg, #ffffff, #f6faf4);
+  --shadow-elegant: 0 10px 30px -10px color-mix(in oklab, var(--primary) 35%, transparent);
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-lift: 0 8px 20px -10px color-mix(in oklab, var(--primary) 40%, transparent), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .dark {
-  --background: #172317;
-  --foreground: #edf4e9;
-  --card: #203120;
-  --card-foreground: #edf4e9;
-  --popover: #203120;
-  --popover-foreground: #edf4e9;
-  --primary: #82c665;
-  --primary-foreground: #102010;
-  --primary-glow: #a2dd7d;
-  --secondary: #293b29;
-  --secondary-foreground: #edf4e9;
-  --muted: #293b29;
-  --muted-foreground: #adbcaa;
-  --accent: #344f34;
-  --accent-foreground: #edf4e9;
-  --border: #3b503b;
-  --input: #3b503b;
-  --ring: #82c665;
-  --sidebar: #162216;
-  --sidebar-foreground: #d9e6d5;
-  --sidebar-accent: #2a3f2a;
-  --sidebar-border: #324632;
-  --gradient-sidebar: linear-gradient(180deg, #162216 0%, #1b2b1b 100%);
+  --background: #0f1a12;
+  --foreground: #e9f4ea;
+  --card: #16241a;
+  --card-foreground: #e9f4ea;
+  --popover: #16241a;
+  --popover-foreground: #e9f4ea;
+  --primary: #4cc96b;
+  --primary-foreground: #06200e;
+  --primary-glow: #7ee08f;
+  --secondary: #1c2e21;
+  --secondary-foreground: #e9f4ea;
+  --muted: #1c2e21;
+  --muted-foreground: #a3b8a6;
+  --accent: #1f3d27;
+  --accent-foreground: #d4f5da;
+  --border: #2a4130;
+  --input: #2f4835;
+  --ring: #4cc96b;
+  --success: #4cc96b;
+  --sidebar: #0d1810;
+  --sidebar-foreground: #d9eadb;
+  --sidebar-primary: #4cc96b;
+  --sidebar-primary-foreground: #06200e;
+  --sidebar-accent: #1d3a25;
+  --sidebar-accent-foreground: #c8f0d0;
+  --sidebar-border: #24382a;
+  --sidebar-ring: #4cc96b;
+  --gradient-sidebar: linear-gradient(180deg, #0d1810 0%, #122016 100%);
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.28), 0 1px 2px -1px rgb(0 0 0 / 0.24);
+  --shadow-lift: 0 10px 24px -12px rgb(76 201 107 / 0.35), 0 2px 6px -2px rgb(0 0 0 / 0.4);
 }
 
 /* Marca de entrada da navegação. No modo escuro, o fundo e o realce são
@@ -140,8 +149,8 @@
   text-align: center;
 }
 .jacoby-sidebar-brand__full {
-  width: min(100%, 11.75rem);
-  height: 5.7rem;
+  width: min(100%, 12.5rem);
+  height: 6.4rem;
   object-fit: contain;
   filter: drop-shadow(0 5px 10px color-mix(in srgb, var(--primary) 14%, transparent));
 }
@@ -153,9 +162,32 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+/* No tema escuro o menu usa a versão do logo com verdes clareados. */
 .dark .jacoby-sidebar-brand__full {
-  filter: drop-shadow(0 5px 13px rgb(130 198 101 / 0.25));
+  filter: drop-shadow(0 5px 13px rgb(76 201 107 / 0.18));
 }
+.jacoby-sidebar-brand__link {
+  display: block;
+  border-radius: 0.75rem;
+  transition: transform 300ms var(--ease-out);
+}
+.jacoby-sidebar-brand__link:hover { transform: scale(1.03); }
+.jacoby-sidebar-brand__link:active { transform: scale(0.98); }
+
+/* Marca compacta (menu recolhido e celular): o símbolo balança de leve no hover. */
+.jacoby-mark img { transition: transform 450ms var(--ease-out); transform-origin: 50% 80%; }
+.group:hover .jacoby-mark img { transform: rotate(-6deg) scale(1.08); }
+
+/* Itens do menu lateral: fundo desliza, ícone avança e o ativo ganha peso. */
+.jacoby-nav-link {
+  transition: background-color 180ms var(--ease-out), color 180ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.jacoby-nav-link svg { transition: transform 220ms var(--ease-out), color 180ms var(--ease-out); }
+.jacoby-nav-link:hover svg { transform: translateX(2px); }
+.jacoby-nav-link:active { transform: scale(0.98); }
+.jacoby-nav-link[data-active="true"] { font-weight: 600; }
+.jacoby-nav-link[data-active="true"] svg { color: var(--sidebar-primary); }
+.jacoby-nav-link:focus-visible { outline: 2px solid var(--sidebar-ring); outline-offset: 2px; }
 
 /* Os seletores de data são nativos do navegador; force ícones claros no tema escuro. */
 .dark input[type="date"]::-webkit-calendar-picker-indicator,
@@ -169,9 +201,25 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-feature-settings: "ss01", "cv11";
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    caret-color: var(--color-primary);
   }
-  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
+  h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.025em; font-weight: 700; text-wrap: balance; }
+  /* Valores e datas alinham por coluna em tabelas e números. */
+  table, input[type="number"], input[type="date"], .tabular-nums { font-variant-numeric: tabular-nums; }
+  ::selection { background: color-mix(in oklab, var(--color-primary) 22%, transparent); color: inherit; }
+  a:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; border-radius: 4px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -243,3 +291,53 @@
 @media (prefers-reduced-motion: reduce) {
   .jacoby-update-blink { animation: none; }
 }
+
+/* Boletim de Medição: acabamento visual sem alterar colunas nem fluxo. */
+.jacoby-billing-header::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-glow) 60%, var(--warning));
+}
+.jacoby-billing-tabs [role="tab"] {
+  gap: 0.45rem;
+  transition: color 160ms var(--ease-out), background-color 160ms var(--ease-out), box-shadow 200ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.jacoby-billing-tabs [role="tab"]:hover:not([data-state="active"]) { background: color-mix(in oklab, var(--card) 70%, transparent); color: var(--foreground); }
+.jacoby-billing-tabs [role="tab"]:active { transform: scale(0.97); }
+.jacoby-billing-tabs [role="tab"][data-state="active"] { color: var(--primary); font-weight: 600; box-shadow: var(--shadow-lift); }
+.jacoby-billing-tabs [role="tab"] svg { transition: transform 220ms var(--ease-out); }
+.jacoby-billing-tabs [role="tab"][data-state="active"] svg { transform: scale(1.1); }
+
+.jacoby-billing h2.font-semibold:not(.flex):not(.truncate)::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.55rem;
+  vertical-align: 0.1em;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent);
+}
+
+.jacoby-billing table { font-variant-numeric: tabular-nums; }
+.jacoby-billing thead tr { background: color-mix(in oklab, var(--primary) 7%, var(--muted)); border-bottom-color: color-mix(in oklab, var(--primary) 18%, var(--border)); }
+.jacoby-billing thead th {
+  color: var(--accent-foreground);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: normal;
+}
+.jacoby-billing thead th:first-child { border-top-left-radius: 0.6rem; }
+.jacoby-billing thead th:last-child { border-top-right-radius: 0.6rem; }
+.jacoby-billing tbody tr { transition: background-color 150ms var(--ease-out); }
+.jacoby-billing tbody tr:hover { background: color-mix(in oklab, var(--accent) 45%, transparent); }
+.jacoby-billing tbody tr:last-child { border-bottom-color: transparent; }
+.jacoby-billing tbody button svg { transition: transform 180ms var(--ease-out), color 150ms; }
+.jacoby-billing tbody button:hover svg { transform: scale(1.12); }
+.jacoby-billing tbody button:hover svg.lucide-pencil { color: var(--primary); }
+.jacoby-billing-form { box-shadow: var(--shadow-lift); border-color: color-mix(in oklab, var(--primary) 18%, var(--border)); }

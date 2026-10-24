@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" font-family="'Plus Jakarta Sans','Segoe UI',Arial,sans-serif">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14532d"/><stop offset="1" stop-color="#17803a"/></linearGradient></defs>
+<rect width="1200" height="600" rx="28" fill="url(#bg)"/>
+<rect y="586" width="900" height="14" fill="#2fae4e"/><rect x="900" y="586" width="300" height="14" fill="#f5a623"/>
+<g opacity=".12" fill="#fff"><path d="M1010 120c60 10 100 60 100 130-70-10-110-60-100-130z"/><path d="M1080 330c-50 0-90-40-90-100 60 0 90 40 90 100z"/></g>
+<text x="64" y="92" fill="#b2e0be" font-size="18" font-weight="700" letter-spacing="3">NOVIDADES · VERSÃO 2026.10.24</text>
+<text x="64" y="160" fill="#fff" font-size="54" font-weight="800">Sistema de cara nova</text>
+<text x="64" y="214" fill="#fff" font-size="54" font-weight="800">e aba Financeiro</text>
+<text x="64" y="262" fill="#d6eedc" font-size="21">Visual renovado, projetos mais organizados, PDF do BM redesenhado e contas a receber.</text>
+<g font-size="20" font-weight="700">
+<g transform="translate(64 330)"><rect width="250" height="200" rx="20" fill="#fff"/><circle cx="44" cy="48" r="24" fill="#e9f6ec"/><path d="M34 52c4-12 12-18 22-20-2 10-8 18-22 20z" fill="#17803a"/><circle cx="52" cy="38" r="5" fill="#f5a623"/><text x="24" y="118" fill="#1e2d21">Visual novo</text><text x="24" y="148" fill="#5f6f61" font-size="15" font-weight="500">Logo, cores e fontes</text><text x="24" y="172" fill="#5f6f61" font-size="15" font-weight="500">mais nítidos</text></g>
+<g transform="translate(334 330)"><rect width="250" height="200" rx="20" fill="#fff"/><circle cx="44" cy="48" r="24" fill="#e9f6ec"/><g fill="#17803a"><rect x="31" y="36" width="7" height="24" rx="2"/><rect x="41" y="36" width="7" height="16" rx="2"/><rect x="51" y="36" width="7" height="20" rx="2"/></g><text x="24" y="118" fill="#1e2d21">Projetos</text><text x="24" y="148" fill="#5f6f61" font-size="15" font-weight="500">Filtros, Kanban, Lista</text><text x="24" y="172" fill="#5f6f61" font-size="15" font-weight="500">e Calendário</text></g>
+<g transform="translate(604 330)"><rect width="250" height="200" rx="20" fill="#fff"/><circle cx="44" cy="48" r="24" fill="#e9f6ec"/><rect x="33" y="33" width="22" height="29" rx="3" fill="none" stroke="#17803a" stroke-width="3"/><path d="M38 43h12M38 50h12M38 56h8" stroke="#17803a" stroke-width="2.5"/><text x="24" y="118" fill="#1e2d21">Boletim de Medição</text><text x="24" y="148" fill="#5f6f61" font-size="15" font-weight="500">PDF redesenhado,</text><text x="24" y="172" fill="#5f6f61" font-size="15" font-weight="500">também no Portal</text></g>
+<g transform="translate(874 330)"><rect width="262" height="200" rx="20" fill="#fff"/><circle cx="44" cy="48" r="24" fill="#fff4e0"/><path d="M33 40h22v18H33z" fill="none" stroke="#d97706" stroke-width="3"/><circle cx="49" cy="49" r="3" fill="#d97706"/><text x="24" y="118" fill="#1e2d21">Financeiro (novo)</text><text x="24" y="148" fill="#5f6f61" font-size="15" font-weight="500">Tudo que há a receber</text><text x="24" y="172" fill="#5f6f61" font-size="15" font-weight="500">e baixa em um clique</text></g>
+</g>
+</svg>

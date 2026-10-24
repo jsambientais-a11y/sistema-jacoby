@@ -781,7 +781,7 @@ export function TaskCard({
 
   if (minimal) {
     return (
-      <div {...dragHandleProps} className="group flex min-h-[132px] w-full cursor-grab touch-none flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition hover:border-primary/40 hover:shadow active:cursor-grabbing" title={task.title || "Sem título"}>
+      <div {...dragHandleProps} className="group flex min-h-[132px] w-full cursor-grab touch-none flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-[transform,box-shadow,border-color] duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-lift)] active:cursor-grabbing" title={task.title || "Sem título"}>
         <div className="flex min-h-7 items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider" style={client?.color ? { background: client.color, color: clientText } : undefined}>
           <Users className="h-3 w-3 shrink-0" />
           <span className="truncate">{client?.name || "Sem cliente"}</span>

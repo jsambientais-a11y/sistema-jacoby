@@ -7,7 +7,9 @@ import {
   endOfWeek,
   format,
   isSameDay,
+  isPast,
   isSameMonth,
+  isWeekend,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -34,6 +36,7 @@ function CalendarPage() {
   const [filters, setFilters] = useState<TaskFilterValue>({});
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Task | null>(null);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 });
@@ -93,65 +96,89 @@ function CalendarPage() {
       return (subtaskDueDatesByTask.get(t.id) ?? []).some((due) => isSameDay(new Date(due), day));
     });
 
+  const monthTaskCount = days
+    .filter((day) => isSameMonth(day, cursor))
+    .reduce((sum, day) => sum + dayTasks(day).length, 0);
+
   return (
     <div className="space-y-4 p-6">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium capitalize">
-            {format(cursor, "MMMM yyyy", { locale: ptBR })}
-          </span>
-          <div className="flex gap-1">
-            <Button size="icon" variant="outline" onClick={() => setCursor(subMonths(cursor, 1))}>
+          <div className="flex items-center rounded-lg border bg-card p-0.5 shadow-sm">
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setCursor(subMonths(cursor, 1))} title="Mês anterior">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="outline" onClick={() => setCursor(addMonths(cursor, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" onClick={() => setCursor(new Date())}>
+            <Button variant="ghost" size="sm" className="h-8 px-3 text-xs" onClick={() => setCursor(new Date())}>
               Hoje
             </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setCursor(addMonths(cursor, 1))} title="Próximo mês">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div>
+            <h2 key={format(cursor, "yyyy-MM")} className="text-xl font-bold capitalize leading-tight animate-in fade-in slide-in-from-left-1 duration-200">
+              {format(cursor, "MMMM yyyy", { locale: ptBR })}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              <span className="tabular-nums">{monthTaskCount}</span> {monthTaskCount === 1 ? "tarefa no mês" : "tarefas no mês"}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => {
-              setEdit(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Tarefa
-          </Button>
-        </div>
+        <Button
+          onClick={() => {
+            setEdit(null);
+            setOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          Tarefa
+        </Button>
       </header>
       <TaskFilters filters={filters} onChange={setFilters} />
 
-      <div className="overflow-hidden rounded-lg border bg-card">
-        <div className="grid grid-cols-7 border-b bg-muted/40 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="grid grid-cols-7 border-b bg-muted/50 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
-            <div key={d} className="p-2 text-center">
+            <div key={d} className="px-3 py-2">
               {d}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7">
+        <div key={format(cursor, "yyyy-MM")} className="grid grid-cols-7 animate-in fade-in duration-300">
           {days.map((day) => {
+            const dayKey = day.toISOString();
             const inMonth = isSameMonth(day, cursor);
             const today = isSameDay(day, new Date());
             const ts = dayTasks(day);
+            const expanded = expandedDay === dayKey;
+            const shown = expanded ? ts : ts.slice(0, 3);
             return (
               <div
-                key={day.toISOString()}
-                className={`min-h-28 border-b border-r p-2 ${inMonth ? "" : "bg-muted/20 text-muted-foreground"}`}
+                key={dayKey}
+                className={`group min-h-32 border-b border-r p-1.5 transition-colors duration-150 [&:nth-child(7n)]:border-r-0 ${
+                  today ? "bg-accent/40" : inMonth ? (isWeekend(day) ? "bg-muted/25 hover:bg-accent/20" : "hover:bg-accent/20") : "bg-muted/40 text-muted-foreground"
+                }`}
               >
-                <div
-                  className={`mb-1 inline-grid h-6 min-w-6 place-items-center rounded-full text-xs ${today ? "bg-primary text-primary-foreground font-semibold" : ""}`}
-                >
-                  {format(day, "d")}
+                <div className="mb-1 flex items-center justify-between px-0.5">
+                  <span
+                    className={`inline-grid h-6 min-w-6 place-items-center rounded-full px-1 text-xs tabular-nums ${
+                      today ? "bg-primary font-semibold text-primary-foreground shadow-sm" : inMonth ? "font-medium" : ""
+                    }`}
+                  >
+                    {format(day, "d")}
+                  </span>
+                  {ts.length > 0 && (
+                    <span className="text-[10px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                      {ts.length}
+                    </span>
+                  )}
                 </div>
                 <div className="space-y-1">
-                  {ts.slice(0, 3).map((t) => {
+                  {shown.map((t) => {
                     const client = clients.find((c) => c.id === t.client_id);
+                    const color = client?.color || t.color || "var(--primary)";
+                    const done = t.completed_at !== null;
+                    const late = !done && t.due_date && isPast(new Date(t.due_date)) && !isSameDay(new Date(t.due_date), new Date());
                     return (
                       <button
                         key={t.id}
@@ -159,18 +186,28 @@ function CalendarPage() {
                           setEdit(t);
                           setOpen(true);
                         }}
-                        className="block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] hover:opacity-80"
-                        style={{
-                          background: (client?.color || t.color || "#1e3a8a") + "22",
-                          color: client?.color || t.color || "#1e3a8a",
-                        }}
+                        title={t.title}
+                        className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-medium transition-all duration-150 hover:-translate-y-px hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          done ? "text-muted-foreground line-through" : "text-foreground"
+                        }`}
+                        style={{ background: `color-mix(in oklab, ${color} 13%, transparent)` }}
                       >
-                        {t.due_time ? `${t.due_time.slice(0, 5)} · ${t.title}` : t.title}
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: late ? "var(--destructive)" : color }} />
+                        <span className="truncate">
+                          {t.due_time && <span className="tabular-nums text-muted-foreground">{t.due_time.slice(0, 5)} </span>}
+                          {t.title}
+                        </span>
                       </button>
                     );
                   })}
                   {ts.length > 3 && (
-                    <div className="text-[10px] text-muted-foreground">+{ts.length - 3} mais</div>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedDay(expanded ? null : dayKey)}
+                      className="w-full rounded-md px-1.5 py-0.5 text-left text-[10px] font-medium text-primary transition-colors hover:bg-accent/60"
+                    >
+                      {expanded ? "Mostrar menos" : `+${ts.length - 3} mais`}
+                    </button>
                   )}
                 </div>
               </div>

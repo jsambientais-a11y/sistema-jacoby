@@ -1,6 +1,8 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { KanbanSquare, List as ListIcon, Calendar as CalIcon } from "lucide-react";
 
+import { ProcessTemplatesLibrary } from "@/components/ProcessTemplatesLibrary";
+
 export const Route = createFileRoute("/_app/tasks")({
   component: TasksLayout,
 });
@@ -14,7 +16,7 @@ function TasksLayout() {
   ] as const;
   return (
     <div className="flex flex-col">
-      <div className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="sticky top-0 z-30 flex flex-wrap items-center gap-2 border-b bg-background/95 px-6 py-3 backdrop-blur">
         <span className="mr-2 text-sm font-medium text-muted-foreground">Visualizar como:</span>
         <div className="inline-flex rounded-lg border bg-muted/40 p-1">
           {views.map((v) => {
@@ -36,6 +38,7 @@ function TasksLayout() {
             );
           })}
         </div>
+        <ProcessTemplatesLibrary />
       </div>
       <Outlet />
     </div>

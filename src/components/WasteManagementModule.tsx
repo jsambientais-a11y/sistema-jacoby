@@ -1243,7 +1243,10 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       const image = new Image();
       image.src = jacobyLogo;
       await image.decode();
-      doc.addImage(image, "PNG", 15, 10, 41, 25);
+      // Mantém a proporção do logo dentro da área reservada.
+      const scale = Math.min(41 / image.naturalWidth, 25 / image.naturalHeight);
+      const logoW = image.naturalWidth * scale, logoH = image.naturalHeight * scale;
+      doc.addImage(image, "PNG", 15 + (41 - logoW) / 2, 10 + (25 - logoH) / 2, logoW, logoH);
     } catch {}
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(17);
@@ -2981,7 +2984,10 @@ function AnnualWasteReport({
       const image = new Image();
       image.src = jacobyLogo;
       await image.decode();
-      doc.addImage(image, "PNG", 14, 7, 42, 25);
+      // Mantém a proporção do logo dentro da área reservada.
+      const scale = Math.min(42 / image.naturalWidth, 25 / image.naturalHeight);
+      const logoW = image.naturalWidth * scale, logoH = image.naturalHeight * scale;
+      doc.addImage(image, "PNG", 14 + (42 - logoW) / 2, 7 + (25 - logoH) / 2, logoW, logoH);
     } catch {}
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");

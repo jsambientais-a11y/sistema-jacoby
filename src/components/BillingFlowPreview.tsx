@@ -19,6 +19,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PeriodFilter } from "@/components/PeriodFilter";
+import { inPeriod, type Period } from "@/lib/receivables";
 
 export type BillingFlowCategory = "rental" | "exchange" | "treatment" | "service";
 export type BillingFlowTracking = {
@@ -106,6 +108,12 @@ function isReceived(entry: BillingFlowEntry) {
   const receivedOn = entry.tracking ? entry.tracking.received_on : entry.legacyPaidOn;
   return Boolean(receivedOn && receivedOn <= new Date().toISOString().slice(0, 10));
 }
+// Data do filtro de período: quando foi recebido ou, se ainda não foi, a previsão de recebimento.
+function entryReferenceDate(entry: BillingFlowEntry) {
+  const receivedOn = entry.tracking ? entry.tracking.received_on : entry.legacyPaidOn;
+  if (receivedOn && receivedOn <= new Date().toISOString().slice(0, 10)) return receivedOn;
+  return (entry.tracking ? entry.tracking.expected_on : entry.legacyExpectedOn) ?? null;
+}
 function invoiceIssuedOn(entry: BillingFlowEntry) {
   return entry.tracking ? entry.tracking.invoice_issued_on : entry.legacyIssuedOn;
 }
@@ -129,12 +137,16 @@ export function BillingFlowPreview({
     const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
     return { cycle: params.get("mapCycle"), entry: params.get("mapEntry"), category: params.get("mapCategory") };
   });
-  const entries = mapContext.cycle ? allEntries.filter(entry => entry.cycleId === mapContext.cycle) : allEntries;
-  const bulletins = mapContext.cycle ? allBulletins.filter(bulletin => bulletin.id === mapContext.cycle) : allBulletins;
+  const scopedEntries = mapContext.cycle ? allEntries.filter(entry => entry.cycleId === mapContext.cycle) : allEntries;
+  const scopedBulletins = mapContext.cycle ? allBulletins.filter(bulletin => bulletin.id === mapContext.cycle) : allBulletins;
   const [category, setCategory] = useState<BillingFlowCategory | "all">(() => categories.some(item => item.id === mapContext.category) ? mapContext.category as BillingFlowCategory : "all");
   const [selectedId, setSelectedId] = useState(mapContext.entry || "");
   const [selectedResidue, setSelectedResidue] = useState("all");
   const [search, setSearch] = useState("");
+  const [period, setPeriod] = useState<Period>({ kind: "all" });
+  const entries = period.kind === "all" ? scopedEntries : scopedEntries.filter((entry) => inPeriod(entryReferenceDate(entry), period));
+  const periodCycles = new Set(entries.map((entry) => entry.cycleId));
+  const bulletins = period.kind === "all" ? scopedBulletins : scopedBulletins.filter((bulletin) => periodCycles.has(bulletin.id));
   const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
   const residuesByCycle = new Map(bulletins.map((item) => [item.id, uniqueResidueNames(item.residues || [])]));
   const residueOptions = uniqueResidueNames(bulletins.flatMap((item) => item.residues || []));
@@ -209,8 +221,11 @@ export function BillingFlowPreview({
             />
           </div>
         </div>
-        <div className="px-4 pt-4 sm:px-5">
-          <div className="max-w-sm space-y-1.5"><Label>Filtrar BMs por resíduo</Label>
+        <div className="flex flex-wrap items-end gap-4 px-4 pt-4 sm:px-5">
+          <div className="space-y-1.5"><Label>Período (previsão ou recebimento)</Label>
+            <PeriodFilter value={period} onChange={(value) => { setPeriod(value); setSelectedId(""); }} />
+          </div>
+          <div className="w-full max-w-sm space-y-1.5"><Label>Filtrar BMs por resíduo</Label>
             <Select value={selectedResidue} onValueChange={(value) => { setSelectedResidue(value); setSelectedId(""); }}>
               <SelectTrigger aria-label="Filtrar BMs por resíduo"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="all">Todos os resíduos</SelectItem>{residueOptions.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>

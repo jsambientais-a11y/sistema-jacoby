@@ -4,7 +4,7 @@ import { residueNameKey, uniqueResidueNames } from "@/lib/residue-names";
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Pencil, RotateCcw, Send, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Container, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Pencil, RotateCcw, Send, Trash2, Truck, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,9 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { canPreviewInline, usePdfPreview } from "@/components/PdfPreviewDialog";
+import { generateBulletinPdf } from "@/lib/bulletin-pdf";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
 
 type Branch = { id: string; name: string; cnpj: string | null; address: string | null };
 type Equipment = {
@@ -179,9 +180,10 @@ const serviceNameKey = (name?: string | null) =>
 const billingViewStorageKey = "jacoby:billing-v2:view";
 type BulletinListState = {
   clientId: string; branchId: string; limit: number;
-  status: "all" | "draft" | "closed"; search: string;
+  status: "all" | "draft" | "closed"; search: string; listResidue?: string;
 };
 type BillingViewState = {
+  listResidue?: string;
   returnToList?: BulletinListState | null;
   clientId?: string;
   periodStart?: string;
@@ -217,17 +219,6 @@ const equipmentName = (item?: Equipment) =>
   item
     ? [item.identification, item.name, item.equipment_type].filter(Boolean).join(" · ")
     : "Equipamento";
-const logoAsDataUrl = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) throw Error("Logo indisponível");
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-};
 
 function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
@@ -248,6 +239,7 @@ export function BillingV2Module() {
   const [cycleBranchId, setCycleBranchId] = useState(() => storedBillingView().cycleBranchId || "");
   const [cycleId, setCycleId] = useState(() => storedBillingView().cycleId || "");
   const [pendingResidueId, setPendingResidueId] = useState("all");
+  const [listResidue, setListResidue] = useState(() => storedBillingView().listResidue || "all");
   const [homeTab, setHomeTab] = useState<"boletins" | "pendentes">("boletins");
   const [tab, setTab] = useState(() => storedBillingView().tab || "locacoes");
   const [residueFilterId, setResidueFilterId] = useState(() => storedBillingView().residueFilterId || "all");
@@ -297,6 +289,7 @@ export function BillingV2Module() {
   const [isFinalizingBulk, setIsFinalizingBulk] = useState(false);
   const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
   const [publishDialog, setPublishDialog] = useState<PublishDialogTarget | null>(null);
+  const { openPdfPreview, pdfPreviewDialog } = usePdfPreview();
   const [emailMessage, setEmailMessage] = useState("");
   const [recipientPreview, setRecipientPreview] = useState<string[]>([]);
   const [outsourcedIssuerPreview, setOutsourcedIssuerPreview] = useState<{ emails: string[]; companyName: string } | null>(null);
@@ -328,7 +321,7 @@ export function BillingV2Module() {
   useEffect(() => {
     if (!billingViewRestored || typeof window === "undefined") return;
     const view = {
-      clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId, returnToList,
+      clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId, returnToList, listResidue,
     } satisfies BillingViewState;
     sessionStorage.setItem(billingViewStorageKey, JSON.stringify(view));
 
@@ -349,7 +342,7 @@ export function BillingV2Module() {
       url.hash = "";
     }
     window.history.replaceState(window.history.state, "", url);
-  }, [billingViewRestored, clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId, returnToList]);
+  }, [billingViewRestored, clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId, returnToList, listResidue]);
   const query = <T,>(key: unknown[], table: string, configure: (request: any) => any) =>
     useQuery({
       queryKey: key,
@@ -387,16 +380,40 @@ export function BillingV2Module() {
       return (data || []) as BillingEmailDelivery[];
     },
   });
+  const listResiduesQuery = useQuery({
+    queryKey: ["billing-v2-list-residue-catalog", "active-options"],
+    enabled: billingViewRestored && !cycleId,
+    queryFn: async () => {
+      const rows: {id:string;name:string;active:boolean}[] = [];
+      for (let offset=0; ;offset+=500) {
+        const result=await supabase.from("waste_residues").select("id,name,active").order("id").range(offset,offset+499);
+        if(result.error) throw result.error;
+        rows.push(...(result.data || []));
+        if((result.data || []).length<500) break;
+      }
+      return rows;
+    },
+  });
+  const listResidueOptions = uniqueResidueNames((listResiduesQuery.data || []).filter(item=>item.active));
+  useEffect(() => {
+    if (listResiduesQuery.isSuccess && listResidue !== "all" && !listResidueOptions.some(item=>item.id===listResidue)) {
+      setListResidue("all");
+      setSelectedBulkCycleIds([]);
+    }
+  }, [listResiduesQuery.data, listResiduesQuery.isSuccess, listResidue]);
+  const listResidueIds = (listResiduesQuery.data || []).filter(item=>residueNameKey(item.name)===listResidue).map(item=>item.id);
   const [allClientsLimit, setAllClientsLimit] = useState(50);
   const allClientsCyclesQuery = useQuery({
-    queryKey: ["billing-v2-all-clients-search", allClientsLimit, resultStatusFilter],
-    enabled: billingViewRestored && !clientId && !cycleId,
+    queryKey: ["billing-v2-all-clients-search", allClientsLimit, resultStatusFilter, listResidue, listResidueIds],
+    enabled: billingViewRestored && !clientId && !cycleId && (listResidue === "all" || listResiduesQuery.isSuccess),
     queryFn: async () => {
       const cycles: Cycle[] = [];
       let total = 0;
+      if(listResidue !== "all" && !listResidueIds.length) return {cycles,total};
       for (let offset=0;offset<allClientsLimit;offset+=500) {
         let request = (supabase.from("billing_v2_cycles" as any) as any)
-          .select("*", {count:"exact"}).eq("is_demo", false);
+          .select(listResidue === "all" ? "*" : "*,billing_v2_movements!inner(waste_residue_id)", {count:"exact"}).eq("is_demo", false);
+        if(listResidue !== "all") request=request.in("billing_v2_movements.waste_residue_id",listResidueIds);
         if (resultStatusFilter !== "all") request = request.eq("status",resultStatusFilter);
         const end = Math.min(offset+499,allClientsLimit-1);
         const result = await request.order("bulletin_number", {ascending:false}).order("id", {ascending:false})
@@ -1011,7 +1028,13 @@ export function BillingV2Module() {
     const { data, error } = await supabase.storage.from("movement-documents")
       .createSignedUrl(service.invoice_pdf_path, 600);
     if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o arquivo.");
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    if (service.invoice_pdf_name && !canPreviewInline(service.invoice_pdf_name)) return void window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    openPdfPreview({
+      title: service.invoice_pdf_name || "Arquivo de faturamento",
+      subtitle: "Arquivo de faturamento do serviço",
+      fileName: service.invoice_pdf_name || "arquivo-faturamento.pdf",
+      url: data.signedUrl,
+    });
   };
   const addPlacement = useMutation({
     mutationFn: async () => {
@@ -1638,7 +1661,7 @@ export function BillingV2Module() {
   }, [pendingMovementsQuery.data, pendingResidueId]);
   const rememberList = () => {
     if (!cycleId) setReturnToList({clientId,branchId:cycleBranchId,
-      limit:allClientsLimit,status:resultStatusFilter,search:bmSearch});
+      limit:allClientsLimit,status:resultStatusFilter,search:bmSearch,listResidue});
   };
   const backToBulletinList = () => {
     setCycleId(""); setFocusedMovementId("");
@@ -1646,6 +1669,7 @@ export function BillingV2Module() {
     setClientId(returnToList.clientId); setCycleBranchId(returnToList.branchId);
     setAllClientsLimit(returnToList.limit);
     setResultStatusFilter(returnToList.status); setBmSearch(returnToList.search);
+    setListResidue(returnToList.listResidue || "all");
     setSelectedBulkCycleIds([]);
   };
   const openRecentCycle = (item: Cycle) => {
@@ -1703,265 +1727,39 @@ export function BillingV2Module() {
   }, [selectedServiceId, selectedServiceStillAvailable]);
   const generatePdf = async (options?: { targetCycle: Cycle; placements: Placement[]; movements: Movement[]; services: CycleService[]; includeResidue?: string; bulletinLabel?: string; download?: boolean }) => {
     const printableCycle = options?.targetCycle || cycle;
-    const pdfPlacements = options?.placements || filteredPlacements;
-    const pdfMovements = options?.movements || filteredMovements;
-    const pdfServices = options?.services || filteredServices;
-    const pdfResidueId = options?.includeResidue ?? residueFilterId;
-    const printableBulletinNumber = options?.bulletinLabel || bulletinNumber(printableCycle?.bulletin_number);
-    const pdfClientName = clients.find((item) => item.id === printableCycle?.client_id)?.name || clientName;
-    const pdfClient = clients.find((item) => item.id === printableCycle?.client_id);
-    const pdfResidueName = pdfResidueId === "all" ? "Todos os resíduos" : residues.find((item) => item.id === pdfResidueId)?.name || "Resíduo selecionado";
-    const pdfTreatmentCompany = treatmentCompanyId && printableCycle?.id === cycle?.id ? outsourcedCompanies.find((company) => company.id === treatmentCompanyId) : undefined;
-    const pdfIssuerCompany = outsourcedCompanies.find((company) => company.id === printableCycle?.outsourced_company_id);
-    const pdfServiceCompany = pdfIssuerCompany || outsourcedCompanies.find((company) =>
-      pdfServices.some((service) => service.outsourced_company_id === company.id),
-    );
-    const confirmedMovements = pdfMovements.filter((item) => item.confirmed);
-    const branchIds = Array.from(new Set([...pdfPlacements, ...confirmedMovements].map((item) => item.branch_id).filter(Boolean)));
-    if (!branchIds.length && printableCycle?.branch_id) branchIds.push(printableCycle.branch_id);
-    if (!printableCycle || (!branchIds.length && !pdfServices.length)) {
-      toast.error("Registre uma locação, movimentação ou serviço antes de gerar o PDF.");
+    if (!printableCycle) return;
+    const printableClient = clients.find((item) => item.id === printableCycle.client_id);
+    try {
+      const pdf = await generateBulletinPdf({
+        cycle: printableCycle,
+        placements: options?.placements || filteredPlacements,
+        movements: options?.movements || filteredMovements,
+        services: options?.services || filteredServices,
+        residueId: options?.includeResidue ?? residueFilterId,
+        bulletinLabel: options?.bulletinLabel,
+        client: printableClient ? { ...printableClient, name: printableClient.name } : { name: clientName },
+        branches: [...branches, ...recentBranches],
+        equipment,
+        residues,
+        wasteServices: services,
+        outsourcedCompanies,
+        companyProfile: companyProfile ?? null,
+        treatmentCompanyId: treatmentCompanyId && printableCycle.id === cycle?.id ? treatmentCompanyId : null,
+      });
+      if (options?.download === false) return pdf;
+      const url = URL.createObjectURL(pdf.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = pdf.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      return pdf;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar o PDF.");
       return;
     }
-    const { jsPDF } = await import("jspdf");
-    const doc = new jsPDF();
-    const jacoby = companyProfile || { legal_name: "JACOBY SOLUÇÕES AMBIENTAIS", trade_name: "Jacoby Soluções Ambientais", cnpj: null, address: null, postal_code: null, phone: null, email: null, environmental_license: null, logo_url: null };
-    const issuerName = printableCycle.issuer_type === "outsourced" && pdfIssuerCompany
-      ? pdfIssuerCompany.trade_name || pdfIssuerCompany.legal_name
-      : jacoby.trade_name || jacoby.legal_name;
-    const companyDetails = (company: { cnpj?: string | null; address?: string | null; postal_code?: string | null; phone?: string | null; environmental_license?: string | null }) =>
-      [company.cnpj && `CNPJ: ${company.cnpj}`, company.address, company.postal_code && `CEP: ${company.postal_code}`, company.phone && `Fone: ${company.phone}`, company.environmental_license && `Licença: ${company.environmental_license}`].filter(Boolean).join(" · ");
-    const drawLogo = async (url: string | null | undefined, x: number, y: number, w: number, h: number, fallback = false) => {
-      try {
-        if (url) doc.addImage(await logoAsDataUrl(url), "PNG", x, y, w, h);
-        else if (fallback) { const image = new Image(); image.src = jacobyLogo; await image.decode(); doc.addImage(image, "PNG", x, y, w, h); }
-      } catch {}
-    };
-    const drawHeader = async (pageBranch: Branch | null, pageIndex: number) => {
-      if (pageIndex) doc.addPage();
-      doc.setFillColor(62, 122, 79); doc.rect(0, 0, 210, 42, "F");
-      doc.setLineWidth(0.35);
-      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
-      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-      doc.text(`Período: ${new Date(`${printableCycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${printableCycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${printableBulletinNumber}`, 105, 29, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(13);
-      const clientHeaderMaxWidth = 170;
-      const clientHeaderName = (() => {
-        const name = pdfClientName.toUpperCase();
-        if (doc.getTextWidth(name) <= clientHeaderMaxWidth) return name;
-        const ellipsis = "...";
-        let abbreviated = name;
-        while (abbreviated.length && doc.getTextWidth(`${abbreviated}${ellipsis}`) > clientHeaderMaxWidth) abbreviated = abbreviated.slice(0, -1);
-        return `${abbreviated.trimEnd()}${ellipsis}`;
-      })();
-      doc.text(clientHeaderName, 105, 36, { align: "center" });
-      if (pdfResidueId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${pdfResidueName}`, 105, 40, { align: "center" }); }
-      const invoiceIssuerNotice = `NOTA FISCAL SERÁ EMITIDA PELA ${printableCycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`;
-      doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
-      const invoiceIssuerNoticeLines = doc.splitTextToSize(invoiceIssuerNotice, 168);
-      const invoiceIssuerNoticeHeight = Math.max(11, 6 + invoiceIssuerNoticeLines.length * 4);
-      const noticeY = 46;
-      doc.setFillColor(236, 246, 228); doc.roundedRect(14, noticeY, 182, invoiceIssuerNoticeHeight, 2, 2, "F");
-      const invoiceIssuerNoticeY = noticeY + (invoiceIssuerNoticeHeight - (invoiceIssuerNoticeLines.length - 1) * 4) / 2 + 1.2;
-      doc.text(invoiceIssuerNoticeLines, 105, invoiceIssuerNoticeY, { align: "center", lineHeightFactor: 1.1 });
-      const companyY = noticeY + invoiceIssuerNoticeHeight + 5;
-      type HeaderParty = { role: string; name: string; details: string; logo: string | null; fallback?: boolean };
-      const parties: HeaderParty[] = [
-        { role: "Gerenciadora", name: jacoby.trade_name || jacoby.legal_name, details: companyDetails(jacoby), logo: jacoby.logo_url, fallback: true },
-      ];
-      const treatmentRole = `Tratamento${pdfResidueId !== "all" ? ` · ${pdfResidueName}` : ""}`;
-      if (pdfServiceCompany && pdfTreatmentCompany && pdfServiceCompany.id === pdfTreatmentCompany.id) {
-        parties.push({ role: `Nota do serviço · ${treatmentRole}`, name: pdfServiceCompany.trade_name || pdfServiceCompany.legal_name, details: companyDetails(pdfServiceCompany), logo: pdfServiceCompany.logo_url || null });
-      } else {
-        if (pdfServiceCompany) parties.push({ role: "Nota do serviço", name: pdfServiceCompany.trade_name || pdfServiceCompany.legal_name, details: companyDetails(pdfServiceCompany), logo: pdfServiceCompany.logo_url || null });
-        if (pdfTreatmentCompany) parties.push({ role: treatmentRole, name: pdfTreatmentCompany.trade_name || pdfTreatmentCompany.legal_name, details: companyDetails(pdfTreatmentCompany), logo: pdfTreatmentCompany.logo_url || null });
-      }
-      const cardGap = 4;
-      const cardWidth = (182 - (parties.length - 1) * cardGap) / parties.length;
-      const cardHeight = 40;
-      for (let i = 0; i < parties.length; i++) {
-        const party = parties[i];
-        const cardX = 14 + i * (cardWidth + cardGap);
-        const cx = cardX + cardWidth / 2;
-        doc.setFillColor(247, 250, 246); doc.roundedRect(cardX, companyY, cardWidth, cardHeight, 3, 3, "F");
-        doc.setDrawColor(184, 210, 176); doc.roundedRect(cardX, companyY, cardWidth, cardHeight, 3, 3, "S");
-        const logoBoxW = Math.min(cardWidth - 10, 32);
-        const logoBoxX = cardX + (cardWidth - logoBoxW) / 2;
-        doc.setFillColor(255, 255, 255); doc.roundedRect(logoBoxX, companyY + 3, logoBoxW, 13, 2, 2, "F");
-        doc.setDrawColor(223, 236, 219); doc.roundedRect(logoBoxX, companyY + 3, logoBoxW, 13, 2, 2, "S");
-        await drawLogo(party.logo, logoBoxX + 2, companyY + 4.5, logoBoxW - 4, 10, party.fallback);
-        doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(6.3);
-        doc.text(doc.splitTextToSize(party.role.toUpperCase(), cardWidth - 6)[0], cx, companyY + 21, { align: "center" });
-        doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(7.6);
-        doc.text(doc.splitTextToSize(party.name, cardWidth - 6)[0], cx, companyY + 26.5, { align: "center" });
-        doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(5.8);
-        doc.text(doc.splitTextToSize(party.details || "Dados cadastrais não informados.", cardWidth - 6).slice(0, 3), cx, companyY + 31, { align: "center" });
-      }
-      let y = companyY + cardHeight + 5;
-      const generatorName = pageBranch?.name || pdfClient?.trade_name || pdfClient?.legal_name || `${pdfClientName} (Matriz)`;
-      const generatorDetails = pageBranch
-        ? [pageBranch.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch.address].filter(Boolean).join(" · ")
-        : [
-            pdfClient?.cnpj && `CNPJ: ${pdfClient.cnpj}`,
-            pdfClient?.address,
-            pdfClient?.phone && `Fone: ${pdfClient.phone}`,
-            pdfClient?.email,
-          ].filter(Boolean).join(" · ");
-      doc.setFillColor(244, 248, 242); doc.roundedRect(14, y, 182, 20, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, y, 182, 20, 3, 3, "S");
-      doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Empresa geradora / unidade: ${generatorName}`, 20, y + 7);
-      doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2); doc.text(doc.splitTextToSize(generatorDetails || "Dados cadastrais não informados.", 168).slice(0, 2), 20, y + 13);
-      return y + 26;
-    };
-    const printableBranchIds = branchIds.length ? branchIds : ["__matriz__"];
-    for (const [index, id] of printableBranchIds.entries()) {
-      const pageBranch = id === "__matriz__" ? null : branch(id);
-      let y = await drawHeader(pageBranch, index);
-      const branchPlacements = id === "__matriz__" ? pdfPlacements.filter((item) => !item.branch_id) : pdfPlacements.filter((item) => item.branch_id === id);
-      const branchMoves = id === "__matriz__" ? confirmedMovements.filter((item) => !item.branch_id) : confirmedMovements.filter((item) => item.branch_id === id);
-      const treatmentByResidue = branchMoves.reduce<Record<string, { residueId: string; weight: number; value: number }>>((acc, item) => {
-        const rate = Number(item.treatment_rate || 0);
-        const key = `${item.waste_residue_id || "sem-residuo"}:${rate}`;
-        acc[key] = acc[key] || { residueId: item.waste_residue_id || "sem-residuo", weight: 0, value: 0 };
-        acc[key].weight += Number(item.weight_kg || 0);
-        acc[key].value += Number(item.weight_kg || 0) * rate;
-        return acc;
-      }, {});
-      const items = [
-        ...branchPlacements.map((item) => ({
-          name: `Locação · ${equipmentName(equipment.find((entry) => entry.id === item.equipment_id))}`,
-          type: "Equipamento",
-          quantity: `${number(Number(item.quantity))} un.`,
-          unitValue: Number(item.monthly_rental_rate || 0),
-          value: Number(item.quantity) * Number(item.monthly_rental_rate || 0),
-        })),
-        ...branchMoves.filter((item) => Number(item.removed_quantity || 0) > 0).map((item) => ({
-          name: `Troca · ${equipmentName(equipment.find((entry) => entry.id === item.equipment_id || ""))}`,
-          type: item.replacement_equipment_id ? `Entrada: ${equipmentName(equipment.find((entry) => entry.id === item.replacement_equipment_id || ""))}` : "Troca",
-          quantity: `${number(Number(item.removed_quantity))} un.`,
-          unitValue: Number(item.exchange_rate || 0),
-          value: Number(item.removed_quantity || 0) * Number(item.exchange_rate || 0),
-        })),
-        ...Object.values(treatmentByResidue).filter((item) => item.weight > 0).map((item) => ({
-          name: residues.find((entry) => entry.id === item.residueId)?.name || "Tratamento de resíduos",
-          type: "Resíduo",
-          quantity: `${number(item.weight)} kg`,
-          unitValue: item.weight ? item.value / item.weight : 0,
-          value: item.value,
-        })),
-        ...(index === 0
-          ? pdfServices.map((item) => ({
-              name: services.find((entry) => entry.id === item.waste_service_id)?.name || "Serviço",
-              type: "Serviço terceirizado",
-              quantity: `${number(Number(item.quantity || 1))} un.`,
-              unitValue: Number(item.unit_amount ?? item.amount ?? 0),
-              value: Number(item.amount || 0),
-            }))
-          : []),
-      ];
-      const observations = [
-        ...branchPlacements.filter((item) => item.observation?.trim()).map((item) => ({
-          label: `Locação · ${equipmentName(equipment.find((entry) => entry.id === item.equipment_id))}`,
-          text: item.observation!.trim(),
-        })),
-        ...branchMoves.filter((item) => item.observation?.trim()).map((item) => ({
-          label: `Movimentação${item.service_order ? ` · OS ${item.service_order}` : ""}`,
-          text: item.observation!.trim(),
-        })),
-        ...(index === 0 ? pdfServices.filter((item) => item.observation?.trim()).map((item) => ({
-          label: `Serviço · ${services.find((entry) => entry.id === item.waste_service_id)?.name || "Serviço"}`,
-          text: item.observation!.trim(),
-        })) : []),
-      ];
-      const drawContinuationTitle = (title: string) => {
-        doc.setFillColor(244, 248, 242);
-        doc.roundedRect(14, 10, 182, 8, 2, 2, "F");
-        doc.setTextColor(35, 96, 58);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8);
-        doc.text(title, 20, 15.5);
-      };
-      const drawItemsHeader = () => {
-        doc.setFillColor(35, 96, 58);
-        doc.roundedRect(14, y, 182, 9, 2, 2, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(7.2);
-        doc.text("ITEM", 20, y + 6);
-        doc.text("TIPO", 74, y + 6);
-        doc.text("QUANTIDADE", 108, y + 6);
-        doc.text("VALOR UNIT.", 139, y + 6);
-        doc.text("TOTAL", 190, y + 6, { align: "right" });
-        y += 9;
-      };
-      drawItemsHeader();
-      items.forEach((item, itemIndex) => {
-        if (y + 10 > 266) {
-          doc.addPage();
-          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${printableBulletinNumber} · ITENS`);
-          y = 23;
-          drawItemsHeader();
-        }
-        if (itemIndex % 2 === 0) {
-          doc.setFillColor(247, 250, 246);
-          doc.rect(14, y, 182, 10, "F");
-        }
-        doc.setTextColor(39, 61, 45);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.6);
-        doc.text(doc.splitTextToSize(item.name, 50)[0], 20, y + 6.5);
-        doc.setTextColor(93, 112, 97);
-        doc.text(doc.splitTextToSize(item.type, 28)[0], 74, y + 6.5);
-        doc.text(item.quantity, 108, y + 6.5);
-        doc.text(money(item.unitValue), 139, y + 6.5);
-        doc.setTextColor(39, 61, 45);
-        doc.text(money(item.value), 190, y + 6.5, { align: "right" });
-        y += 10;
-      });
-      const branchTotal = items.reduce((sum, item) => sum + item.value, 0);
-      if (observations.length) {
-        const observationLines = observations.flatMap((item) => doc.splitTextToSize(`${item.label}: ${item.text}`, 168));
-        const observationHeight = 8 + observationLines.length * 3.6;
-        if (y + observationHeight + 30 > 272) {
-          doc.addPage();
-          y = 18;
-          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${printableBulletinNumber} · OBSERVAÇÕES E TOTAL`);
-        }
-        doc.setFillColor(255, 248, 225);
-        doc.setDrawColor(224, 184, 72);
-        doc.roundedRect(14, y, 182, observationHeight, 2, 2, "FD");
-        doc.setTextColor(126, 86, 10);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(7.5);
-        doc.text("OBSERVAÇÕES", 20, y + 5.5);
-        doc.setTextColor(79, 67, 36);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.2);
-        doc.text(observationLines, 20, y + 10.5, { lineHeightFactor: 1.2 });
-        y += observationHeight + 5;
-      }
-      y += 8;
-      doc.setFillColor(232, 244, 226);
-      doc.roundedRect(118, y, 78, 18, 3, 3, "F");
-      doc.setTextColor(35, 96, 58);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.text("TOTAL DO DEMONSTRATIVO", 124, y + 7);
-      doc.setFontSize(14);
-      doc.text(money(branchTotal), 190, y + 14, { align: "right" });
-      doc.setDrawColor(153, 190, 125);
-      doc.setLineWidth(0.35);
-      doc.line(14, 274, 196, 274);
-      doc.setTextColor(93, 112, 97);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 20, 283);
-      doc.text("Soluções que respeitam o meio ambiente.", 196, 283, { align: "right" });
-    }
-    const fileName = `boletim-${printableBulletinNumber.replace("#", "")}-${pdfClientName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
-    if (options?.download === false) return { fileName, blob: doc.output("blob") };
-    doc.save(fileName);
-    return { fileName };
   };
   const filteredEmissionPreview = (() => {
     if (!cycle || residueFilterId === "all") return null;
@@ -2024,7 +1822,10 @@ export function BillingV2Module() {
     return [...totals.entries()];
   };
   const residuePreview = (id: string) => <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Resíduos movimentados">{residueSummary(id).map(([residueId, item]) => <span key={residueId} className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}{!residueSummary(id).length && <span className="text-xs text-muted-foreground">{residuePreviewQuery.isLoading ? "Carregando resíduos…" : residuePreviewQuery.error ? "Não foi possível carregar os resíduos" : "Sem movimentações de resíduo"}</span>}</div>;
+  const matchesListResidue = (id:string) => listResidue === "all" || residueSummary(id).some(([key])=>key===listResidue);
+  const filteredRecentCycles = recentDisplayCycles.filter(item=>matchesListResidue(item.id));
   const resultCycles = (clientId ? clientCycles : (allClientsCyclesQuery.data?.cycles || []))
+    .filter(item=>!clientId || matchesListResidue(item.id))
     .filter((item) => !cycleBranchId || branchKey(item.branch_id) === cycleBranchId)
     .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
     .slice()
@@ -2139,16 +1940,22 @@ export function BillingV2Module() {
         download: false,
       });
       if (!pdf?.blob) throw new Error("Não foi possível gerar o PDF deste boletim.");
-      const url = URL.createObjectURL(pdf.blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const targetClient = clients.find((item) => item.id === targetCycle.client_id)?.name || clientName;
+      openPdfPreview({
+        title: `Boletim ${label || bulletinNumber(targetCycle.bulletin_number)}`,
+        subtitle: `${targetClient} · ${new Date(`${targetCycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${targetCycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`,
+        fileName: pdf.fileName,
+        url: URL.createObjectURL(pdf.blob),
+        revokeOnClose: true,
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível abrir o boletim.");
     }
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6">
+    <div className="jacoby-billing mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6">
+      {pdfPreviewDialog}
       {!cycleId && (
         <header>
           <p className="text-sm font-medium text-primary">Portal do Cliente</p>
@@ -2160,8 +1967,8 @@ export function BillingV2Module() {
       )}
       {!cycleId && (
         <Tabs value={homeTab} onValueChange={(value) => setHomeTab(value as "boletins" | "pendentes")}>
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-xl bg-muted/50 p-1">
-            <TabsTrigger value="boletins" className="rounded-lg data-[state=active]:shadow-sm">Boletins</TabsTrigger>
+          <TabsList className="jacoby-billing-tabs h-auto w-full flex-wrap justify-start gap-1 rounded-xl bg-muted/50 p-1">
+            <TabsTrigger value="boletins" className="rounded-lg data-[state=active]:shadow-sm"><ClipboardList className="h-4 w-4" />Boletins</TabsTrigger>
             <TabsTrigger value="pendentes" className="rounded-lg data-[state=active]:shadow-sm">
               Movimentações pendentes
               {pendingMovementGroups.length > 0 && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{pendingMovementGroups.length}</span>}
@@ -2171,7 +1978,7 @@ export function BillingV2Module() {
       )}
       {!cycleId && homeTab === "boletins" && (
       <Card className="p-5">
-        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
           <Field label="Cliente">
             <Select
               value={clientId || "__all_clients__"}
@@ -2203,6 +2010,13 @@ export function BillingV2Module() {
                 <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>{branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
               </SelectContent>
             </Select>}
+          </Field>
+          <Field label="Resíduo">
+            <Select value={listResidue} onValueChange={value=>{setListResidue(value);setAllClientsLimit(50);setSelectedBulkCycleIds([]);}} disabled={listResiduesQuery.isLoading || !!listResiduesQuery.error}>
+              <SelectTrigger aria-label="Filtrar boletins por resíduo"><SelectValue placeholder="Todos os resíduos"/></SelectTrigger>
+              <SelectContent className="max-h-72"><SelectItem value="all">Todos os resíduos</SelectItem>{listResidueOptions.map(item=><SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+            </Select>
+            {listResiduesQuery.error && <p className="text-xs text-destructive">Não foi possível carregar os resíduos.</p>}
           </Field>
           <div className="flex flex-wrap gap-2">
 
@@ -2248,7 +2062,7 @@ export function BillingV2Module() {
             )}
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
-                {recentDisplayCycles.length ? recentDisplayCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}{residuePreview(item.id)}</td><td className="p-2 font-medium"><span className="block max-w-52 truncate" title={clients.find((client) => client.id === item.client_id)?.name || "Cliente"}>{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</span></td><td className="p-2"><span className="block max-w-52 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">{bmSearching ? "Nenhum boletim encontrado com esse número." : "Nenhum boletim criado ainda."}</td></tr>}
+                {filteredRecentCycles.length ? filteredRecentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}{residuePreview(item.id)}</td><td className="p-2 font-medium"><span className="block max-w-52 truncate" title={clients.find((client) => client.id === item.client_id)?.name || "Cliente"}>{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</span></td><td className="p-2"><span className="block max-w-52 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">{listResidue !== "all" ? (residuePreviewQuery.isFetching ? "Carregando resíduos dos boletins…" : "Nenhum boletim recente corresponde ao resíduo selecionado. Consulte o resultado da busca.") : bmSearching ? "Nenhum boletim encontrado com esse número." : "Nenhum boletim criado ainda."}</td></tr>}
               </tbody></table>
             </div>
           </Card>
@@ -2372,14 +2186,15 @@ export function BillingV2Module() {
         </Card>
       ) : (
         <>
-          <Card className="sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-primary/15 p-3 shadow-elegant supports-[backdrop-filter]:bg-card/80 supports-[backdrop-filter]:backdrop-blur">
+          <Card className="jacoby-billing-header sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 overflow-hidden border-primary/20 p-3 shadow-elegant supports-[backdrop-filter]:bg-card/85 supports-[backdrop-filter]:backdrop-blur">
             <Button variant="outline" size="sm" className="shrink-0" onClick={backToBulletinList}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               {homeTab === "pendentes" ? "Voltar às pendências" : "Voltar aos boletins"}
             </Button>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className="text-lg font-bold tracking-tight text-primary">{filteredEmissionPreview ? `#${filteredEmissionPreview}` : bulletinNumber(cycle?.bulletin_number)}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cycle?.status === "closed" ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-800"}`}>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${cycle?.status === "closed" ? "bg-primary/12 text-primary ring-1 ring-primary/25" : "bg-amber-100 text-amber-800 ring-1 ring-amber-300/60 dark:bg-amber-400/15 dark:text-amber-200"}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${cycle?.status === "closed" ? "bg-primary" : "animate-pulse bg-amber-500"}`} />
                 {cycle?.status === "closed" ? "Finalizado" : "Em edição"}
               </span>
               <span className="min-w-0 truncate text-sm text-muted-foreground" title={`${clientName} · ${cycle?.branch_id ? (branch(cycle.branch_id)?.name || "Boletim legado") : "Matriz (sem filial/pátio)"}`}>
@@ -2393,11 +2208,11 @@ export function BillingV2Module() {
             value={tab === "historico" ? "locacoes" : tab}
             onValueChange={setTab}
           >
-            <TabsList className="h-auto w-full flex-wrap justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1">
-              <TabsTrigger value="locacoes" className="rounded-lg data-[state=active]:shadow-sm">Locação</TabsTrigger>
-              <TabsTrigger value="movimentos" className="rounded-lg data-[state=active]:shadow-sm">Movimentações</TabsTrigger>
-              <TabsTrigger value="boletim" className="rounded-lg data-[state=active]:shadow-sm">Boletim</TabsTrigger>
-              <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm">Emissões</TabsTrigger>
+            <TabsList className="jacoby-billing-tabs h-auto w-full flex-wrap justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1">
+              <TabsTrigger value="locacoes" className="rounded-lg data-[state=active]:shadow-sm"><Container className="h-4 w-4" />Locação</TabsTrigger>
+              <TabsTrigger value="movimentos" className="rounded-lg data-[state=active]:shadow-sm"><Truck className="h-4 w-4" />Movimentações</TabsTrigger>
+              <TabsTrigger value="boletim" className="rounded-lg data-[state=active]:shadow-sm"><FileText className="h-4 w-4" />Boletim</TabsTrigger>
+              <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm"><Send className="h-4 w-4" />Emissões</TabsTrigger>
             </TabsList>
             <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}{residuePreview(item.id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(branchKey(item.branch_id)); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
             <TabsContent value="emitidos" className="space-y-4"><Card className="p-4 sm:p-5"><h2 className="font-semibold">Boletins emitidos</h2><div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"><p className="font-medium">Publicação no Portal do Cliente + envio por e-mail</p><p className="mt-1 text-muted-foreground">Use as ações separadamente: visualize o BM, publique somente no Portal do Cliente ou confira os destinatários e envie por e-mail com uma mensagem.</p></div><p className="mt-3 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser enviadas separadamente.</p>
@@ -2440,8 +2255,8 @@ export function BillingV2Module() {
               </div>
               <div className="mt-4 hidden overflow-x-auto 2xl:block"><table className="w-full min-w-[1320px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2">Status do e-mail</th><th className="p-2 text-right">Ações</th></tr></thead><tbody>{emittedGroups.length ? emittedGroups.map((group) => { const expanded = expandedBMs.includes(group.cycleId); const hasEmissions = group.emissions.length > 0; const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`; const closedParent = Boolean(group.parent && group.parent.status === "closed"); const emailStatus = emailDeliverySummary(group.cycleId); return <Fragment key={group.cycleId}><tr className="border-b"><td className="p-2 font-semibold"><div className="flex items-center gap-1.5">{hasEmissions ? <button type="button" aria-label={expanded ? "Recolher recortes" : "Expandir recortes"} onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])} className="text-muted-foreground transition-colors hover:text-primary">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button> : <span className="inline-block w-4" />}{headerNumber}{residuePreview(group.cycleId)}{hasEmissions ? <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{group.emissions.length} recorte(s)</span> : null}</div></td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{group.parent ? `${new Date(`${group.parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${group.parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</td><td className="p-2">{closedParent && group.parent?.finalized_at ? new Date(group.parent.finalized_at).toLocaleDateString("pt-BR") : group.parent ? "Em edição" : "—"}</td><td className="p-2 text-xs" title={emailStatus.title}>{group.parent?.client_portal_visible ? emailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right">{group.parent ? <div className="inline-flex items-center justify-end gap-2"><Button variant="outline" size="sm" onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button>{closedParent ? <><Button variant="outline" size="sm" disabled={setCyclePortalVisibility.isPending} onClick={() => { if (!group.parent!.client_portal_visible || window.confirm(`Remover o ${headerNumber} do Portal do Cliente?`)) setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: !group.parent!.client_portal_visible }); }}>{group.parent.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setCyclePortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, displayNumber: headerNumber, residueId: "all" })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button></> : <span className="text-sm text-muted-foreground">Finalize para publicar ou enviar</span>}</div> : <span className="text-sm text-muted-foreground">—</span>}</td></tr>{expanded ? group.emissions.map((em) => { const residueEmailStatus = emailDeliverySummary(group.cycleId, em.id); return <tr key={em.id} className="border-b bg-muted/20"><td className="p-2 pl-8 font-semibold">#{em.display_number}</td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</td><td className="p-2">{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-xs" title={residueEmailStatus.title}>{em.client_portal_visible ? residueEmailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="outline" size="sm" disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button><Button variant="outline" size="sm" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => { if (!em.client_portal_visible || window.confirm(`Remover a emissão #${em.display_number} do Portal do Cliente?`)) setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: !em.client_portal_visible }); }}>{em.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, residueEmission: em, displayNumber: `#${em.display_number}`, residueId: em.waste_residue_id })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>; }) : null}</Fragment>; }) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="grid gap-4 xl:grid-cols-[minmax(360px,440px)_1fr] xl:items-start">
-              <Card className="p-5 xl:sticky xl:top-40">
-                <h2 className="font-semibold">Nova colocação em locação</h2>
+              <Card className="jacoby-billing-form p-5 xl:sticky xl:top-40">
+                <h2 className="flex items-center gap-2 font-semibold"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/12 text-primary"><Container className="h-4 w-4" /></span>Nova colocação em locação</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   O valor de locação é definido no cadastro de cada equipamento deste pátio.
                 </p>
@@ -3230,6 +3045,7 @@ function MovementTable({
   focusedMovementId?: string;
   onFocusDone?: () => void;
 }) {
+  const { openPdfPreview, pdfPreviewDialog } = usePdfPreview();
   const [editing, setEditing] = useState<Movement | null>(null);
   const [editingRows, setEditingRows] = useState<Movement[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
@@ -3324,10 +3140,12 @@ function MovementTable({
   const openPdf = async (attachment: MovementAttachment) => {
     const { data, error } = await supabase.storage.from("movement-documents").createSignedUrl(attachment.storage_path, 600);
     if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o anexo.");
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    if (!canPreviewInline(attachment.file_name)) return void window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    openPdfPreview({ title: attachment.file_name, subtitle: "Anexo da movimentação", fileName: attachment.file_name, url: data.signedUrl });
   };
   return (
     <>
+      {pdfPreviewDialog}
     <Card className="overflow-x-auto p-4">
       <table className="w-full min-w-[980px] text-sm">
         <thead>

@@ -4,7 +4,7 @@ import { CalendarDays, CheckSquare2, ClipboardList, FileCheck2, Menu, Plus, Tria
 import { useAuth } from "@/hooks/use-auth";
 import { EnvironmentSwitch } from "@/components/EnvironmentSwitch";
 import { IsoWorkspace, useIsoWorkspace, type IsoAudit } from "./IsoWorkspace";
-import jacobyLogo from "@/assets/jacoby-logo.webp";
+import jacobyLogo from "@/assets/jacoby-symbol.svg";
 
 const links = [{ title: "Kit Pré-Auditoria", url: "/iso", icon: CheckSquare2 }, { title: "Plano de Auditoria", url: "/iso/plano", icon: CalendarDays }, { title: "Roteiros de Entrevista", url: "/iso/roteiros", icon: ClipboardList }];
 const nextLinks = [{ section: "2. Auditar", title: "Biblioteca de Evidências", url: "/iso/evidencias", icon: FileCheck2 }, { section: "3. Registrar", title: "Banco de NCs", url: "/iso/nao-conformidades", icon: TriangleAlert }];

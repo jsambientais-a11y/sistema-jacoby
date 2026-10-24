@@ -193,6 +193,25 @@ export function useColumns() {
 }
 
 export interface UserColumnOrder { column_id: string; position: number }
+
+// Quando a tabela opcional user_column_order não existe no banco, a ordem fica neste navegador.
+const columnOrderStorageKey = (userId: string) => `jacoby-column-order:${userId}`;
+export function readLocalColumnOrder(userId: string): UserColumnOrder[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(window.localStorage.getItem(columnOrderStorageKey(userId)) || "[]");
+    return Array.isArray(value) ? (value as UserColumnOrder[]) : [];
+  } catch {
+    return [];
+  }
+}
+export function saveLocalColumnOrder(userId: string, order: UserColumnOrder[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(columnOrderStorageKey(userId), JSON.stringify(order));
+  } catch {}
+}
+
 export function useUserColumnOrder() {
   return useQuery({
     queryKey: ["user_column_order"],
@@ -205,7 +224,7 @@ export function useUserColumnOrder() {
         .from("user_column_order")
         .select("column_id, position")
         .eq("user_id", uid);
-      if (error) return [] as UserColumnOrder[];
+      if (error) return readLocalColumnOrder(uid);
       return (data ?? []) as UserColumnOrder[];
     },
   });
