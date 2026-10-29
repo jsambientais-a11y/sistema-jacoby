@@ -30,9 +30,16 @@ import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
 import { Route as AppClientsIndexRouteImport } from './routes/_app/clients.index'
 import { Route as AppClientsNewRouteImport } from './routes/_app/clients.new'
+import { Route as AppIsoBibliotecaRouteImport } from './routes/_app/iso.biblioteca'
+import { Route as AppIsoDashboardRouteImport } from './routes/_app/iso.dashboard'
 import { Route as AppIsoEvidenciasRouteImport } from './routes/_app/iso.evidencias'
+import { Route as AppIsoLogAuditorRouteImport } from './routes/_app/iso.log-auditor'
+import { Route as AppIsoManualRouteImport } from './routes/_app/iso.manual'
 import { Route as AppIsoNaoConformidadesRouteImport } from './routes/_app/iso.nao-conformidades'
+import { Route as AppIsoPacRouteImport } from './routes/_app/iso.pac'
 import { Route as AppIsoPlanoRouteImport } from './routes/_app/iso.plano'
+import { Route as AppIsoPromptsIaRouteImport } from './routes/_app/iso.prompts-ia'
+import { Route as AppIsoRelatorioRouteImport } from './routes/_app/iso.relatorio'
 import { Route as AppIsoRoteirosRouteImport } from './routes/_app/iso.roteiros'
 import { Route as AppPortalBoletinsRouteImport } from './routes/_app/portal.boletins'
 import { Route as AppPortalContaRouteImport } from './routes/_app/portal.conta'
@@ -153,9 +160,29 @@ const AppClientsNewRoute = AppClientsNewRouteImport.update({
   path: '/new',
   getParentRoute: () => AppClientsRoute,
 } as any)
+const AppIsoBibliotecaRoute = AppIsoBibliotecaRouteImport.update({
+  id: '/biblioteca',
+  path: '/biblioteca',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoDashboardRoute = AppIsoDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AppIsoRoute,
+} as any)
 const AppIsoEvidenciasRoute = AppIsoEvidenciasRouteImport.update({
   id: '/evidencias',
   path: '/evidencias',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoLogAuditorRoute = AppIsoLogAuditorRouteImport.update({
+  id: '/log-auditor',
+  path: '/log-auditor',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoManualRoute = AppIsoManualRouteImport.update({
+  id: '/manual',
+  path: '/manual',
   getParentRoute: () => AppIsoRoute,
 } as any)
 const AppIsoNaoConformidadesRoute = AppIsoNaoConformidadesRouteImport.update({
@@ -163,9 +190,24 @@ const AppIsoNaoConformidadesRoute = AppIsoNaoConformidadesRouteImport.update({
   path: '/nao-conformidades',
   getParentRoute: () => AppIsoRoute,
 } as any)
+const AppIsoPacRoute = AppIsoPacRouteImport.update({
+  id: '/pac',
+  path: '/pac',
+  getParentRoute: () => AppIsoRoute,
+} as any)
 const AppIsoPlanoRoute = AppIsoPlanoRouteImport.update({
   id: '/plano',
   path: '/plano',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoPromptsIaRoute = AppIsoPromptsIaRouteImport.update({
+  id: '/prompts-ia',
+  path: '/prompts-ia',
+  getParentRoute: () => AppIsoRoute,
+} as any)
+const AppIsoRelatorioRoute = AppIsoRelatorioRouteImport.update({
+  id: '/relatorio',
+  path: '/relatorio',
   getParentRoute: () => AppIsoRoute,
 } as any)
 const AppIsoRoteirosRoute = AppIsoRoteirosRouteImport.update({
@@ -264,9 +306,16 @@ export interface FileRoutesByFullPath {
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/iso/biblioteca': typeof AppIsoBibliotecaRoute
+  '/iso/dashboard': typeof AppIsoDashboardRoute
   '/iso/evidencias': typeof AppIsoEvidenciasRoute
+  '/iso/log-auditor': typeof AppIsoLogAuditorRoute
+  '/iso/manual': typeof AppIsoManualRoute
   '/iso/nao-conformidades': typeof AppIsoNaoConformidadesRoute
+  '/iso/pac': typeof AppIsoPacRoute
   '/iso/plano': typeof AppIsoPlanoRoute
+  '/iso/prompts-ia': typeof AppIsoPromptsIaRoute
+  '/iso/relatorio': typeof AppIsoRelatorioRoute
   '/iso/roteiros': typeof AppIsoRoteirosRoute
   '/portal/boletins': typeof AppPortalBoletinsRoute
   '/portal/conta': typeof AppPortalContaRoute
@@ -302,9 +351,16 @@ export interface FileRoutesByTo {
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/iso/biblioteca': typeof AppIsoBibliotecaRoute
+  '/iso/dashboard': typeof AppIsoDashboardRoute
   '/iso/evidencias': typeof AppIsoEvidenciasRoute
+  '/iso/log-auditor': typeof AppIsoLogAuditorRoute
+  '/iso/manual': typeof AppIsoManualRoute
   '/iso/nao-conformidades': typeof AppIsoNaoConformidadesRoute
+  '/iso/pac': typeof AppIsoPacRoute
   '/iso/plano': typeof AppIsoPlanoRoute
+  '/iso/prompts-ia': typeof AppIsoPromptsIaRoute
+  '/iso/relatorio': typeof AppIsoRelatorioRoute
   '/iso/roteiros': typeof AppIsoRoteirosRoute
   '/portal/boletins': typeof AppPortalBoletinsRoute
   '/portal/conta': typeof AppPortalContaRoute
@@ -344,9 +400,16 @@ export interface FileRoutesById {
   '/_app/users': typeof AppUsersRoute
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/_app/clients/new': typeof AppClientsNewRoute
+  '/_app/iso/biblioteca': typeof AppIsoBibliotecaRoute
+  '/_app/iso/dashboard': typeof AppIsoDashboardRoute
   '/_app/iso/evidencias': typeof AppIsoEvidenciasRoute
+  '/_app/iso/log-auditor': typeof AppIsoLogAuditorRoute
+  '/_app/iso/manual': typeof AppIsoManualRoute
   '/_app/iso/nao-conformidades': typeof AppIsoNaoConformidadesRoute
+  '/_app/iso/pac': typeof AppIsoPacRoute
   '/_app/iso/plano': typeof AppIsoPlanoRoute
+  '/_app/iso/prompts-ia': typeof AppIsoPromptsIaRoute
+  '/_app/iso/relatorio': typeof AppIsoRelatorioRoute
   '/_app/iso/roteiros': typeof AppIsoRoteirosRoute
   '/_app/portal/boletins': typeof AppPortalBoletinsRoute
   '/_app/portal/conta': typeof AppPortalContaRoute
@@ -386,9 +449,16 @@ export interface FileRouteTypes {
     | '/users'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/iso/biblioteca'
+    | '/iso/dashboard'
     | '/iso/evidencias'
+    | '/iso/log-auditor'
+    | '/iso/manual'
     | '/iso/nao-conformidades'
+    | '/iso/pac'
     | '/iso/plano'
+    | '/iso/prompts-ia'
+    | '/iso/relatorio'
     | '/iso/roteiros'
     | '/portal/boletins'
     | '/portal/conta'
@@ -424,9 +494,16 @@ export interface FileRouteTypes {
     | '/users'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/iso/biblioteca'
+    | '/iso/dashboard'
     | '/iso/evidencias'
+    | '/iso/log-auditor'
+    | '/iso/manual'
     | '/iso/nao-conformidades'
+    | '/iso/pac'
     | '/iso/plano'
+    | '/iso/prompts-ia'
+    | '/iso/relatorio'
     | '/iso/roteiros'
     | '/portal/boletins'
     | '/portal/conta'
@@ -465,9 +542,16 @@ export interface FileRouteTypes {
     | '/_app/users'
     | '/_app/client-report/$clientId'
     | '/_app/clients/new'
+    | '/_app/iso/biblioteca'
+    | '/_app/iso/dashboard'
     | '/_app/iso/evidencias'
+    | '/_app/iso/log-auditor'
+    | '/_app/iso/manual'
     | '/_app/iso/nao-conformidades'
+    | '/_app/iso/pac'
     | '/_app/iso/plano'
+    | '/_app/iso/prompts-ia'
+    | '/_app/iso/relatorio'
     | '/_app/iso/roteiros'
     | '/_app/portal/boletins'
     | '/_app/portal/conta'
@@ -641,11 +725,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClientsNewRouteImport
       parentRoute: typeof AppClientsRoute
     }
+    '/_app/iso/biblioteca': {
+      id: '/_app/iso/biblioteca'
+      path: '/biblioteca'
+      fullPath: '/iso/biblioteca'
+      preLoaderRoute: typeof AppIsoBibliotecaRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/dashboard': {
+      id: '/_app/iso/dashboard'
+      path: '/dashboard'
+      fullPath: '/iso/dashboard'
+      preLoaderRoute: typeof AppIsoDashboardRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
     '/_app/iso/evidencias': {
       id: '/_app/iso/evidencias'
       path: '/evidencias'
       fullPath: '/iso/evidencias'
       preLoaderRoute: typeof AppIsoEvidenciasRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/log-auditor': {
+      id: '/_app/iso/log-auditor'
+      path: '/log-auditor'
+      fullPath: '/iso/log-auditor'
+      preLoaderRoute: typeof AppIsoLogAuditorRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/manual': {
+      id: '/_app/iso/manual'
+      path: '/manual'
+      fullPath: '/iso/manual'
+      preLoaderRoute: typeof AppIsoManualRouteImport
       parentRoute: typeof AppIsoRoute
     }
     '/_app/iso/nao-conformidades': {
@@ -655,11 +767,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIsoNaoConformidadesRouteImport
       parentRoute: typeof AppIsoRoute
     }
+    '/_app/iso/pac': {
+      id: '/_app/iso/pac'
+      path: '/pac'
+      fullPath: '/iso/pac'
+      preLoaderRoute: typeof AppIsoPacRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
     '/_app/iso/plano': {
       id: '/_app/iso/plano'
       path: '/plano'
       fullPath: '/iso/plano'
       preLoaderRoute: typeof AppIsoPlanoRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/prompts-ia': {
+      id: '/_app/iso/prompts-ia'
+      path: '/prompts-ia'
+      fullPath: '/iso/prompts-ia'
+      preLoaderRoute: typeof AppIsoPromptsIaRouteImport
+      parentRoute: typeof AppIsoRoute
+    }
+    '/_app/iso/relatorio': {
+      id: '/_app/iso/relatorio'
+      path: '/relatorio'
+      fullPath: '/iso/relatorio'
+      preLoaderRoute: typeof AppIsoRelatorioRouteImport
       parentRoute: typeof AppIsoRoute
     }
     '/_app/iso/roteiros': {
@@ -787,16 +920,30 @@ const AppClientsRouteWithChildren = AppClientsRoute._addFileChildren(
 )
 
 interface AppIsoRouteChildren {
+  AppIsoBibliotecaRoute: typeof AppIsoBibliotecaRoute
+  AppIsoDashboardRoute: typeof AppIsoDashboardRoute
   AppIsoEvidenciasRoute: typeof AppIsoEvidenciasRoute
+  AppIsoLogAuditorRoute: typeof AppIsoLogAuditorRoute
+  AppIsoManualRoute: typeof AppIsoManualRoute
   AppIsoNaoConformidadesRoute: typeof AppIsoNaoConformidadesRoute
+  AppIsoPacRoute: typeof AppIsoPacRoute
   AppIsoPlanoRoute: typeof AppIsoPlanoRoute
+  AppIsoPromptsIaRoute: typeof AppIsoPromptsIaRoute
+  AppIsoRelatorioRoute: typeof AppIsoRelatorioRoute
   AppIsoRoteirosRoute: typeof AppIsoRoteirosRoute
 }
 
 const AppIsoRouteChildren: AppIsoRouteChildren = {
+  AppIsoBibliotecaRoute: AppIsoBibliotecaRoute,
+  AppIsoDashboardRoute: AppIsoDashboardRoute,
   AppIsoEvidenciasRoute: AppIsoEvidenciasRoute,
+  AppIsoLogAuditorRoute: AppIsoLogAuditorRoute,
+  AppIsoManualRoute: AppIsoManualRoute,
   AppIsoNaoConformidadesRoute: AppIsoNaoConformidadesRoute,
+  AppIsoPacRoute: AppIsoPacRoute,
   AppIsoPlanoRoute: AppIsoPlanoRoute,
+  AppIsoPromptsIaRoute: AppIsoPromptsIaRoute,
+  AppIsoRelatorioRoute: AppIsoRelatorioRoute,
   AppIsoRoteirosRoute: AppIsoRoteirosRoute,
 }
 

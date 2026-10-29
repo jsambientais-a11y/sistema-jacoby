@@ -1,0 +1,704 @@
+[
+  {
+    "id": "jacoby-topic-001",
+    "standard": "ISO 9001",
+    "clause": "4.1",
+    "process": "Alta Direção",
+    "title": "Contexto organizacional",
+    "focus": "mudanças internas e externas que afetam a entrega dos serviços",
+    "expected": "análise de contexto revisada e decisões relacionadas"
+  },
+  {
+    "id": "jacoby-topic-002",
+    "standard": "ISO 9001",
+    "clause": "4.2",
+    "process": "Comercial",
+    "title": "Partes interessadas",
+    "focus": "necessidades de clientes, equipes e demais partes interessadas",
+    "expected": "requisitos pertinentes identificados e acompanhados"
+  },
+  {
+    "id": "jacoby-topic-003",
+    "standard": "ISO 9001",
+    "clause": "4.4",
+    "process": "Qualidade",
+    "title": "Interação de processos",
+    "focus": "entradas, saídas e interfaces entre processos",
+    "expected": "fluxo de processos com responsáveis e critérios"
+  },
+  {
+    "id": "jacoby-topic-004",
+    "standard": "ISO 9001",
+    "clause": "5.1",
+    "process": "Alta Direção",
+    "title": "Liderança e recursos",
+    "focus": "decisões da direção sobre desempenho e recursos",
+    "expected": "atas, decisões e ações acompanhadas"
+  },
+  {
+    "id": "jacoby-topic-005",
+    "standard": "ISO 9001",
+    "clause": "6.1",
+    "process": "Qualidade",
+    "title": "Riscos e oportunidades",
+    "focus": "riscos que podem impedir o resultado do processo",
+    "expected": "avaliação de riscos e ações proporcionais"
+  },
+  {
+    "id": "jacoby-topic-006",
+    "standard": "ISO 9001",
+    "clause": "6.2",
+    "process": "Planejamento da Qualidade",
+    "title": "Objetivos mensuráveis",
+    "focus": "metas, indicadores e planos para os objetivos",
+    "expected": "objetivos com responsável, prazo e medição"
+  },
+  {
+    "id": "jacoby-topic-007",
+    "standard": "ISO 9001",
+    "clause": "7.1.3",
+    "process": "Manutenção",
+    "title": "Infraestrutura",
+    "focus": "manutenção dos equipamentos e infraestrutura necessária",
+    "expected": "inventário, inspeções e manutenção executada"
+  },
+  {
+    "id": "jacoby-topic-008",
+    "standard": "ISO 9001",
+    "clause": "7.1.5",
+    "process": "Metrologia e Laboratório",
+    "title": "Confiabilidade das medições",
+    "focus": "condição e rastreabilidade dos instrumentos utilizados",
+    "expected": "registros de calibração e avaliação do impacto de desvios"
+  },
+  {
+    "id": "jacoby-topic-009",
+    "standard": "ISO 9001",
+    "clause": "7.2",
+    "process": "RH",
+    "title": "Competência nas funções",
+    "focus": "competências necessárias e eficácia das capacitações",
+    "expected": "critérios por função, treinamentos e avaliação prática"
+  },
+  {
+    "id": "jacoby-topic-010",
+    "standard": "ISO 9001",
+    "clause": "7.5",
+    "process": "Qualidade",
+    "title": "Controle documental",
+    "focus": "aprovação, revisão e acesso aos documentos",
+    "expected": "documentos vigentes identificados e revisões rastreáveis"
+  },
+  {
+    "id": "jacoby-topic-011",
+    "standard": "ISO 9001",
+    "clause": "8.2",
+    "process": "Comercial",
+    "title": "Aceite de serviços",
+    "focus": "análise dos requisitos antes de aceitar pedidos e alterações",
+    "expected": "pedido analisado e mudanças comunicadas"
+  },
+  {
+    "id": "jacoby-topic-012",
+    "standard": "ISO 9001",
+    "clause": "8.3",
+    "process": "Projeto e Desenvolvimento",
+    "title": "Validação de projetos",
+    "focus": "entradas, revisões e validações de novos serviços",
+    "expected": "registros das etapas e aprovação das saídas"
+  },
+  {
+    "id": "jacoby-topic-013",
+    "standard": "ISO 9001",
+    "clause": "8.4",
+    "process": "Gestão de Fornecedores",
+    "title": "Controle de fornecedores",
+    "focus": "seleção e reavaliação dos provedores críticos",
+    "expected": "critérios de aprovação e avaliações de desempenho"
+  },
+  {
+    "id": "jacoby-topic-014",
+    "standard": "ISO 9001",
+    "clause": "8.4",
+    "process": "Compras",
+    "title": "Requisitos de contratação",
+    "focus": "comunicação de requisitos nas compras e contratações",
+    "expected": "pedido ou contrato com especificações verificáveis"
+  },
+  {
+    "id": "jacoby-topic-015",
+    "standard": "ISO 9001",
+    "clause": "8.5",
+    "process": "Produção",
+    "title": "Execução controlada",
+    "focus": "condições controladas na execução do serviço",
+    "expected": "instruções disponíveis e registros de execução"
+  },
+  {
+    "id": "jacoby-topic-016",
+    "standard": "ISO 9001",
+    "clause": "8.6",
+    "process": "Inspeção e Ensaios",
+    "title": "Liberação do serviço",
+    "focus": "verificações antes da entrega ao cliente",
+    "expected": "registros de inspeção e autorização de liberação"
+  },
+  {
+    "id": "jacoby-topic-017",
+    "standard": "ISO 9001",
+    "clause": "8.7",
+    "process": "Assistência Técnica",
+    "title": "Tratamento de desvios",
+    "focus": "identificação e tratamento de serviços fora do especificado",
+    "expected": "registros do desvio, disposição e comunicação"
+  },
+  {
+    "id": "jacoby-topic-018",
+    "standard": "ISO 9001",
+    "clause": "9.1.2",
+    "process": "Comercial",
+    "title": "Percepção dos clientes",
+    "focus": "monitoramento da satisfação e das reclamações",
+    "expected": "resultados analisados e ações acompanhadas"
+  },
+  {
+    "id": "jacoby-topic-019",
+    "standard": "ISO 9001",
+    "clause": "9.2",
+    "process": "Qualidade",
+    "title": "Programa de auditoria",
+    "focus": "planejamento, independência e execução das auditorias internas",
+    "expected": "programa, planos, relatórios e acompanhamento"
+  },
+  {
+    "id": "jacoby-topic-020",
+    "standard": "ISO 9001",
+    "clause": "9.3",
+    "process": "Alta Direção",
+    "title": "Análise crítica",
+    "focus": "avaliação periódica de resultados pela direção",
+    "expected": "entradas avaliadas e decisões registradas"
+  },
+  {
+    "id": "jacoby-topic-021",
+    "standard": "ISO 9001",
+    "clause": "10.2",
+    "process": "Qualidade",
+    "title": "Ações corretivas",
+    "focus": "análise de causas e verificação da eficácia das ações",
+    "expected": "causa demonstrada, ação executada e eficácia avaliada"
+  },
+  {
+    "id": "jacoby-topic-022",
+    "standard": "ISO 14001",
+    "clause": "4.1",
+    "process": "Meio Ambiente",
+    "title": "Contexto ambiental",
+    "focus": "condições ambientais e mudanças relevantes para a operação",
+    "expected": "contexto revisto e temas relevantes justificados"
+  },
+  {
+    "id": "jacoby-topic-023",
+    "standard": "ISO 14001",
+    "clause": "6.1.2",
+    "process": "Meio Ambiente",
+    "title": "Aspectos e impactos",
+    "focus": "identificação de aspectos ambientais em condições normais e anormais",
+    "expected": "matriz com significância e controles associados"
+  },
+  {
+    "id": "jacoby-topic-024",
+    "standard": "ISO 14001",
+    "clause": "6.1.3",
+    "process": "Meio Ambiente",
+    "title": "Obrigações de conformidade",
+    "focus": "identificação das obrigações aplicáveis às atividades",
+    "expected": "cadastro de obrigações, responsáveis e avaliações"
+  },
+  {
+    "id": "jacoby-topic-025",
+    "standard": "ISO 14001",
+    "clause": "6.2",
+    "process": "Meio Ambiente",
+    "title": "Objetivos ambientais",
+    "focus": "planejamento de melhorias ambientais mensuráveis",
+    "expected": "metas, indicadores e planos monitorados"
+  },
+  {
+    "id": "jacoby-topic-026",
+    "standard": "ISO 14001",
+    "clause": "7.2",
+    "process": "RH",
+    "title": "Competência ambiental",
+    "focus": "capacitação de quem executa controles ambientais",
+    "expected": "competências definidas e eficácia demonstrada"
+  },
+  {
+    "id": "jacoby-topic-027",
+    "standard": "ISO 14001",
+    "clause": "7.4",
+    "process": "Meio Ambiente",
+    "title": "Comunicação ambiental",
+    "focus": "comunicações internas e externas sobre desempenho e incidentes",
+    "expected": "canais, responsáveis e registros de atendimento"
+  },
+  {
+    "id": "jacoby-topic-028",
+    "standard": "ISO 14001",
+    "clause": "8.1",
+    "process": "Produção",
+    "title": "Armazenamento de resíduos",
+    "focus": "segregação, identificação e contenção de resíduos",
+    "expected": "inspeções e condições de armazenamento compatíveis"
+  },
+  {
+    "id": "jacoby-topic-029",
+    "standard": "ISO 14001",
+    "clause": "8.1",
+    "process": "Logística",
+    "title": "Transporte e destinação",
+    "focus": "rastreabilidade da coleta até a destinação",
+    "expected": "documentos conciliados e comprovantes de destinação"
+  },
+  {
+    "id": "jacoby-topic-030",
+    "standard": "ISO 14001",
+    "clause": "8.1",
+    "process": "Contratadas e Terceiros",
+    "title": "Controles ambientais terceirizados",
+    "focus": "requisitos ambientais comunicados aos prestadores",
+    "expected": "contratos, orientações e verificação da execução"
+  },
+  {
+    "id": "jacoby-topic-031",
+    "standard": "ISO 14001",
+    "clause": "8.1",
+    "process": "Manutenção",
+    "title": "Prevenção de vazamentos",
+    "focus": "inspeção e manutenção de sistemas com potencial de vazamento",
+    "expected": "inspeções, correções e medidas de contenção"
+  },
+  {
+    "id": "jacoby-topic-032",
+    "standard": "ISO 14001",
+    "clause": "8.2",
+    "process": "Meio Ambiente",
+    "title": "Emergências ambientais",
+    "focus": "preparação, treinamento e testes de resposta",
+    "expected": "cenários, recursos e simulados avaliados"
+  },
+  {
+    "id": "jacoby-topic-033",
+    "standard": "ISO 14001",
+    "clause": "9.1",
+    "process": "Meio Ambiente",
+    "title": "Monitoramento ambiental",
+    "focus": "medições relevantes de consumo, geração e emissões",
+    "expected": "resultados confiáveis e análise de tendências"
+  },
+  {
+    "id": "jacoby-topic-034",
+    "standard": "ISO 14001",
+    "clause": "9.1.2",
+    "process": "Meio Ambiente",
+    "title": "Avaliação de atendimento",
+    "focus": "avaliação periódica das obrigações ambientais",
+    "expected": "avaliação documentada e ações para pendências"
+  },
+  {
+    "id": "jacoby-topic-035",
+    "standard": "ISO 14001",
+    "clause": "10.2",
+    "process": "Meio Ambiente",
+    "title": "Incidentes e melhoria",
+    "focus": "correção e análise das causas dos desvios ambientais",
+    "expected": "tratamento da ocorrência e eficácia da ação"
+  },
+  {
+    "id": "jacoby-topic-036",
+    "standard": "ISO 45001",
+    "clause": "5.4",
+    "process": "SSO",
+    "title": "Participação dos trabalhadores",
+    "focus": "consulta de trabalhadores nas decisões de segurança",
+    "expected": "consultas registradas e contribuições consideradas"
+  },
+  {
+    "id": "jacoby-topic-037",
+    "standard": "ISO 45001",
+    "clause": "6.1.2",
+    "process": "SSO",
+    "title": "Perigos ocupacionais",
+    "focus": "identificação de perigos em rotinas, mudanças e emergências",
+    "expected": "inventário abrangente e controles proporcionais"
+  },
+  {
+    "id": "jacoby-topic-038",
+    "standard": "ISO 45001",
+    "clause": "6.1.3",
+    "process": "SSO",
+    "title": "Obrigações de SST",
+    "focus": "identificação e avaliação de requisitos de saúde e segurança",
+    "expected": "cadastro de requisitos e avaliação do atendimento"
+  },
+  {
+    "id": "jacoby-topic-039",
+    "standard": "ISO 45001",
+    "clause": "6.2",
+    "process": "SSO",
+    "title": "Objetivos de segurança",
+    "focus": "metas e ações para redução dos riscos",
+    "expected": "objetivos, responsáveis e resultados acompanhados"
+  },
+  {
+    "id": "jacoby-topic-040",
+    "standard": "ISO 45001",
+    "clause": "7.2",
+    "process": "RH",
+    "title": "Capacitação em atividades críticas",
+    "focus": "competência dos profissionais expostos a riscos críticos",
+    "expected": "treinamentos válidos e avaliação da execução"
+  },
+  {
+    "id": "jacoby-topic-041",
+    "standard": "ISO 45001",
+    "clause": "7.4",
+    "process": "SSO",
+    "title": "Comunicação de riscos",
+    "focus": "informação sobre riscos, controles e incidentes",
+    "expected": "orientações compreendidas e canais conhecidos"
+  },
+  {
+    "id": "jacoby-topic-042",
+    "standard": "ISO 45001",
+    "clause": "8.1",
+    "process": "Produção",
+    "title": "Hierarquia de controles",
+    "focus": "aplicação dos controles de segurança no campo",
+    "expected": "controles instalados e eficácia observável"
+  },
+  {
+    "id": "jacoby-topic-043",
+    "standard": "ISO 45001",
+    "clause": "8.1.3",
+    "process": "Manutenção",
+    "title": "Gestão de mudanças",
+    "focus": "análise dos riscos antes de alterar processos ou equipamentos",
+    "expected": "avaliação prévia, aprovação e comunicação"
+  },
+  {
+    "id": "jacoby-topic-044",
+    "standard": "ISO 45001",
+    "clause": "8.1.4",
+    "process": "Contratadas e Terceiros",
+    "title": "Segurança de contratadas",
+    "focus": "coordenação dos riscos entre contratante e prestadores",
+    "expected": "integração, permissões e fiscalização"
+  },
+  {
+    "id": "jacoby-topic-045",
+    "standard": "ISO 45001",
+    "clause": "8.2",
+    "process": "SSO",
+    "title": "Resposta a emergências",
+    "focus": "preparo das equipes e recursos para emergências",
+    "expected": "plano testado e ações após simulado"
+  },
+  {
+    "id": "jacoby-topic-046",
+    "standard": "ISO 45001",
+    "clause": "9.1",
+    "process": "SSO",
+    "title": "Indicadores de SST",
+    "focus": "acompanhamento de desempenho preventivo e ocorrências",
+    "expected": "indicadores analisados e ações tomadas"
+  },
+  {
+    "id": "jacoby-topic-047",
+    "standard": "ISO 45001",
+    "clause": "10.2",
+    "process": "SSO",
+    "title": "Investigação de incidentes",
+    "focus": "investigação dos fatores que contribuíram para incidentes",
+    "expected": "análise participativa e eficácia das ações"
+  },
+  {
+    "id": "jacoby-topic-048",
+    "standard": "ISO 27001",
+    "clause": "4.3",
+    "process": "TI e Segurança da Informação",
+    "title": "Escopo do SGSI",
+    "focus": "limites e interfaces do sistema de segurança",
+    "expected": "escopo compatível com ativos e serviços"
+  },
+  {
+    "id": "jacoby-topic-049",
+    "standard": "ISO 27001",
+    "clause": "6.1.2",
+    "process": "TI e Segurança da Informação",
+    "title": "Riscos de informação",
+    "focus": "identificação e avaliação dos riscos de segurança",
+    "expected": "critérios de risco e avaliações rastreáveis"
+  },
+  {
+    "id": "jacoby-topic-050",
+    "standard": "ISO 27001",
+    "clause": "6.1.3",
+    "process": "TI e Segurança da Informação",
+    "title": "Tratamento de riscos de informação",
+    "focus": "decisão e acompanhamento do tratamento de riscos",
+    "expected": "plano de tratamento e aplicabilidade justificada"
+  },
+  {
+    "id": "jacoby-topic-051",
+    "standard": "ISO 27001",
+    "clause": "A.5.1",
+    "process": "Alta Direção",
+    "title": "Políticas de segurança",
+    "focus": "diretrizes de proteção e responsabilidades",
+    "expected": "políticas aprovadas, comunicadas e revistas"
+  },
+  {
+    "id": "jacoby-topic-052",
+    "standard": "ISO 27001",
+    "clause": "A.5.15",
+    "process": "TI e Segurança da Informação",
+    "title": "Controle de acesso",
+    "focus": "concessão e revisão de acessos por necessidade",
+    "expected": "aprovações, revisões e revogações rastreáveis"
+  },
+  {
+    "id": "jacoby-topic-053",
+    "standard": "ISO 27001",
+    "clause": "A.5.19",
+    "process": "Compras",
+    "title": "Segurança em fornecedores",
+    "focus": "requisitos de segurança em contratos e acompanhamento",
+    "expected": "avaliações de risco e compromissos definidos"
+  },
+  {
+    "id": "jacoby-topic-054",
+    "standard": "ISO 27001",
+    "clause": "A.5.24",
+    "process": "TI e Segurança da Informação",
+    "title": "Gestão de incidentes de informação",
+    "focus": "preparação e resposta a incidentes",
+    "expected": "procedimento, registros e lições aprendidas"
+  },
+  {
+    "id": "jacoby-topic-055",
+    "standard": "ISO 27001",
+    "clause": "A.5.30",
+    "process": "TI e Segurança da Informação",
+    "title": "Continuidade de TIC",
+    "focus": "capacidade de recuperar serviços críticos",
+    "expected": "testes de recuperação e resultados registrados"
+  },
+  {
+    "id": "jacoby-topic-056",
+    "standard": "ISO 27001",
+    "clause": "A.6.3",
+    "process": "RH",
+    "title": "Conscientização em segurança",
+    "focus": "orientação das pessoas sobre proteção da informação",
+    "expected": "capacitações e verificação da compreensão"
+  },
+  {
+    "id": "jacoby-topic-057",
+    "standard": "ISO 27001",
+    "clause": "A.8.13",
+    "process": "TI e Segurança da Informação",
+    "title": "Cópias de segurança",
+    "focus": "execução e testes de restauração dos backups",
+    "expected": "rotinas, resultados e restauração demonstrada"
+  },
+  {
+    "id": "jacoby-topic-058",
+    "standard": "ISO 27001",
+    "clause": "A.8.15",
+    "process": "TI e Segurança da Informação",
+    "title": "Registros de eventos",
+    "focus": "coleta e análise de eventos relevantes dos sistemas",
+    "expected": "logs protegidos e análises de ocorrências"
+  },
+  {
+    "id": "jacoby-topic-059",
+    "standard": "ISO 28000",
+    "clause": "4.1",
+    "process": "Logística",
+    "title": "Contexto da cadeia",
+    "focus": "ameaças e vulnerabilidades nas operações logísticas",
+    "expected": "contexto por rota, modal e parceiros"
+  },
+  {
+    "id": "jacoby-topic-060",
+    "standard": "ISO 28000",
+    "clause": "6.1",
+    "process": "Logística",
+    "title": "Riscos da cadeia de suprimentos",
+    "focus": "avaliação de cenários que afetam a segurança da cadeia",
+    "expected": "critérios e tratamento proporcional ao risco"
+  },
+  {
+    "id": "jacoby-topic-061",
+    "standard": "ISO 28000",
+    "clause": "7.2",
+    "process": "RH",
+    "title": "Competência logística",
+    "focus": "preparo de pessoas em funções críticas da cadeia",
+    "expected": "capacitação e resposta prática verificadas"
+  },
+  {
+    "id": "jacoby-topic-062",
+    "standard": "ISO 28000",
+    "clause": "8.1",
+    "process": "Logística",
+    "title": "Integridade de carga",
+    "focus": "verificação de unidades de carga e controles de lacre",
+    "expected": "inspeções, registros de lacres e divergências tratadas"
+  },
+  {
+    "id": "jacoby-topic-063",
+    "standard": "ISO 28000",
+    "clause": "8.1",
+    "process": "Contratadas e Terceiros",
+    "title": "Segurança dos parceiros",
+    "focus": "avaliação de transportadoras e operadores terceiros",
+    "expected": "homologação, contratos e monitoramento"
+  },
+  {
+    "id": "jacoby-topic-064",
+    "standard": "ISO 28000",
+    "clause": "8.2",
+    "process": "Logística",
+    "title": "Incidentes na cadeia",
+    "focus": "resposta coordenada a incidentes de transporte",
+    "expected": "acionamento, preservação de registros e análise"
+  },
+  {
+    "id": "jacoby-topic-065",
+    "standard": "ISO 28000",
+    "clause": "9.1",
+    "process": "Qualidade",
+    "title": "Desempenho da segurança logística",
+    "focus": "monitoramento de controles e ocorrências na cadeia",
+    "expected": "indicadores, tendências e ações"
+  },
+  {
+    "id": "jacoby-topic-066",
+    "standard": "ISO 31000",
+    "clause": "5",
+    "process": "Alta Direção",
+    "title": "Governança de riscos",
+    "focus": "integração da gestão de riscos nas decisões",
+    "expected": "papéis, critérios e decisões baseadas em risco"
+  },
+  {
+    "id": "jacoby-topic-067",
+    "standard": "ISO 31000",
+    "clause": "6.2",
+    "process": "Qualidade",
+    "title": "Comunicação de riscos",
+    "focus": "comunicação e consulta aos envolvidos",
+    "expected": "partes envolvidas e registros das decisões"
+  },
+  {
+    "id": "jacoby-topic-068",
+    "standard": "ISO 31000",
+    "clause": "6.3",
+    "process": "Qualidade",
+    "title": "Critérios de risco",
+    "focus": "definição de contexto, escopo e critérios de avaliação",
+    "expected": "escalas e limites de aceitação compreendidos"
+  },
+  {
+    "id": "jacoby-topic-069",
+    "standard": "ISO 31000",
+    "clause": "6.4",
+    "process": "Qualidade",
+    "title": "Identificação e análise",
+    "focus": "identificação de eventos, causas e consequências",
+    "expected": "registro de riscos e análise consistente"
+  },
+  {
+    "id": "jacoby-topic-070",
+    "standard": "ISO 31000",
+    "clause": "6.5",
+    "process": "Planejamento da Qualidade",
+    "title": "Tratamento dos riscos",
+    "focus": "seleção e execução das medidas de tratamento",
+    "expected": "ações, responsáveis, recursos e risco residual"
+  },
+  {
+    "id": "jacoby-topic-071",
+    "standard": "ISO 31000",
+    "clause": "6.6",
+    "process": "Alta Direção",
+    "title": "Monitoramento dos riscos",
+    "focus": "revisão da exposição e eficácia dos controles",
+    "expected": "indicadores e atualização do perfil de risco"
+  },
+  {
+    "id": "jacoby-topic-072",
+    "standard": "IATF 16949",
+    "clause": "4.3.2",
+    "process": "Gestão de Fornecedores",
+    "title": "Requisitos específicos de clientes",
+    "focus": "incorporação dos requisitos específicos nos processos",
+    "expected": "requisitos identificados, atualizados e implementados"
+  },
+  {
+    "id": "jacoby-topic-073",
+    "standard": "IATF 16949",
+    "clause": "7.1.5.1.1",
+    "process": "Metrologia e Laboratório",
+    "title": "Sistemas de medição",
+    "focus": "avaliação da variação dos sistemas de medição",
+    "expected": "estudos e decisões sobre adequação da medição"
+  },
+  {
+    "id": "jacoby-topic-074",
+    "standard": "IATF 16949",
+    "clause": "7.2.3",
+    "process": "RH",
+    "title": "Competência de auditores internos",
+    "focus": "qualificação de auditores para o escopo aplicado",
+    "expected": "critérios e evidências de competência"
+  },
+  {
+    "id": "jacoby-topic-075",
+    "standard": "IATF 16949",
+    "clause": "8.3",
+    "process": "Projeto e Desenvolvimento",
+    "title": "Planejamento do produto e processo",
+    "focus": "integração de riscos e requisitos no desenvolvimento",
+    "expected": "etapas, revisões e validações documentadas"
+  },
+  {
+    "id": "jacoby-topic-076",
+    "standard": "IATF 16949",
+    "clause": "8.5.1.1",
+    "process": "Produção",
+    "title": "Plano de controle",
+    "focus": "coerência entre controles, riscos e instruções de trabalho",
+    "expected": "plano de controle aplicado no posto"
+  },
+  {
+    "id": "jacoby-topic-077",
+    "standard": "IATF 16949",
+    "clause": "8.6",
+    "process": "Inspeção e Ensaios",
+    "title": "Verificação do produto",
+    "focus": "controle de características e liberação do produto",
+    "expected": "resultados, critérios e rastreabilidade"
+  },
+  {
+    "id": "jacoby-topic-078",
+    "standard": "IATF 16949",
+    "clause": "10.2.3",
+    "process": "Assistência Técnica",
+    "title": "Solução estruturada de problemas",
+    "focus": "análise e tratamento de problemas de qualidade",
+    "expected": "método estruturado, causas e verificação de eficácia"
+  }
+]
