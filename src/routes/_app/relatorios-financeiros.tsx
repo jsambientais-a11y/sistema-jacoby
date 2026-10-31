@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
+import { FinanceComparison } from "@/components/FinanceComparison";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useFinanceLedger } from "@/hooks/use-finance-ledger";
@@ -219,6 +220,12 @@ function FinanceReports() {
           selecionado.
         </p>
       )}
+      <FinanceComparison
+        income={totals.openIn}
+        expenses={totals.openOut}
+        loading={loading}
+        error={!!error}
+      />
       <section className="space-y-3 rounded-xl border bg-card p-4">
         <h2 className="text-lg font-semibold">Saldo por banco / conta</h2>
         <div className="overflow-x-auto">

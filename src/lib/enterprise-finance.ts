@@ -2,6 +2,10 @@ export type FinanceKind = "payable" | "receivable";
 export type FinanceAccount = {
   id: string;
   kind: FinanceKind;
+  credit_card_id?: string | null;
+  card_purchase_id?: string | null;
+  installment_number?: number | null;
+  invoice_month?: string | null;
   description: string;
   counterparty: string;
   category: string;
@@ -23,7 +27,10 @@ export type FinanceRow = {
   amountCents: number;
   dueOn: string | null;
   settledOn: string | null;
-  source: "manual" | "billing";
+  source: "manual" | "billing" | "card";
+  cardId?: string;
+  invoiceMonth?: string;
+  paidCents?: number;
   canSettle: boolean;
   costCenterId?: string | null;
   bankAccountId?: string | null;

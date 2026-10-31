@@ -1,4 +1,4 @@
-import { useSearch } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import {
   Plus,
@@ -13,6 +13,9 @@ import {
 import { toast } from "sonner";
 import { compatibleCenter, useCostCenters, useBanks } from "@/hooks/use-cost-centers";
 import { useReceiptDetails } from "@/hooks/use-receipt-details";
+import { FinanceComparison } from "@/components/FinanceComparison";
+import { aggregateCardInvoices } from "@/lib/credit-cards";
+import { useCreditCards } from "@/hooks/use-credit-cards";
 import { useFinanceAccounts } from "@/hooks/use-finance-accounts";
 import { useBillingFlowData } from "@/hooks/use-billing-flow";
 import { billingAgreement } from "@/lib/billing-agreement";
@@ -56,6 +59,7 @@ type Draft = {
 export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
   const initial = useSearch({ strict: false }) as { view?: string; status?: string };
   const accounts = useFinanceAccounts();
+  const credit = useCreditCards();
   const centers = useCostCenters();
   const banks = useBanks();
   const receiptDetails = useReceiptDetails();
@@ -112,16 +116,32 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
     };
   });
   // Reutiliza a mesma regra e a mesma baixa do Faturamento. Nunca cria cópia manual dos BMs.
-  const all: FinanceRow[] = [...active, ...billing];
-  const inScope = (r: FinanceRow) =>
+  const allDetails: FinanceRow[] = [...active, ...billing];
+  const all: FinanceRow[] = [
+    ...active.filter((r) => !r.manual?.credit_card_id),
+    ...aggregateCardInvoices(accounts.data || [], credit.cards.data || []),
+    ...billing,
+  ];
+  const detailInScope = (r: FinanceRow) =>
     inPeriod(r.settledOn || r.dueOn, period) &&
     (!centerFilter ||
       (centerFilter === "none" ? !r.costCenterId : r.costCenterId === centerFilter)) &&
     (!bankFilter || (bankFilter === "none" ? !r.bankAccountId : r.bankAccountId === bankFilter));
-  const summary = summarizeFinance(all.filter(inScope));
+  const inScope = (r: FinanceRow) =>
+    r.source === "card"
+      ? allDetails.some(
+          (d) =>
+            d.manual?.credit_card_id === r.cardId &&
+            d.manual?.invoice_month === `${r.invoiceMonth}-01` &&
+            detailInScope(d),
+        )
+      : detailInScope(r);
+  const summary = summarizeFinance(allDetails.filter(detailInScope));
   const missingDate = all.filter((r) => !r.dueOn && !r.settledOn).length;
   const rows = (
-    showDeleted ? (accounts.data || []).filter((a) => a.deleted_at).map(manualFinanceRow) : all
+    showDeleted
+      ? (accounts.data || []).filter((a) => a.deleted_at && !a.credit_card_id).map(manualFinanceRow)
+      : all
   )
     .filter(
       (r) =>
@@ -138,6 +158,7 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
     )
     .sort((a, b) => (a.dueOn || "9999").localeCompare(b.dueOn || "9999"));
   const flowError = [
+    credit.cards,
     centers,
     banks,
     receiptDetails,
@@ -152,6 +173,7 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
     .map((q) => q.error)
     .find(Boolean) as Error | undefined;
   const flowLoading = [
+    credit.cards,
     flow.servicesQuery,
     flow.movementCommissionsQuery,
     flow.cyclesQuery,
@@ -377,6 +399,12 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
               </Button>
             )}
           </section>
+          <FinanceComparison
+            income={summary.openIn}
+            expenses={summary.openOut}
+            loading={flowLoading || accounts.isLoading}
+            error={!!accounts.error || !!flowError}
+          />
           <section className="space-y-3 rounded-xl border bg-card p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-semibold">
@@ -430,13 +458,19 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                       <td className="p-3">
                         <b className="block">{row.description}</b>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {row.source === "billing"
-                            ? "Vinculado ao Faturamento"
-                            : "Cadastro manual"}
+                          {row.source === "card"
+                            ? "Fatura do cartão"
+                            : row.source === "billing"
+                              ? "Vinculado ao Faturamento"
+                              : "Cadastro manual"}
                           {row.category ? ` · ${row.category}` : ""}
                         </p>
                         <div className="mt-1.5">
-                          {row.costCenterId ? (
+                          {row.source === "card" ? (
+                            <span className="text-xs text-muted-foreground">
+                              Compras e centros de custo na fatura
+                            </span>
+                          ) : row.costCenterId ? (
                             <span
                               className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100"
                               aria-label={`Centro de custo vinculado: ${centers.data?.find((c) => c.id === row.costCenterId)?.name || "Carregando"}`}
@@ -472,6 +506,12 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                       <td className="whitespace-nowrap p-3">{date(row.dueOn)}</td>
                       <td className="whitespace-nowrap p-3 font-semibold">
                         {money(row.amountCents)}
+                        {row.source === "card" && !!row.paidCents && !row.settledOn && (
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            Pago: {money(row.paidCents)} · Em aberto:{" "}
+                            {money(row.amountCents - row.paidCents)}
+                          </span>
+                        )}
                         {row.provisional && (
                           <span className="block text-xs font-normal text-amber-700">
                             Provisório · conferir no Faturamento
@@ -488,7 +528,9 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                                 : ""
                           }
                         >
-                          {financeStatus(row, today)}
+                          {row.source === "card" && !!row.paidCents && !row.settledOn
+                            ? "Parcialmente paga"
+                            : financeStatus(row, today)}
                         </span>
                         {row.settledOn && (
                           <span className="block text-xs">{date(row.settledOn)}</span>
@@ -504,6 +546,15 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                               onClick={() => setConfirm({ row, action: "restore" })}
                             >
                               Restaurar
+                            </Button>
+                          ) : row.source === "card" ? (
+                            <Button size="sm" variant="outline" asChild>
+                              <Link
+                                to="/cartoes"
+                                search={{ card: row.cardId, month: row.invoiceMonth }}
+                              >
+                                Ver fatura
+                              </Link>
                             </Button>
                           ) : (
                             <>
@@ -559,7 +610,7 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                                   Conferir faturado
                                 </Button>
                               )}
-                              {row.manual && (
+                              {row.manual && !row.manual.credit_card_id && (
                                 <>
                                   <Button
                                     aria-label={`Editar ${row.description}`}

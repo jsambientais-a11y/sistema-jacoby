@@ -40,6 +40,7 @@ function AppLayout() {
       "/centros-de-custo",
       "/bancos",
       "/relatorios-financeiros",
+      "/cartoes",
     ].some((p) => pathname === p || pathname.startsWith(p + "/")) &&
     !hasPermission("finance")
   )

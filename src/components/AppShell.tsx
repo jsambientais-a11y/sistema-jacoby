@@ -536,7 +536,13 @@ function FinanceNavGroup({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const active = ["/contas-a-receber", "/centros-de-custo", "/bancos", "/relatorios-financeiros"].includes(pathname);
+  const active = [
+    "/contas-a-receber",
+    "/centros-de-custo",
+    "/bancos",
+    "/relatorios-financeiros",
+    "/cartoes",
+  ].includes(pathname);
   const item =
     "jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
   if (!expanded)
@@ -560,6 +566,7 @@ function FinanceNavGroup({
           ["/contas-a-receber", "Visão financeira"],
           ["/centros-de-custo", "Centros de custo"],
           ["/bancos", "Bancos e contas"],
+          ["/cartoes", "Cartões de crédito"],
           ["/relatorios-financeiros", "Relatórios"],
         ].map(([to, label]) => (
           <Link

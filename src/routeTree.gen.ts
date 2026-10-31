@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppBancosRouteImport } from './routes/_app/bancos'
 import { Route as AppCalendarioRouteImport } from './routes/_app/calendario'
+import { Route as AppCartoesRouteImport } from './routes/_app/cartoes'
 import { Route as AppCentrosDeCustoRouteImport } from './routes/_app/centros-de-custo'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
 import { Route as AppContasAReceberRouteImport } from './routes/_app/contas-a-receber'
@@ -81,6 +82,11 @@ const AppBancosRoute = AppBancosRouteImport.update({
 const AppCalendarioRoute = AppCalendarioRouteImport.update({
   id: '/calendario',
   path: '/calendario',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCartoesRoute = AppCartoesRouteImport.update({
+  id: '/cartoes',
+  path: '/cartoes',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCentrosDeCustoRoute = AppCentrosDeCustoRouteImport.update({
@@ -310,6 +316,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/bancos': typeof AppBancosRoute
   '/calendario': typeof AppCalendarioRoute
+  '/cartoes': typeof AppCartoesRoute
   '/centros-de-custo': typeof AppCentrosDeCustoRoute
   '/clients': typeof AppClientsRouteWithChildren
   '/contas-a-receber': typeof AppContasAReceberRoute
@@ -360,6 +367,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/bancos': typeof AppBancosRoute
   '/calendario': typeof AppCalendarioRoute
+  '/cartoes': typeof AppCartoesRoute
   '/centros-de-custo': typeof AppCentrosDeCustoRoute
   '/contas-a-receber': typeof AppContasAReceberRoute
   '/dashboard': typeof AppDashboardRoute
@@ -410,6 +418,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_app/bancos': typeof AppBancosRoute
   '/_app/calendario': typeof AppCalendarioRoute
+  '/_app/cartoes': typeof AppCartoesRoute
   '/_app/centros-de-custo': typeof AppCentrosDeCustoRoute
   '/_app/clients': typeof AppClientsRouteWithChildren
   '/_app/contas-a-receber': typeof AppContasAReceberRoute
@@ -462,6 +471,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/bancos'
     | '/calendario'
+    | '/cartoes'
     | '/centros-de-custo'
     | '/clients'
     | '/contas-a-receber'
@@ -512,6 +522,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/bancos'
     | '/calendario'
+    | '/cartoes'
     | '/centros-de-custo'
     | '/contas-a-receber'
     | '/dashboard'
@@ -561,6 +572,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_app/bancos'
     | '/_app/calendario'
+    | '/_app/cartoes'
     | '/_app/centros-de-custo'
     | '/_app/clients'
     | '/_app/contas-a-receber'
@@ -648,6 +660,13 @@ declare module '@tanstack/react-router' {
       path: '/calendario'
       fullPath: '/calendario'
       preLoaderRoute: typeof AppCalendarioRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/cartoes': {
+      id: '/_app/cartoes'
+      path: '/cartoes'
+      fullPath: '/cartoes'
+      preLoaderRoute: typeof AppCartoesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/centros-de-custo': {
@@ -1029,6 +1048,7 @@ const AppTasksRouteWithChildren = AppTasksRoute._addFileChildren(
 interface AppRouteChildren {
   AppBancosRoute: typeof AppBancosRoute
   AppCalendarioRoute: typeof AppCalendarioRoute
+  AppCartoesRoute: typeof AppCartoesRoute
   AppCentrosDeCustoRoute: typeof AppCentrosDeCustoRoute
   AppClientsRoute: typeof AppClientsRouteWithChildren
   AppContasAReceberRoute: typeof AppContasAReceberRoute
@@ -1060,6 +1080,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppBancosRoute: AppBancosRoute,
   AppCalendarioRoute: AppCalendarioRoute,
+  AppCartoesRoute: AppCartoesRoute,
   AppCentrosDeCustoRoute: AppCentrosDeCustoRoute,
   AppClientsRoute: AppClientsRouteWithChildren,
   AppContasAReceberRoute: AppContasAReceberRoute,

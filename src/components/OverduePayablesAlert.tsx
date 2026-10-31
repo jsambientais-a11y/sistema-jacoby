@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
+import { useCreditCards } from "@/hooks/use-credit-cards";
+import { aggregateCardInvoices } from "@/lib/credit-cards";
 import { useFinanceAccounts } from "@/hooks/use-finance-accounts";
 import { JULIANA_ACCOUNT_ID, overduePayables } from "@/lib/finance-access";
 import { localFinanceToday } from "@/lib/enterprise-finance";
@@ -16,30 +18,52 @@ export function OverduePayablesAlert() {
 }
 function JulianaPayablesAlert({ openingKey }: { openingKey: string }) {
   const accounts = useFinanceAccounts();
+  const credit = useCreditCards();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const today = localFinanceToday();
-  const overdue = overduePayables(accounts.data || [], today);
+  const payableItems = [
+    ...(accounts.data || []).filter((a) => !a.credit_card_id),
+    ...aggregateCardInvoices(accounts.data || [], credit.cards.data || []).map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      description: r.description,
+      counterparty: r.counterparty,
+      amount_cents: r.amountCents - (r.paidCents || 0),
+      due_on: r.dueOn!,
+      settled_on: r.settledOn,
+      deleted_at: null,
+    })),
+  ];
+  const overdue = overduePayables(payableItems, today);
+  const loadError = accounts.error || credit.cards.error;
   const total = overdue.reduce((s, a) => s + Number(a.amount_cents), 0);
   useEffect(() => {
-    if (accounts.isLoading || checkedOpenings.has(openingKey)) return;
+    if (accounts.isLoading || credit.cards.isLoading || checkedOpenings.has(openingKey)) return;
     checkedOpenings.add(openingKey);
-    setOpen(!!accounts.error || overdue.length > 0);
-  }, [openingKey, accounts.isLoading, accounts.error, overdue.length]);
+    setOpen(!!accounts.error || !!credit.cards.error || overdue.length > 0);
+  }, [
+    openingKey,
+    accounts.isLoading,
+    accounts.error,
+    credit.cards.isLoading,
+    credit.cards.error,
+    overdue.length,
+  ]);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogTitle>
-          {accounts.error
+          {loadError
             ? "Não foi possível conferir as contas a pagar"
             : `${overdue.length} conta(s) a pagar em atraso`}
         </DialogTitle>
         <DialogDescription>
-          {accounts.error
+          {loadError
             ? "Tente novamente para verificar se há contas vencidas."
             : "Juliana, estas contas estão vencidas e ainda não receberam baixa."}
         </DialogDescription>
-        {!accounts.error && (
+        {!loadError && (
           <>
             <strong className="text-2xl text-destructive">
               {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -75,7 +99,7 @@ function JulianaPayablesAlert({ openingKey }: { openingKey: string }) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             Fechar
           </Button>
-          {accounts.error ? (
+          {loadError ? (
             <Button
               disabled={accounts.isFetching}
               onClick={async () => {
