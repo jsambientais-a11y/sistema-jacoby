@@ -73,6 +73,10 @@ function Body({ children }: { children: ReactNode }) {
     setSelectedId,
     createAudit,
     remote,
+    syncStatus,
+    access,
+    storageError,
+    reloadServer,
     archivedAuditIds,
     archivedIds,
     processes,
@@ -175,9 +179,12 @@ function Body({ children }: { children: ReactNode }) {
     </>
   );
   return (
-    <div className="min-h-screen bg-[#f5f8f5] text-[#20382a]">
+    <div
+      className="iso-layout grid min-h-screen w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] bg-[#f5f8f5] text-[#20382a] md:grid-cols-[var(--iso-menu-width)_minmax(0,1fr)]"
+      style={{ "--iso-menu-width": collapsed ? "0px" : "16rem" } as React.CSSProperties}
+    >
       <aside
-        className={`fixed inset-y-0 left-0 z-30 hidden flex-col bg-[#193f2b] md:flex ${collapsed ? "w-0 overflow-hidden" : "w-64"}`}
+        className={`sticky top-0 z-30 hidden h-dvh min-w-0 self-start flex-col bg-[#193f2b] md:flex ${collapsed ? "w-0 overflow-hidden" : "w-64"}`}
       >
         {nav}
       </aside>
@@ -192,9 +199,29 @@ function Body({ children }: { children: ReactNode }) {
           />
         </div>
       )}
-      <div className={`min-w-0 ${collapsed ? "md:pl-0" : "md:pl-64"}`}>
+      <div className="w-full min-w-0 max-w-full">
+        {remote && (
+          <div
+            role="status"
+            className="min-w-0 border-b bg-blue-50 px-4 py-3 text-sm text-blue-900 [overflow-wrap:anywhere] sm:px-6"
+          >
+            {syncStatus} · Acesso:{" "}
+            {access === "admin"
+              ? "administração"
+              : access === "editor"
+                ? "edição"
+                : access === "viewer"
+                  ? "leitura"
+                  : "verificando"}
+            {storageError && (
+              <button type="button" className="ml-3 underline" onClick={reloadServer}>
+                Preservar cópia e recarregar servidor
+              </button>
+            )}
+          </div>
+        )}
         <header className="sticky top-0 z-20 border-b border-[#dbe5db] bg-white">
-          <div className="flex min-h-16 flex-wrap items-center gap-2 px-4 py-2 sm:px-6">
+          <div className="flex min-h-16 min-w-0 flex-wrap items-center gap-2 px-4 py-2 sm:px-6">
             <button
               type="button"
               aria-label="Alternar menu"
@@ -212,7 +239,8 @@ function Body({ children }: { children: ReactNode }) {
               aria-label="Auditoria ativa"
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
-              className="h-10 min-w-[170px] max-w-[280px] flex-1 rounded-lg border border-[#d8e2d6] bg-white px-3 text-sm shadow-sm sm:flex-none"
+              title={selected.name}
+              className="h-10 min-w-0 max-w-full flex-1 rounded-lg border border-[#d8e2d6] bg-white px-3 text-sm shadow-sm sm:max-w-[min(100%,24rem)]"
             >
               {audits
                 .filter((audit) => !archivedAuditIds.includes(audit.id) || audit.id === selectedId)
@@ -250,6 +278,13 @@ function Body({ children }: { children: ReactNode }) {
               onNavigate={() => setMenuOpen(false)}
               className="ml-auto"
             />
+          </div>
+          <div
+            className="border-t border-[#e5ece3] px-4 py-2 text-sm [overflow-wrap:anywhere] sm:px-6"
+            aria-label="Nome completo da auditoria ativa"
+          >
+            <span className="text-[#718275]">Auditoria ativa: </span>
+            <strong>{selected.name}</strong>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-t border-[#e5ece3] bg-[#edf5ef] px-4 py-2 sm:px-6">
             <span className="mr-2 text-xs text-[#62766b]">Etapa {activeStage + 1} de 5</span>
@@ -305,7 +340,7 @@ function Body({ children }: { children: ReactNode }) {
             ? "ISO compartilhado · dados e anexos privados no Supabase da Jacoby. Confira o status de salvamento antes de sair."
             : "Prévia local · os dados deste ambiente ISO ficam apenas neste navegador e ainda não são sincronizados entre usuários."}
         </div>
-        <main>{children}</main>
+        <main className="min-w-0 max-w-full [overflow-wrap:anywhere]">{children}</main>
       </div>
       {newOpen && (
         <div

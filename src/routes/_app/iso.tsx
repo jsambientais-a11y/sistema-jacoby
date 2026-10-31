@@ -51,7 +51,7 @@ function Kit() {
   const setStatus = (id: string, status: IsoStatus) =>
     updateAudit({ statuses: { ...statuses, [id]: status } });
   return (
-    <div className="mx-auto max-w-6xl space-y-5 px-4 py-7 sm:px-7">
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-5 px-4 py-7 sm:px-7">
       <div>
         <h1 className="text-2xl font-bold">Kit Pré-Auditoria Externa</h1>
         <p className="mt-1 text-sm text-[#6c7d70]">
@@ -113,10 +113,10 @@ function Kit() {
             {stage.items.map(([id, title, owner]) => (
               <div
                 key={id}
-                className="flex flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex min-w-0 flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div>
-                  <p className="text-sm font-medium">{title}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium [overflow-wrap:anywhere]">{title}</p>
                   <p className="text-xs text-[#839085]">Responsável sugerido: {owner}</p>
                   {shortcuts[id] && (
                     <Link

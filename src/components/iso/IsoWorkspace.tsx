@@ -555,18 +555,6 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
               biblioteca para recuperar.
             </div>
           )}
-          {isoRemoteEnabled && (
-            <div role="status" className="border-b bg-blue-50 p-3 text-sm text-blue-900">
-              {server.status}
-              {server.snapshot &&
-                ` · Acesso: ${server.snapshot.access === "admin" ? "administração" : server.snapshot.access === "editor" ? "edição" : "leitura"}`}
-              {storageError && (
-                <button type="button" className="ml-3 underline" onClick={server.reloadServer}>
-                  Preservar cópia e recarregar servidor
-                </button>
-              )}
-            </div>
-          )}
           {children}
         </>
       )}

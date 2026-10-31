@@ -42,12 +42,12 @@ function Overview() {
     },
   ] as const;
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 py-7 sm:px-7">
+    <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6 px-4 py-7 sm:px-7">
       <header>
         <p className="text-xs font-semibold uppercase tracking-wide text-[#478156]">
           Visão geral da auditoria
         </p>
-        <h1 className="mt-1 text-2xl font-bold">{selected.name}</h1>
+        <h1 className="mt-1 text-2xl font-bold [overflow-wrap:anywhere]">{selected.name}</h1>
         <p className="mt-1 text-sm text-[#6c7d70]">
           {selected.organization || "Empresa ainda não informada"} · {selected.type} ·{" "}
           {selected.standards.join(" · ") || "Normas a definir"}
@@ -73,14 +73,14 @@ function Overview() {
             to={to}
             className={`${box} group flex items-start gap-4 transition hover:border-[#76ac7c]`}
           >
-            <div className="rounded-xl bg-[#eaf4e9] p-3 text-[#28753a]">
+            <div className="shrink-0 rounded-xl bg-[#eaf4e9] p-3 text-[#28753a]">
               <Icon className="h-6 w-6" />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <h2 className="font-bold">{title}</h2>
               <p className="mt-1 text-sm text-[#6c7d70]">{description}</p>
             </div>
-            <ArrowRight className="mt-1 h-5 w-5 text-[#78a381]" />
+            <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-[#78a381]" />
           </Link>
         ))}
       </div>
