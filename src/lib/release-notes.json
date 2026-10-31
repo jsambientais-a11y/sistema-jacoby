@@ -1,8 +1,9 @@
 {
-  "version": "2026.10.24.1",
-  "title": "Sistema de cara nova e aba Financeiro",
-  "summary": "Visual renovado, Gestão de Projetos mais organizada, PDF do BM redesenhado e uma nova aba com tudo que a Jacoby tem a receber.",
+  "version": "2026.10.31.1",
+  "title": "Documentos com visão geral e vencidos em destaque",
+  "summary": "A aba Documentos agora mostra todas as empresas e filiais de uma vez, com os vencidos em destaque e visualização sem sair do lugar. Logo abaixo, as novidades da atualização anterior.",
   "changes": [
+    "Documentos: todas as empresas e filiais numa tela só, com cartões de Vencidos e Vencem em breve, busca, filtros e visualização em janela, sem rolar a página.",
     "Novo logo da Jacoby, verde mais forte e nova fonte em todo o sistema, com botões, campos e menus mais responsivos.",
     "Gestão de Projetos: busca por título, filtros organizados com etiquetas removíveis e Kanban, Lista e Calendário mais claros.",
     "Boletim de Medição: PDF redesenhado, com logos sem distorção, nomes completos dos equipamentos e numeração de páginas.",
@@ -13,6 +14,21 @@
   "image": "updates/2026-10-24-capa.svg",
   "imageAlt": "Capa da atualização com as quatro áreas renovadas: visual, projetos, boletim de medição e financeiro.",
   "sections": [
+    {
+      "title": "Documentos",
+      "description": "Visão geral de todos os documentos, com os vencidos em destaque e visualização em janela.",
+      "image": "updates/2026-10-31-documentos.svg",
+      "imageAlt": "Tela de Documentos com cartões de vencidos, vencem em breve, em dia e sem vencimento, e a lista agrupada por empresa e unidade.",
+      "items": [
+        "Todas as empresas, matriz e filiais em uma única tela, sem precisar escolher uma unidade por vez.",
+        "Cartões no topo com quantos documentos estão Vencidos, Vencem em breve, Em dia e Sem vencimento; clique em um para filtrar a lista.",
+        "Empresas com documentos vencidos sobem para o topo, e em cada unidade os vencidos aparecem primeiro.",
+        "Cada documento mostra a situação em cores e há quantos dias venceu ou quantos faltam para vencer.",
+        "Busca por nome do documento, arquivo, empresa ou unidade, e filtro por empresa.",
+        "Visualizar abre o documento numa janela por cima da tela, com Baixar e Abrir em nova aba. Editar também abre em janela.",
+        "No Portal do Cliente, o cliente vê a mesma tela com a própria empresa e as filiais, incluindo os documentos vencidos."
+      ]
+    },
     {
       "title": "Visual renovado",
       "description": "A identidade da Jacoby ficou mais forte e nítida em todas as telas.",

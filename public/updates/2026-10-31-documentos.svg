@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" font-family="'Plus Jakarta Sans','Segoe UI',Arial,sans-serif">
+<rect width="1200" height="600" rx="28" fill="#f6faf7"/>
+<g transform="translate(40 36)" font-size="14">
+<g><rect width="266" height="110" rx="16" fill="#fff" stroke="#dc2626" stroke-opacity=".45" stroke-width="2"/><text x="22" y="36" fill="#5f6f61">Vencidos</text><text x="22" y="74" fill="#dc2626" font-size="30" font-weight="800">3</text><text x="22" y="94" fill="#5f6f61" font-size="12">Precisam ser renovados</text></g>
+<g transform="translate(284 0)"><rect width="266" height="110" rx="16" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="22" y="36" fill="#5f6f61">Vencem em breve</text><text x="22" y="74" fill="#d97706" font-size="30" font-weight="800">5</text><text x="22" y="94" fill="#5f6f61" font-size="12">Dentro do prazo de aviso</text></g>
+<g transform="translate(568 0)"><rect width="266" height="110" rx="16" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="22" y="36" fill="#5f6f61">Em dia</text><text x="22" y="74" fill="#17803a" font-size="30" font-weight="800">42</text><text x="22" y="94" fill="#5f6f61" font-size="12">Vigentes, sem alerta</text></g>
+<g transform="translate(852 0)"><rect width="268" height="110" rx="16" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="22" y="36" fill="#5f6f61">Sem vencimento</text><text x="22" y="74" fill="#5f6f61" font-size="30" font-weight="800">8</text><text x="22" y="94" fill="#5f6f61" font-size="12">Não têm data de validade</text></g>
+</g>
+<g transform="translate(40 170)">
+<rect width="1120" height="394" rx="18" fill="#fff" stroke="#dde7da" stroke-width="2"/>
+<rect x="16" y="14" width="790" height="38" rx="9" fill="#fff" stroke="#dde7da" stroke-width="2"/><circle cx="38" cy="32" r="6" fill="none" stroke="#5f6f61" stroke-width="2"/><path d="M42.5 36.5l5 5" stroke="#5f6f61" stroke-width="2" stroke-linecap="round"/><text x="58" y="38" fill="#8a988c" font-size="13">Buscar por documento, arquivo, empresa ou unidade</text>
+<rect x="822" y="14" width="282" height="38" rx="9" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="840" y="38" fill="#1e2d21" font-size="13">Todas as empresas</text><path d="M1082 29l5 5 5-5" fill="none" stroke="#5f6f61" stroke-width="2"/>
+<rect x="0" y="64" width="1120" height="44" fill="#f2f6f0"/>
+<g font-size="13"><rect x="12" y="72" width="86" height="28" rx="7" fill="#fff"/><text x="55" y="91" text-anchor="middle" fill="#17803a" font-weight="700">Todos 58</text><text x="148" y="91" text-anchor="middle" fill="#5f6f61">Vencidos 3</text><text x="272" y="91" text-anchor="middle" fill="#5f6f61">Vencem em breve 5</text><text x="396" y="91" text-anchor="middle" fill="#5f6f61">Em dia 42</text><text x="510" y="91" text-anchor="middle" fill="#5f6f61">Sem vencimento 8</text></g>
+<rect x="0" y="108" width="1120" height="46" fill="#fafcf9"/>
+<rect x="22" y="124" width="14" height="14" rx="2" fill="none" stroke="#17803a" stroke-width="2"/><text x="48" y="137" fill="#1e2d21" font-size="15" font-weight="700">Empresa Exemplo</text><text x="190" y="137" fill="#5f6f61" font-size="12">6 documentos</text>
+<rect x="282" y="121" width="86" height="22" rx="11" fill="#fdecec"/><text x="325" y="136" text-anchor="middle" fill="#dc2626" font-size="12" font-weight="700">2 vencidos</text>
+<rect x="378" y="121" width="138" height="22" rx="11" fill="#fef3c7"/><text x="447" y="136" text-anchor="middle" fill="#92400e" font-size="12" font-weight="700">1 vence em breve</text>
+<text x="24" y="180" fill="#5f6f61" font-size="12" font-weight="600">Matriz · 12.345.678/0001-90</text>
+<g transform="translate(16 192)">
+<rect width="1088" height="58" rx="10" fill="#f8faf7"/><rect x="10" y="11" width="36" height="36" rx="8" fill="#fdecec"/><path d="M22 20h9l5 5v13a1 1 0 0 1-1 1H22a1 1 0 0 1-1-1V21a1 1 0 0 1 1-1z" fill="none" stroke="#dc2626" stroke-width="1.8"/>
+<text x="62" y="26" fill="#1e2d21" font-size="15" font-weight="700">Licença de Operação</text><text x="62" y="46" fill="#5f6f61" font-size="12">licenca-operacao.pdf</text>
+<rect x="716" y="9" width="66" height="22" rx="11" fill="#fdecec"/><text x="749" y="24" text-anchor="middle" fill="#dc2626" font-size="12" font-weight="700">Vencido</text><text x="782" y="48" text-anchor="end" fill="#dc2626" font-size="12">Venceu em 10/09/2026 · há 51 dias</text>
+<rect x="806" y="14" width="118" height="32" rx="8" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="865" y="35" text-anchor="middle" fill="#1e2d21" font-size="13" font-weight="600">Visualizar</text>
+<rect x="934" y="14" width="96" height="32" rx="8" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="982" y="35" text-anchor="middle" fill="#1e2d21" font-size="13" font-weight="600">Baixar</text>
+</g>
+<g transform="translate(16 256)">
+<rect x="10" y="11" width="36" height="36" rx="8" fill="#fef3c7"/><path d="M22 20h9l5 5v13a1 1 0 0 1-1 1H22a1 1 0 0 1-1-1V21a1 1 0 0 1 1-1z" fill="none" stroke="#d97706" stroke-width="1.8"/>
+<text x="62" y="26" fill="#1e2d21" font-size="15" font-weight="700">AVCB</text><text x="62" y="46" fill="#5f6f61" font-size="12">Auto de vistoria do Corpo de Bombeiros</text>
+<rect x="666" y="9" width="116" height="22" rx="11" fill="#fef3c7"/><text x="724" y="24" text-anchor="middle" fill="#92400e" font-size="12" font-weight="700">Vence em breve</text><text x="782" y="48" text-anchor="end" fill="#5f6f61" font-size="12">Vence em 12/11/2026 · faltam 12 dias</text>
+<rect x="806" y="14" width="118" height="32" rx="8" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="865" y="35" text-anchor="middle" fill="#1e2d21" font-size="13" font-weight="600">Visualizar</text>
+<rect x="934" y="14" width="96" height="32" rx="8" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="982" y="35" text-anchor="middle" fill="#1e2d21" font-size="13" font-weight="600">Baixar</text>
+</g>
+<text x="24" y="338" fill="#5f6f61" font-size="12" font-weight="600">Filial Campinas · 12.345.678/0002-71</text>
+<g transform="translate(16 344)">
+<rect x="10" y="4" width="36" height="36" rx="8" fill="#e3f1e7"/><path d="M22 13h9l5 5v13a1 1 0 0 1-1 1H22a1 1 0 0 1-1-1V14a1 1 0 0 1 1-1z" fill="none" stroke="#17803a" stroke-width="1.8"/>
+<text x="62" y="27" fill="#1e2d21" font-size="15" font-weight="700">CADRI</text>
+<rect x="716" y="10" width="66" height="22" rx="11" fill="#e3f1e7"/><text x="749" y="25" text-anchor="middle" fill="#17803a" font-size="12" font-weight="700">Em dia</text>
+<rect x="806" y="7" width="118" height="32" rx="8" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="865" y="28" text-anchor="middle" fill="#1e2d21" font-size="13" font-weight="600">Visualizar</text>
+<rect x="934" y="7" width="96" height="32" rx="8" fill="#fff" stroke="#dde7da" stroke-width="2"/><text x="982" y="28" text-anchor="middle" fill="#1e2d21" font-size="13" font-weight="600">Baixar</text>
+</g>
+</g>
+</svg>

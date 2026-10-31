@@ -1657,38 +1657,10 @@ function KanbanScrollArea({
   orientation: "horizontal" | "vertical";
   children: React.ReactNode;
 }) {
-  const mainRef = useRef<HTMLDivElement>(null);
-
-  // Wheel vertical → scroll horizontal quando estiver no modo horizontal
-  useEffect(() => {
-    const el = mainRef.current;
-    if (!el || orientation !== "vertical") return;
-    const onWheel = (e: WheelEvent) => {
-      // se não há overflow horizontal, ignora
-      if (el.scrollWidth <= el.clientWidth) return;
-      // ignora se o alvo está dentro de uma coluna que tem rolagem vertical útil
-      const target = e.target as HTMLElement | null;
-      const column = target?.closest(".kanban-scroll");
-      if (
-        column &&
-        column !== el &&
-        (column as HTMLElement).scrollHeight > (column as HTMLElement).clientHeight + 1
-      ) {
-        return; // deixa o navegador rolar a coluna
-      }
-      if (e.deltaY !== 0 && e.deltaX === 0) {
-        e.preventDefault();
-        el.scrollLeft += e.deltaY;
-      }
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [orientation]);
-
+  // Preserve os eixos nativos: roda do mouse desce; gesto lateral navega pelas colunas.
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div
-        ref={mainRef}
         className={`kanban-scroll kanban-scroll--${orientation} min-h-0 flex-1 overflow-auto p-4`}
       >
         {children}
