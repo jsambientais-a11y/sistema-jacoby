@@ -108,18 +108,9 @@ export default {
         .eq("id", input.cycleId)
         .single();
       if (cycleError || !cycle) return json({ error: "Boletim não encontrado." }, 404);
-      const { data: links, error: linksError } = await admin
-        .from("client_user_links")
-        .select("user_id")
-        .eq("client_id", cycle.client_id);
-      if (linksError) return json({ error: linksError.message }, 500);
-      const userIds = (links || []).map((item) => item.user_id);
-      const recipients: string[] = [];
-      for (const userId of userIds) {
-        const { data: userData } = await admin.auth.admin.getUserById(userId);
-        const email = userData.user?.email?.trim().toLowerCase();
-        if (email && !recipients.includes(email)) recipients.push(email);
-      }
+      const { data: recipientRows, error: recipientError } = await admin.rpc("billing_portal_email_recipients", { target_cycle_id: input.cycleId });
+      if (recipientError) return json({ error: recipientError.message }, 500);
+      const recipients = (recipientRows || []).map((row: {recipient_email:string}) => row.recipient_email);
       let outsourcedIssuer: { emails: string[]; companyName: string } | null = null;
       if (cycle.issuer_type === "outsourced" && cycle.outsourced_company_id) {
         const { data: company, error: companyError } = await admin
@@ -130,9 +121,6 @@ export default {
         if (companyError) return json({ error: companyError.message }, 500);
         const emails = company?.active ? parseEmailList(company.email) : [];
         if (company?.active) {
-          for (const email of emails) {
-            if (!recipients.includes(email)) recipients.push(email);
-          }
           outsourcedIssuer = {
             emails,
             companyName: company.trade_name || company.legal_name,
