@@ -11,6 +11,8 @@ export function useFinanceAccounts() {
     queryKey: key,
     enabled: !!user && hasPermission("finance"),
     queryFn: async () => {
+      const sync = await (supabase.rpc as any)("sync_finance_recurrences");
+      if (sync.error) throw new Error(sync.error.message);
       const all: FinanceAccount[] = [];
       for (let offset = 0; ; offset += 500) {
         const result = await table()

@@ -542,6 +542,7 @@ function FinanceNavGroup({
     "/bancos",
     "/relatorios-financeiros",
     "/cartoes",
+    "/despesas-recorrentes",
   ].includes(pathname);
   const item =
     "jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
@@ -567,6 +568,7 @@ function FinanceNavGroup({
           ["/centros-de-custo", "Centros de custo"],
           ["/bancos", "Bancos e contas"],
           ["/cartoes", "Cartões de crédito"],
+          ["/despesas-recorrentes", "Despesas recorrentes"],
           ["/relatorios-financeiros", "Relatórios"],
         ].map(([to, label]) => (
           <Link

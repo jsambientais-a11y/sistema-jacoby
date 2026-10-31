@@ -140,7 +140,9 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
   const missingDate = all.filter((r) => !r.dueOn && !r.settledOn).length;
   const rows = (
     showDeleted
-      ? (accounts.data || []).filter((a) => a.deleted_at && !a.credit_card_id).map(manualFinanceRow)
+      ? (accounts.data || [])
+          .filter((a) => a.deleted_at && !a.credit_card_id && !a.recurrence_suppressed)
+          .map(manualFinanceRow)
       : all
   )
     .filter(
@@ -318,6 +320,11 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                 </option>
               ))}
             </select>
+            {tab === "payable" && (
+              <Button variant="outline" asChild>
+                <Link to="/despesas-recorrentes">Despesas recorrentes</Link>
+              </Button>
+            )}
             <Button onClick={newAccount}>
               <Plus className="mr-2 h-4 w-4" />
               Nova conta {tab === "payable" ? "a pagar" : "a receber"}
@@ -457,6 +464,15 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                     <tr key={row.id} className="border-b last:border-0">
                       <td className="p-3">
                         <b className="block">{row.description}</b>
+                        {row.manual?.recurrence_id && (
+                          <Link
+                            to="/despesas-recorrentes"
+                            className="mt-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800"
+                          >
+                            Recorrente
+                            {row.manual.recurrence_overridden ? " · ocorrência ajustada" : ""}
+                          </Link>
+                        )}
                         <p className="mt-1 text-xs text-muted-foreground">
                           {row.source === "card"
                             ? "Fatura do cartão"
@@ -795,7 +811,9 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
             {draft?.kind === "payable" ? "a pagar" : "a receber"}
           </DialogTitle>
           <DialogDescription>
-            Cadastro operacional do Financeiro. Não cria nem altera BMs ou notas fiscais.
+            {draft?.old?.recurrence_id
+              ? "Você está editando somente esta ocorrência. As próximas seguem a série em Despesas recorrentes; alterações feitas aqui serão preservadas."
+              : "Cadastro operacional do Financeiro. Não cria nem altera BMs ou notas fiscais."}
           </DialogDescription>
           {draft && (
             <form onSubmit={save} className="space-y-3">

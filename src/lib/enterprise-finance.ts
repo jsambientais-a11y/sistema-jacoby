@@ -2,6 +2,10 @@ export type FinanceKind = "payable" | "receivable";
 export type FinanceAccount = {
   id: string;
   kind: FinanceKind;
+  recurrence_id?: string | null;
+  occurrence_on?: string | null;
+  recurrence_overridden?: boolean;
+  recurrence_suppressed?: boolean;
   credit_card_id?: string | null;
   card_purchase_id?: string | null;
   installment_number?: number | null;
