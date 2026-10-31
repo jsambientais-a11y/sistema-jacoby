@@ -28,6 +28,7 @@ export function useFinanceRecurrences() {
     Promise.all([
       qc.invalidateQueries({ queryKey: key }),
       qc.invalidateQueries({ queryKey: ["enterprise-finance-accounts"] }),
+      qc.invalidateQueries({ queryKey: ["finance-card-purchases"] }),
     ]);
   const save = useMutation({
     mutationFn: async ({
@@ -60,5 +61,30 @@ export function useFinanceRecurrences() {
     },
     onSuccess: refresh,
   });
-  return { ...query, save, setActive };
+  const saveInline = useMutation({
+    mutationFn: async ({
+      card = false,
+      old,
+      values,
+      repeat,
+    }: {
+      card?: boolean;
+      old?: { id: string; updated_at: string };
+      values: Record<string, unknown>;
+      repeat: import("@/lib/finance-recurrence").InlineRecurrence;
+    }) => {
+      const r = await (supabase.rpc as any)(
+        card ? "save_inline_card_purchase" : "save_inline_payable",
+        {
+          payload: values,
+          target_id: old?.id || null,
+          expected_updated_at: old?.updated_at || null,
+          repeat_options: repeat,
+        },
+      );
+      if (r.error) throw new Error(r.error.message);
+    },
+    onSuccess: refresh,
+  });
+  return { ...query, save, setActive, saveInline };
 }

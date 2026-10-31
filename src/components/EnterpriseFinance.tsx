@@ -13,6 +13,9 @@ import {
 import { toast } from "sonner";
 import { compatibleCenter, useCostCenters, useBanks } from "@/hooks/use-cost-centers";
 import { useReceiptDetails } from "@/hooks/use-receipt-details";
+import { InlineRecurrenceFields } from "@/components/InlineRecurrenceFields";
+import { useFinanceRecurrences } from "@/hooks/use-finance-recurrences";
+import { inlineRecurrence, type InlineRecurrence } from "@/lib/finance-recurrence";
 import { FinanceComparison } from "@/components/FinanceComparison";
 import { aggregateCardInvoices } from "@/lib/credit-cards";
 import { useCreditCards } from "@/hooks/use-credit-cards";
@@ -45,6 +48,7 @@ const tabNames = {
   receivable: "Contas a receber",
 } as const;
 type Draft = {
+  repeat?: InlineRecurrence;
   description: string;
   counterparty: string;
   category: string;
@@ -59,6 +63,7 @@ type Draft = {
 export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
   const initial = useSearch({ strict: false }) as { view?: string; status?: string };
   const accounts = useFinanceAccounts();
+  const recurring = useFinanceRecurrences();
   const credit = useCreditCards();
   const centers = useCostCenters();
   const banks = useBanks();
@@ -183,7 +188,10 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
     flow.billingTrackingQuery,
   ].some((q) => q.isLoading);
   const busy =
-    accounts.save.isPending || flow.settleReceivable.isPending || receiptDetails.save.isPending;
+    accounts.save.isPending ||
+    recurring.saveInline.isPending ||
+    flow.settleReceivable.isPending ||
+    receiptDetails.save.isPending;
   const fail = (e: unknown) =>
     toast.error(e instanceof Error ? e.message : "Não foi possível salvar.");
   const newAccount = () =>
@@ -202,20 +210,38 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
     e.preventDefault();
     if (!draft) return;
     try {
-      await accounts.save.mutateAsync({
-        old: draft.old,
-        values: {
-          description: draft.description.trim(),
-          counterparty: draft.counterparty.trim(),
-          category: draft.category.trim(),
-          cost_center_id: draft.cost_center_id || null,
-          bank_account_id: draft.bank_account_id || null,
-          amount_cents: parseFinanceMoney(draft.value),
-          due_on: draft.due_on,
-          notes: draft.notes,
-          kind: draft.kind,
-        },
-      });
+      const values = {
+        description: draft.description.trim(),
+        counterparty: draft.counterparty.trim(),
+        category: draft.category.trim(),
+        cost_center_id: draft.cost_center_id || null,
+        bank_account_id: draft.bank_account_id || null,
+        amount_cents: parseFinanceMoney(draft.value),
+        due_on: draft.due_on,
+        notes: draft.notes,
+        kind: draft.kind,
+      };
+      if (draft.kind === "payable")
+        await recurring.saveInline.mutateAsync({
+          old: draft.old,
+          values,
+          repeat: draft.repeat || inlineRecurrence(),
+        });
+      else
+        await accounts.save.mutateAsync({
+          old: draft.old,
+          values: {
+            description: draft.description.trim(),
+            counterparty: draft.counterparty.trim(),
+            category: draft.category.trim(),
+            cost_center_id: draft.cost_center_id || null,
+            bank_account_id: draft.bank_account_id || null,
+            amount_cents: parseFinanceMoney(draft.value),
+            due_on: draft.due_on,
+            notes: draft.notes,
+            kind: draft.kind,
+          },
+        });
       setDraft(null);
       toast.success("Lançamento salvo no Financeiro.");
     } catch (e) {
@@ -320,11 +346,6 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                 </option>
               ))}
             </select>
-            {tab === "payable" && (
-              <Button variant="outline" asChild>
-                <Link to="/despesas-recorrentes">Despesas recorrentes</Link>
-              </Button>
-            )}
             <Button onClick={newAccount}>
               <Plus className="mr-2 h-4 w-4" />
               Nova conta {tab === "payable" ? "a pagar" : "a receber"}
@@ -465,13 +486,10 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                       <td className="p-3">
                         <b className="block">{row.description}</b>
                         {row.manual?.recurrence_id && (
-                          <Link
-                            to="/despesas-recorrentes"
-                            className="mt-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800"
-                          >
+                          <span className="mt-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">
                             Recorrente
                             {row.manual.recurrence_overridden ? " · ocorrência ajustada" : ""}
-                          </Link>
+                          </span>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
                           {row.source === "card"
@@ -629,11 +647,17 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                               {row.manual && !row.manual.credit_card_id && (
                                 <>
                                   <Button
+                                    disabled={recurring.isLoading || !!recurring.error}
                                     aria-label={`Editar ${row.description}`}
                                     size="icon"
                                     variant="ghost"
                                     onClick={() =>
                                       setDraft({
+                                        repeat: inlineRecurrence(
+                                          recurring.data?.find(
+                                            (r) => r.id === row.manual?.recurrence_id,
+                                          ),
+                                        ),
                                         old: row.manual,
                                         kind: row.kind,
                                         description: row.description,
@@ -812,8 +836,8 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
           </DialogTitle>
           <DialogDescription>
             {draft?.old?.recurrence_id
-              ? "Você está editando somente esta ocorrência. As próximas seguem a série em Despesas recorrentes; alterações feitas aqui serão preservadas."
-              : "Cadastro operacional do Financeiro. Não cria nem altera BMs ou notas fiscais."}
+              ? "Você está editando somente esta ocorrência. Use Repetir esta despesa para escolher entre alterar somente esta conta ou as próximas."
+              : "Cadastro operacional do Financeiro. Ative Repetir esta despesa para torná-la recorrente."}
           </DialogDescription>
           {draft && (
             <form onSubmit={save} className="space-y-3">
@@ -854,6 +878,7 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                   <Label htmlFor="finance-due">Vencimento</Label>
                   <Input
                     id="finance-due"
+                    disabled={!!draft.old?.recurrence_id && draft.repeat?.scope === "future"}
                     type="date"
                     required
                     value={draft.due_on}
@@ -915,6 +940,15 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                   onChange={(e) => setDraft({ ...draft, category: e.target.value })}
                 />
               </div>
+              {draft.kind === "payable" && (
+                <InlineRecurrenceFields
+                  value={draft.repeat || inlineRecurrence()}
+                  onChange={(repeat) => setDraft({ ...draft, repeat })}
+                  existing={!!draft.old?.recurrence_id}
+                  start={draft.due_on}
+                  disabled={busy}
+                />
+              )}
               <div className="space-y-1">
                 <Label htmlFor="finance-notes">Observações</Label>
                 <textarea
@@ -934,7 +968,9 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
                 >
                   Cancelar
                 </Button>
-                <Button disabled={busy}>{busy ? "Salvando…" : "Salvar conta"}</Button>
+                <Button disabled={busy || recurring.isLoading || !!recurring.error}>
+                  {busy ? "Salvando…" : "Salvar conta"}
+                </Button>
               </div>
             </form>
           )}

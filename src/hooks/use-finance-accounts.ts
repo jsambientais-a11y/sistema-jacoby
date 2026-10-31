@@ -13,6 +13,8 @@ export function useFinanceAccounts() {
     queryFn: async () => {
       const sync = await (supabase.rpc as any)("sync_finance_recurrences");
       if (sync.error) throw new Error(sync.error.message);
+      if (Number(sync.data) > 0)
+        void qc.invalidateQueries({ queryKey: ["finance-card-purchases"] });
       const all: FinanceAccount[] = [];
       for (let offset = 0; ; offset += 500) {
         const result = await table()

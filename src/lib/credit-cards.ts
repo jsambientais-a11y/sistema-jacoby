@@ -12,6 +12,9 @@ export type CreditCard = {
   updated_at: string;
 };
 export type CardPurchase = {
+  recurrence_id?: string | null;
+  occurrence_on?: string | null;
+  recurrence_suppressed?: boolean;
   id: string;
   card_id: string;
   description: string;

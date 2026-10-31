@@ -9,6 +9,7 @@ export const RECURRENCE_FREQUENCIES = {
 } as const;
 export type RecurrenceFrequency = keyof typeof RECURRENCE_FREQUENCIES;
 export type FinanceRecurrence = {
+  credit_card_id?: string | null;
   id: string;
   description: string;
   counterparty: string;
@@ -54,4 +55,21 @@ export function recurrencePreview(
     out.push(date);
   }
   return out;
+}
+
+export type InlineRecurrence = {
+  enabled: boolean;
+  frequency: RecurrenceFrequency;
+  end_on: string;
+  scope: "one" | "future";
+  rule_updated_at?: string;
+};
+export function inlineRecurrence(rule?: FinanceRecurrence): InlineRecurrence {
+  return {
+    enabled: rule?.active ?? false,
+    frequency: rule?.frequency || "monthly",
+    end_on: rule?.end_on || "",
+    scope: "one",
+    rule_updated_at: rule?.updated_at,
+  };
 }

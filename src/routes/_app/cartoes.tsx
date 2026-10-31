@@ -1,7 +1,11 @@
+import { InlineRecurrenceFields } from "@/components/InlineRecurrenceFields";
+import { useFinanceRecurrences } from "@/hooks/use-finance-recurrences";
+import { inlineRecurrence, type InlineRecurrence } from "@/lib/finance-recurrence";
 import { CardInvoiceImport } from "@/components/CardInvoiceImport";
 import { createFileRoute, Navigate, Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import {
+  Repeat2,
   CreditCard as CardIcon,
   Plus,
   Pencil,
@@ -51,6 +55,7 @@ type CardDraft = {
   bank: string;
 };
 type PurchaseDraft = {
+  repeat?: InlineRecurrence;
   old?: CardPurchase;
   description: string;
   merchant: string;
@@ -76,6 +81,7 @@ function CreditCardsPage() {
   const { hasPermission, isClient } = useAuth();
   const data = useCreditCards();
   const accounts = useFinanceAccounts();
+  const recurring = useFinanceRecurrences();
   const banks = useBanks();
   const centers = useCostCenters();
   const search = Route.useSearch();
@@ -130,6 +136,7 @@ function CreditCardsPage() {
   const busy =
     data.saveCard.isPending ||
     data.savePurchase.isPending ||
+    recurring.saveInline.isPending ||
     data.deletePurchase.isPending ||
     data.settle.isPending;
   const fail = (e: unknown) =>
@@ -171,8 +178,16 @@ function CreditCardsPage() {
       notes: "",
     });
   };
-  const editPurchase = (p: CardPurchase) =>
+  const editPurchase = (p: CardPurchase, repeatOnly = false) => {
+    if (p.recurrence_id && !recurring.data?.some((r) => r.id === p.recurrence_id)) {
+      fail("Aguarde o carregamento da repetição e tente novamente.");
+      return;
+    }
     setPurchaseDraft({
+      repeat: {
+        ...inlineRecurrence(recurring.data?.find((r) => r.id === p.recurrence_id)),
+        ...(repeatOnly ? { enabled: true, scope: "future" as const } : {}),
+      },
       old: p,
       description: p.description,
       merchant: p.merchant,
@@ -184,6 +199,7 @@ function CreditCardsPage() {
       center: p.cost_center_id || "",
       notes: p.notes,
     });
+  };
   const saveCard = async (e: FormEvent) => {
     e.preventDefault();
     if (!cardDraft) return;
@@ -212,7 +228,9 @@ function CreditCardsPage() {
     if (!purchaseDraft || !selected) return;
     try {
       splitCardInstallments(parseFinanceMoney(purchaseDraft.value), purchaseDraft.installments);
-      await data.savePurchase.mutateAsync({
+      await recurring.saveInline.mutateAsync({
+        card: true,
+        repeat: purchaseDraft.repeat || inlineRecurrence(),
         old: purchaseDraft.old,
         values: {
           card_id: selected.id,
@@ -607,6 +625,11 @@ function CreditCardsPage() {
                           <tr key={a.id} className="border-b last:border-0">
                             <td className="p-3">
                               <b className="block">{p?.description || a.description}</b>
+                              {p?.recurrence_id && (
+                                <span className="mt-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs text-violet-800">
+                                  Recorrente{p.purchased_on > today ? " · prevista" : ""}
+                                </span>
+                              )}
                               <p className="text-xs text-muted-foreground">
                                 {a.counterparty || "Estabelecimento não informado"}
                                 {a.category ? ` · ${a.category}` : ""}
@@ -659,6 +682,25 @@ function CreditCardsPage() {
                             </td>
                             <td className="p-3">
                               <div className="flex gap-1">
+                                {p && p.installments === 1 && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    aria-label={`Repetição de ${p.description}`}
+                                    title={
+                                      p.recurrence_id ? "Editar repetição" : "Tornar recorrente"
+                                    }
+                                    disabled={
+                                      busy ||
+                                      recurring.isLoading ||
+                                      !!recurring.error ||
+                                      (!selected.active && !p.recurrence_id)
+                                    }
+                                    onClick={() => editPurchase(p, true)}
+                                  >
+                                    <Repeat2 className="h-4 w-4 text-primary" />
+                                  </Button>
+                                )}
                                 <Button
                                   size="icon"
                                   variant="ghost"
@@ -890,6 +932,7 @@ function CreditCardsPage() {
                     required
                     type="date"
                     max={today}
+                    disabled={!!purchaseDraft.old?.recurrence_id}
                     value={purchaseDraft.date}
                     onChange={(e) =>
                       setPurchaseDraft({
@@ -915,6 +958,7 @@ function CreditCardsPage() {
                   <Input
                     required
                     type="number"
+                    disabled={purchaseDraft.repeat?.enabled}
                     min={1}
                     max={60}
                     value={purchaseDraft.installments}
@@ -927,6 +971,7 @@ function CreditCardsPage() {
                   <Input
                     required
                     type="month"
+                    disabled={!!purchaseDraft.old?.recurrence_id}
                     value={purchaseDraft.firstMonth}
                     onChange={(e) =>
                       setPurchaseDraft({ ...purchaseDraft, firstMonth: e.target.value })
@@ -971,6 +1016,30 @@ function CreditCardsPage() {
                   onChange={(e) => setPurchaseDraft({ ...purchaseDraft, notes: e.target.value })}
                 />
               </Field>
+              <InlineRecurrenceFields
+                card
+                value={purchaseDraft.repeat || inlineRecurrence()}
+                onChange={(repeat) =>
+                  setPurchaseDraft({
+                    ...purchaseDraft,
+                    repeat,
+                    installments: repeat.enabled ? 1 : purchaseDraft.installments,
+                  })
+                }
+                existing={!!purchaseDraft.old?.recurrence_id}
+                start={purchaseDraft.date}
+                disabled={busy || !!(purchaseDraft.old && purchaseDraft.old.installments > 1)}
+              />
+              {purchaseDraft.old &&
+                !purchaseDraft.old.recurrence_id &&
+                accounts.data?.some(
+                  (a) => a.card_purchase_id === purchaseDraft.old?.id && a.settled_on,
+                ) && (
+                  <p className="text-xs text-muted-foreground">
+                    Compra já paga: mantenha os dados originais ao ativar a repetição. A baixa desta
+                    compra será preservada.
+                  </p>
+                )}
               <InstallmentPreview draft={purchaseDraft} card={selected} />
               <div className="flex justify-end gap-2">
                 <Button
@@ -981,7 +1050,16 @@ function CreditCardsPage() {
                 >
                   Cancelar
                 </Button>
-                <Button disabled={busy || !!error || banks.isLoading || centers.isLoading}>
+                <Button
+                  disabled={
+                    busy ||
+                    !!error ||
+                    banks.isLoading ||
+                    centers.isLoading ||
+                    recurring.isLoading ||
+                    !!recurring.error
+                  }
+                >
                   Salvar despesa
                 </Button>
               </div>
