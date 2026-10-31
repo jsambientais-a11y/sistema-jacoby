@@ -1,4 +1,4 @@
-export type ReleaseSection = { title: string; description: string; image: string; imageAlt: string; items: string[] };
+export type ReleaseSection = { title: string; description: string; image?: string; imageAlt?: string; items: string[] };
 // changes/image continuam obrigatórios: versões antigas do sistema leem só esses campos.
 export type ReleaseNotes = { version?: string; title: string; summary: string; changes: string[]; image: string; imageAlt: string; sections?: ReleaseSection[] };
 export type AppVersion = { id: string; builtAt: string; releaseNotes?: ReleaseNotes };
@@ -8,7 +8,7 @@ const isSection = (value: unknown): value is ReleaseSection => {
   if (!value || typeof value !== "object") return false;
   const section = value as Record<string, unknown>;
   return typeof section.title === "string" && typeof section.description === "string" &&
-    isUpdateImage(section.image) && typeof section.imageAlt === "string" && isStringList(section.items);
+    (section.image === undefined || (isUpdateImage(section.image) && typeof section.imageAlt === "string")) && isStringList(section.items);
 };
 export function parseAppVersion(value: unknown): AppVersion | null {
   if (!value || typeof value !== "object") return null;

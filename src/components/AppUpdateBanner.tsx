@@ -191,7 +191,7 @@ export function AppUpdateBanner() {
                   <p className="text-sm text-muted-foreground">{section.description}</p>
                 </div>
               </div>
-              <img className="mt-4 w-full rounded-xl border shadow-sm" src={`${base}${section.image}`} alt={section.imageAlt} loading="lazy" />
+              {section.image && <img className="mt-4 w-full rounded-xl border shadow-sm" src={`${base}${section.image}`} alt={section.imageAlt || section.title} loading="lazy" />}
               <ul className="mt-4 grid gap-2.5 sm:grid-cols-2">
                 {section.items.map((item) => <li key={item} className="flex gap-2.5 text-sm leading-relaxed">
                   <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground"><Check className="h-3 w-3" /></span>
