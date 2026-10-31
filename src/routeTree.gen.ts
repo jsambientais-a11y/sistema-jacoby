@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AppBancosRouteImport } from './routes/_app/bancos'
 import { Route as AppCalendarioRouteImport } from './routes/_app/calendario'
+import { Route as AppCentrosDeCustoRouteImport } from './routes/_app/centros-de-custo'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
 import { Route as AppContasAReceberRouteImport } from './routes/_app/contas-a-receber'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
@@ -20,6 +22,7 @@ import { Route as AppFinanceiroRouteImport } from './routes/_app/financeiro'
 import { Route as AppImportAtaRouteImport } from './routes/_app/import-ata'
 import { Route as AppIsoRouteImport } from './routes/_app/iso'
 import { Route as AppNotesRouteImport } from './routes/_app/notes'
+import { Route as AppRelatoriosFinanceirosRouteImport } from './routes/_app/relatorios-financeiros'
 import { Route as AppReportsRouteImport } from './routes/_app/reports'
 import { Route as AppResiduosRouteImport } from './routes/_app/residuos'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
@@ -70,9 +73,19 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppBancosRoute = AppBancosRouteImport.update({
+  id: '/bancos',
+  path: '/bancos',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCalendarioRoute = AppCalendarioRouteImport.update({
   id: '/calendario',
   path: '/calendario',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCentrosDeCustoRoute = AppCentrosDeCustoRouteImport.update({
+  id: '/centros-de-custo',
+  path: '/centros-de-custo',
   getParentRoute: () => AppRoute,
 } as any)
 const AppClientsRoute = AppClientsRouteImport.update({
@@ -110,6 +123,12 @@ const AppNotesRoute = AppNotesRouteImport.update({
   path: '/notes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRelatoriosFinanceirosRoute =
+  AppRelatoriosFinanceirosRouteImport.update({
+    id: '/relatorios-financeiros',
+    path: '/relatorios-financeiros',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppReportsRoute = AppReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -289,7 +308,9 @@ const AppClientsClientIdEditRoute = AppClientsClientIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/bancos': typeof AppBancosRoute
   '/calendario': typeof AppCalendarioRoute
+  '/centros-de-custo': typeof AppCentrosDeCustoRoute
   '/clients': typeof AppClientsRouteWithChildren
   '/contas-a-receber': typeof AppContasAReceberRoute
   '/dashboard': typeof AppDashboardRoute
@@ -297,6 +318,7 @@ export interface FileRoutesByFullPath {
   '/import-ata': typeof AppImportAtaRoute
   '/iso': typeof AppIsoRouteWithChildren
   '/notes': typeof AppNotesRoute
+  '/relatorios-financeiros': typeof AppRelatoriosFinanceirosRoute
   '/reports': typeof AppReportsRoute
   '/residuos': typeof AppResiduosRoute
   '/settings': typeof AppSettingsRoute
@@ -336,13 +358,16 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/bancos': typeof AppBancosRoute
   '/calendario': typeof AppCalendarioRoute
+  '/centros-de-custo': typeof AppCentrosDeCustoRoute
   '/contas-a-receber': typeof AppContasAReceberRoute
   '/dashboard': typeof AppDashboardRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/import-ata': typeof AppImportAtaRoute
   '/iso': typeof AppIsoRouteWithChildren
   '/notes': typeof AppNotesRoute
+  '/relatorios-financeiros': typeof AppRelatoriosFinanceirosRoute
   '/reports': typeof AppReportsRoute
   '/residuos': typeof AppResiduosRoute
   '/settings': typeof AppSettingsRoute
@@ -383,7 +408,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_app/bancos': typeof AppBancosRoute
   '/_app/calendario': typeof AppCalendarioRoute
+  '/_app/centros-de-custo': typeof AppCentrosDeCustoRoute
   '/_app/clients': typeof AppClientsRouteWithChildren
   '/_app/contas-a-receber': typeof AppContasAReceberRoute
   '/_app/dashboard': typeof AppDashboardRoute
@@ -391,6 +418,7 @@ export interface FileRoutesById {
   '/_app/import-ata': typeof AppImportAtaRoute
   '/_app/iso': typeof AppIsoRouteWithChildren
   '/_app/notes': typeof AppNotesRoute
+  '/_app/relatorios-financeiros': typeof AppRelatoriosFinanceirosRoute
   '/_app/reports': typeof AppReportsRoute
   '/_app/residuos': typeof AppResiduosRoute
   '/_app/settings': typeof AppSettingsRoute
@@ -432,7 +460,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/bancos'
     | '/calendario'
+    | '/centros-de-custo'
     | '/clients'
     | '/contas-a-receber'
     | '/dashboard'
@@ -440,6 +470,7 @@ export interface FileRouteTypes {
     | '/import-ata'
     | '/iso'
     | '/notes'
+    | '/relatorios-financeiros'
     | '/reports'
     | '/residuos'
     | '/settings'
@@ -479,13 +510,16 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/bancos'
     | '/calendario'
+    | '/centros-de-custo'
     | '/contas-a-receber'
     | '/dashboard'
     | '/financeiro'
     | '/import-ata'
     | '/iso'
     | '/notes'
+    | '/relatorios-financeiros'
     | '/reports'
     | '/residuos'
     | '/settings'
@@ -525,7 +559,9 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/auth'
+    | '/_app/bancos'
     | '/_app/calendario'
+    | '/_app/centros-de-custo'
     | '/_app/clients'
     | '/_app/contas-a-receber'
     | '/_app/dashboard'
@@ -533,6 +569,7 @@ export interface FileRouteTypes {
     | '/_app/import-ata'
     | '/_app/iso'
     | '/_app/notes'
+    | '/_app/relatorios-financeiros'
     | '/_app/reports'
     | '/_app/residuos'
     | '/_app/settings'
@@ -599,11 +636,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/bancos': {
+      id: '/_app/bancos'
+      path: '/bancos'
+      fullPath: '/bancos'
+      preLoaderRoute: typeof AppBancosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/calendario': {
       id: '/_app/calendario'
       path: '/calendario'
       fullPath: '/calendario'
       preLoaderRoute: typeof AppCalendarioRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/centros-de-custo': {
+      id: '/_app/centros-de-custo'
+      path: '/centros-de-custo'
+      fullPath: '/centros-de-custo'
+      preLoaderRoute: typeof AppCentrosDeCustoRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/clients': {
@@ -653,6 +704,13 @@ declare module '@tanstack/react-router' {
       path: '/notes'
       fullPath: '/notes'
       preLoaderRoute: typeof AppNotesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/relatorios-financeiros': {
+      id: '/_app/relatorios-financeiros'
+      path: '/relatorios-financeiros'
+      fullPath: '/relatorios-financeiros'
+      preLoaderRoute: typeof AppRelatoriosFinanceirosRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/reports': {
@@ -969,7 +1027,9 @@ const AppTasksRouteWithChildren = AppTasksRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppBancosRoute: typeof AppBancosRoute
   AppCalendarioRoute: typeof AppCalendarioRoute
+  AppCentrosDeCustoRoute: typeof AppCentrosDeCustoRoute
   AppClientsRoute: typeof AppClientsRouteWithChildren
   AppContasAReceberRoute: typeof AppContasAReceberRoute
   AppDashboardRoute: typeof AppDashboardRoute
@@ -977,6 +1037,7 @@ interface AppRouteChildren {
   AppImportAtaRoute: typeof AppImportAtaRoute
   AppIsoRoute: typeof AppIsoRouteWithChildren
   AppNotesRoute: typeof AppNotesRoute
+  AppRelatoriosFinanceirosRoute: typeof AppRelatoriosFinanceirosRoute
   AppReportsRoute: typeof AppReportsRoute
   AppResiduosRoute: typeof AppResiduosRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -997,7 +1058,9 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppBancosRoute: AppBancosRoute,
   AppCalendarioRoute: AppCalendarioRoute,
+  AppCentrosDeCustoRoute: AppCentrosDeCustoRoute,
   AppClientsRoute: AppClientsRouteWithChildren,
   AppContasAReceberRoute: AppContasAReceberRoute,
   AppDashboardRoute: AppDashboardRoute,
@@ -1005,6 +1068,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppImportAtaRoute: AppImportAtaRoute,
   AppIsoRoute: AppIsoRouteWithChildren,
   AppNotesRoute: AppNotesRoute,
+  AppRelatoriosFinanceirosRoute: AppRelatoriosFinanceirosRoute,
   AppReportsRoute: AppReportsRoute,
   AppResiduosRoute: AppResiduosRoute,
   AppSettingsRoute: AppSettingsRoute,

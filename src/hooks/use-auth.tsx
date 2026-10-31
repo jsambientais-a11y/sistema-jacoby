@@ -2,9 +2,10 @@
  * Fonte única de autenticação e autorização da interface.
  * Expõe sessão, perfil, categoria (admin/colaborador/cliente) e permissões de navegação.
  */
+import { restrictedFinancePermission } from "@/lib/finance-access";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Session, User } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Profile {
@@ -34,8 +35,27 @@ const AuthContext = createContext<AuthCtx | undefined>(undefined);
 
 // GitHub Pages can be opened before the new Supabase project is configured.
 // In that narrow case, authentication stays only in this browser profile.
-export const isStaticPreview = import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL;
-const previewPermissions = ["dashboard", "tasks", "notes", "import_ata", "clients", "outsourced", "reports", "documents", "portal", "portal_units", "portal_reports", "billing", "movement_settings", "calendar", "users", "trash", "settings"];
+export const isStaticPreview =
+  import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL;
+const previewPermissions = [
+  "dashboard",
+  "tasks",
+  "notes",
+  "import_ata",
+  "clients",
+  "outsourced",
+  "reports",
+  "documents",
+  "portal",
+  "portal_units",
+  "portal_reports",
+  "billing",
+  "movement_settings",
+  "calendar",
+  "users",
+  "trash",
+  "settings",
+];
 const localAccountsKey = "jacoby-local-accounts-v1";
 const localSessionKey = "jacoby-local-session-v1";
 const localAuthChanged = "jacoby-local-auth-changed";
@@ -68,17 +88,36 @@ function ensureLocalBoard() {
         ["Aguardando Retorno", "#d4dd33"],
         ["Em Revisão", "#38bdf8"],
         ["Concluídas", "#22c55e"],
-      ].map(([name, color], position) => ({ id: `jacoby-local-column-${position}`, name, color, position, created_at: new Date().toISOString() }));
+      ].map(([name, color], position) => ({
+        id: `jacoby-local-column-${position}`,
+        name,
+        color,
+        position,
+        created_at: new Date().toISOString(),
+      }));
       database.kanban_columns = columns;
-      database.tasks = (database.tasks ?? []).map((task: Record<string, unknown>) => task.column_id ? task : { ...task, column_id: columns[0].id });
+      database.tasks = (database.tasks ?? []).map((task: Record<string, unknown>) =>
+        task.column_id ? task : { ...task, column_id: columns[0].id },
+      );
       localStorage.setItem(localDataKey, JSON.stringify(database));
     }
   } catch {
     // A malformed local cache is safely rebuilt as an empty board.
-    localStorage.setItem(localDataKey, JSON.stringify({
-      kanban_columns: [{ id: "jacoby-local-column-0", name: "A Fazer", color: "#64748b", position: 0, created_at: new Date().toISOString() }],
-      tasks: [],
-    }));
+    localStorage.setItem(
+      localDataKey,
+      JSON.stringify({
+        kanban_columns: [
+          {
+            id: "jacoby-local-column-0",
+            name: "A Fazer",
+            color: "#64748b",
+            position: 0,
+            created_at: new Date().toISOString(),
+          },
+        ],
+        tasks: [],
+      }),
+    );
   }
 }
 
@@ -92,10 +131,19 @@ export function hasLocalPreviewAccounts() {
   return getLocalAccounts().length > 0;
 }
 
-export async function createLocalPreviewAccount({ fullName, email, password }: { fullName: string; email: string; password: string }) {
+export async function createLocalPreviewAccount({
+  fullName,
+  email,
+  password,
+}: {
+  fullName: string;
+  email: string;
+  password: string;
+}) {
   const normalizedEmail = email.trim().toLowerCase();
   const accounts = getLocalAccounts();
-  if (accounts.some((account) => account.email === normalizedEmail)) throw new Error("Já existe uma conta com este e-mail neste navegador.");
+  if (accounts.some((account) => account.email === normalizedEmail))
+    throw new Error("Já existe uma conta com este e-mail neste navegador.");
   const account: LocalAccount = {
     id: `jacoby-local-${crypto.randomUUID()}`,
     fullName: fullName.trim(),
@@ -108,10 +156,16 @@ export async function createLocalPreviewAccount({ fullName, email, password }: {
   window.dispatchEvent(new Event(localAuthChanged));
 }
 
-export async function signInLocalPreviewAccount({ email, password }: { email: string; password: string }) {
+export async function signInLocalPreviewAccount({
+  email,
+  password,
+}: {
+  email: string;
+  password: string;
+}) {
   const normalizedEmail = email.trim().toLowerCase();
   const account = getLocalAccounts().find((item) => item.email === normalizedEmail);
-  if (!account || account.passwordHash !== await hashLocalPassword(normalizedEmail, password)) {
+  if (!account || account.passwordHash !== (await hashLocalPassword(normalizedEmail, password))) {
     throw new Error("E-mail ou senha inválidos neste navegador.");
   }
   localStorage.setItem(localSessionKey, account.id);
@@ -162,9 +216,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAdmin(admin);
     setIsCollaborator(collaborator);
     setIsClient(client);
-    const { data: link } = await (supabase.from("client_user_links" as any) as any).select("client_id").eq("user_id", uid).maybeSingle();
+    const { data: link } = await (supabase.from("client_user_links" as any) as any)
+      .select("client_id")
+      .eq("user_id", uid)
+      .maybeSingle();
     setClientId(link?.client_id ?? null);
-    const { data: access } = await (supabase.from("user_permissions") as any).select("permissions").eq("user_id", uid).maybeSingle();
+    const { data: access } = await (supabase.from("user_permissions") as any)
+      .select("permissions")
+      .eq("user_id", uid)
+      .maybeSingle();
     setPermissions(admin ? previewPermissions : (access?.permissions ?? []));
     loadedProfileUserId.current = uid;
     loadingProfileUserId.current = null;
@@ -174,7 +234,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const scheduleProfileLoad = (uid: string, force = false) => {
     // O Supabase pode emitir SIGNED_IN novamente ao renovar a sessão ou ao voltar
     // para a aba. Isso não é um novo login e não deve desmontar a tela atual.
-    if (!force && (loadedProfileUserId.current === uid || loadingProfileUserId.current === uid)) return;
+    if (!force && (loadedProfileUserId.current === uid || loadingProfileUserId.current === uid))
+      return;
     loadingProfileUserId.current = uid;
     setTimeout(() => void loadProfile(uid), 0);
   };
@@ -183,11 +244,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isStaticPreview) {
       const restoreLocalSession = () => {
         ensureLocalBoard();
-        const account = getLocalAccounts().find((item) => item.id === localStorage.getItem(localSessionKey));
+        const account = getLocalAccounts().find(
+          (item) => item.id === localStorage.getItem(localSessionKey),
+        );
         synchronizeQuerySession(account?.id ?? null);
         setSession(null);
         setUser(account ? ({ id: account.id, email: account.email } as User) : null);
-        setProfile(account ? { id: account.id, full_name: account.fullName, email: account.email, avatar_url: null, theme_preferences: null } : null);
+        setProfile(
+          account
+            ? {
+                id: account.id,
+                full_name: account.fullName,
+                email: account.email,
+                avatar_url: null,
+                theme_preferences: null,
+              }
+            : null,
+        );
         setIsAdmin(!!account);
         setIsCollaborator(false);
         setIsClient(false);
@@ -201,23 +274,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Supabase emits auth state changes after sign-in, sign-out and token refresh.
     // The timeout avoids updating profile data inside the auth callback stack.
-    const { data: sub } = supabase.auth.onAuthStateChange((event, s: Session | null) => {
-      synchronizeQuerySession(s?.user.id ?? null);
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        if (event === "SIGNED_IN" || event === "USER_UPDATED") scheduleProfileLoad(s.user.id);
-      } else {
-        loadedProfileUserId.current = null;
-        loadingProfileUserId.current = null;
-        setProfile(null);
-        setIsAdmin(false);
-        setIsCollaborator(false);
-        setIsClient(false);
-        setClientId(null);
-        setPermissions([]);
-      }
-    });
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, s: Session | null) => {
+        synchronizeQuerySession(s?.user.id ?? null);
+        setSession(s);
+        setUser(s?.user ?? null);
+        if (s?.user) {
+          if (event === "SIGNED_IN" || event === "USER_UPDATED") scheduleProfileLoad(s.user.id);
+        } else {
+          loadedProfileUserId.current = null;
+          loadingProfileUserId.current = null;
+          setProfile(null);
+          setIsAdmin(false);
+          setIsCollaborator(false);
+          setIsClient(false);
+          setClientId(null);
+          setPermissions([]);
+        }
+      },
+    );
     // Initial page load: restore any saved session from localStorage.
     supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
       synchronizeQuerySession(data.session?.user.id ?? null);
@@ -247,10 +322,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       scheduleProfileLoad(user.id, true);
     }
   };
-  const hasPermission = (permission: string) => isAdmin || permissions.includes(permission);
+  const hasPermission = (permission: string) =>
+    restrictedFinancePermission(permission, user?.id, isAdmin, isClient) ??
+    (isAdmin || permissions.includes(permission));
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, isAdmin, isCollaborator, isClient, clientId, permissions, hasPermission, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        user,
+        profile,
+        isAdmin,
+        isCollaborator,
+        isClient,
+        clientId,
+        permissions,
+        hasPermission,
+        loading,
+        signOut,
+        refreshProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

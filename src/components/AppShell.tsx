@@ -66,14 +66,26 @@ type NavItem = {
 const allNav: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard" },
   { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks, permission: "tasks" },
-  { to: "/portal/residuos", label: "Boletim de Medição", icon: Recycle, permission: "billing", tab: "faturamento2" },
+  {
+    to: "/portal/residuos",
+    label: "Boletim de Medição",
+    icon: Recycle,
+    permission: "billing",
+    tab: "faturamento2",
+  },
   { to: "/clients", label: "Clientes", icon: Building2, permission: "clients" },
   { to: "/terceirizados", label: "Terceirizados", icon: Factory, permission: "outsourced" },
   { to: "/portal/documentos", label: "Documentos", icon: FileText, permission: "documents" },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
-  { to: "/financeiro", label: "Faturamento", icon: HandCoins, permission: "billing" },
-  { to: "/contas-a-receber", label: "Financeiro", icon: Wallet, permission: "billing" },
-  { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, permission: "movement_settings", tab: "configuracoes" },
+  { to: "/financeiro", label: "Faturamento", icon: HandCoins, permission: "finance" },
+  { to: "/contas-a-receber", label: "Financeiro", icon: Wallet, permission: "finance" },
+  {
+    to: "/portal/residuos",
+    label: "Configurações de movimentação",
+    icon: Settings,
+    permission: "movement_settings",
+    tab: "configuracoes",
+  },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
   { to: "/trash", label: "Lixeira", icon: Trash2, permission: "trash" },
   { to: "/settings", label: "Personalizar", icon: Settings, permission: "settings" },
@@ -85,7 +97,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     const visibleItems = allNav.filter(
       (item) =>
         (!item.adminOnly || isAdmin) &&
-        (item.to === "/portal" ? isClient || hasPermission("portal_units") || hasPermission("portal_reports") : !item.permission || hasPermission(item.permission)),
+        (item.to === "/portal"
+          ? isClient || hasPermission("portal_units") || hasPermission("portal_reports")
+          : !item.permission || hasPermission(item.permission)),
     );
     // Para a equipe interna, o Portal do Cliente é um bloco auxiliar e fica no
     // fim do menu, depois de Personalizar. No perfil Cliente preservamos a
@@ -169,9 +183,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 space-y-1 px-3">
           {nav.map((n) => {
+            if (n.to === "/contas-a-receber")
+              return <FinanceNavGroup key="finance" expanded={sidebarOpen} pathname={pathname} />;
             if (n.to === "/portal")
               return (
-                <PortalNavGroup key="portal" expanded={sidebarOpen} active={portalActive} isClient={isClient} hasPermission={hasPermission} />
+                <PortalNavGroup
+                  key="portal"
+                  expanded={sidebarOpen}
+                  active={portalActive}
+                  isClient={isClient}
+                  hasPermission={hasPermission}
+                />
               );
             const Active = n.tab
               ? pathname === n.to && activeWasteTab === n.tab
@@ -228,7 +250,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 onClick={toggle}
                 title={theme === "dark" ? "Modo claro" : "Modo escuro"}
               >
-                {theme === "dark" ? <Sun key="sun" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" /> : <Moon key="moon" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" />}
+                {theme === "dark" ? (
+                  <Sun key="sun" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" />
+                ) : (
+                  <Moon key="moon" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" />
+                )}
               </Button>
               <Button
                 size="icon"
@@ -249,7 +275,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Button size="icon" variant="ghost" onClick={() => setSidebarOpen((o) => !o)}>
           <PanelLeft className="h-5 w-5" />
         </Button>
-        <span className="group flex items-center gap-2 font-display font-bold tracking-tight text-primary"><JacobyMark className="h-7 w-7" />Jacoby</span>
+        <span className="group flex items-center gap-2 font-display font-bold tracking-tight text-primary">
+          <JacobyMark className="h-7 w-7" />
+          Jacoby
+        </span>
         <div id="app-updates-mobile" />
         {!isClient && <EnvironmentSwitch active="management" />}
         <NotificationBell />
@@ -265,7 +294,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="flex items-center justify-between px-5 py-4">
               <div className="group flex items-center gap-2">
                 <JacobyMark className="h-9 w-9 shrink-0" />
-                <span className="font-display text-lg font-bold tracking-tight text-primary">Jacoby</span>
+                <span className="font-display text-lg font-bold tracking-tight text-primary">
+                  Jacoby
+                </span>
               </div>
               <Button size="icon" variant="ghost" onClick={() => setSidebarOpen(false)}>
                 <PanelLeft className="h-5 w-5" />
@@ -273,6 +304,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <nav className="flex-1 space-y-1 px-3">
               {nav.map((n) => {
+                if (n.to === "/contas-a-receber")
+                  return (
+                    <FinanceNavGroup
+                      key="finance"
+                      expanded
+                      pathname={pathname}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
+                  );
                 if (n.to === "/portal")
                   return (
                     <PortalNavGroup
@@ -331,7 +371,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                   onClick={toggle}
                   title={theme === "dark" ? "Modo claro" : "Modo escuro"}
                 >
-                  {theme === "dark" ? <Sun key="sun" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" /> : <Moon key="moon" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" />}
+                  {theme === "dark" ? (
+                    <Sun key="sun" className="h-4 w-4 animate-in spin-in-90 fade-in duration-300" />
+                  ) : (
+                    <Moon
+                      key="moon"
+                      className="h-4 w-4 animate-in spin-in-90 fade-in duration-300"
+                    />
+                  )}
                 </Button>
                 <Button
                   size="icon"
@@ -351,7 +398,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <main className="flex-1 overflow-x-hidden md:pt-0 pt-12">
         <div className="hidden md:flex sticky top-0 z-30 items-center justify-between px-4 py-2 bg-background/80 backdrop-blur border-b">
-          {isAdmin || hasPermission("dashboard") ? <Link to="/dashboard" className="inline-flex h-9 w-9 items-center justify-center rounded-md text-destructive transition hover:bg-destructive/10" title="Alertas de documentos"><AlertTriangle className="h-5 w-5" /></Link> : <span />}
+          {isAdmin || hasPermission("dashboard") ? (
+            <Link
+              to="/dashboard"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-destructive transition hover:bg-destructive/10"
+              title="Alertas de documentos"
+            >
+              <AlertTriangle className="h-5 w-5" />
+            </Link>
+          ) : (
+            <span />
+          )}
           <div className="flex items-center gap-3">
             <div id="app-updates-desktop" />
             {!isClient && <EnvironmentSwitch active="management" />}
@@ -379,7 +436,12 @@ function PortalNavGroup({
   onNavigate?: () => void;
 }) {
   const { data: portalTasks = [] } = useTasks();
-  const hasPendingRequests = isClient && portalTasks.some((task) => task.client_portal_visible && task.client_document_request && task.status !== "done");
+  const hasPendingRequests =
+    isClient &&
+    portalTasks.some(
+      (task) =>
+        task.client_portal_visible && task.client_document_request && task.status !== "done",
+    );
   const item =
     "jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
   if (!expanded)
@@ -402,45 +464,114 @@ function PortalNavGroup({
         <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/portal:rotate-180" />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-1 pl-4">
-        {isClient && <Link to="/portal/movimentacoes" onClick={onNavigate} className={item}>
-          <ClipboardCheck className="h-4 w-4" />
-          Movimentações
-        </Link>}
-        {isClient && <Link to="/portal/projetos" onClick={onNavigate} className={item}>
-          <ListChecks className="h-4 w-4" />
-          Gestão de projetos
-        </Link>}
-        {isClient && <Link to="/portal/documentos" onClick={onNavigate} className={item}>
-          <FileText className="h-4 w-4" />
-          Documentos
-        </Link>}
-        {isClient && <Link to="/portal/entregas" onClick={onNavigate} className={item}>
-          <ClipboardCheck className="h-4 w-4" />
-          <span className="flex-1">Solicitações</span>
-          {hasPendingRequests && <span className="h-2 w-2 rounded-full bg-destructive" aria-label="Há solicitações pendentes" />}
-        </Link>}
-        {isClient && <Link to="/portal/boletins" onClick={onNavigate} className={item}>
-          <FileText className="h-4 w-4" />
-          Boletins emitidos
-        </Link>}
-        {(isClient || hasPermission("portal_units")) && <Link to="/portal/unidades" onClick={onNavigate} className={item}>
-          <MapPinned className="h-4 w-4" />
-          Unidades e pátios
-        </Link>}
-        {(isClient || hasPermission("portal_reports")) && <Link
-          to="/portal/residuos"
-          search={{ aba: "relatorios" }}
-          onClick={onNavigate}
-          className={item}
-        >
-          Relatórios
-        </Link>}
+        {isClient && (
+          <Link to="/portal/movimentacoes" onClick={onNavigate} className={item}>
+            <ClipboardCheck className="h-4 w-4" />
+            Movimentações
+          </Link>
+        )}
+        {isClient && (
+          <Link to="/portal/projetos" onClick={onNavigate} className={item}>
+            <ListChecks className="h-4 w-4" />
+            Gestão de projetos
+          </Link>
+        )}
+        {isClient && (
+          <Link to="/portal/documentos" onClick={onNavigate} className={item}>
+            <FileText className="h-4 w-4" />
+            Documentos
+          </Link>
+        )}
+        {isClient && (
+          <Link to="/portal/entregas" onClick={onNavigate} className={item}>
+            <ClipboardCheck className="h-4 w-4" />
+            <span className="flex-1">Solicitações</span>
+            {hasPendingRequests && (
+              <span
+                className="h-2 w-2 rounded-full bg-destructive"
+                aria-label="Há solicitações pendentes"
+              />
+            )}
+          </Link>
+        )}
+        {isClient && (
+          <Link to="/portal/boletins" onClick={onNavigate} className={item}>
+            <FileText className="h-4 w-4" />
+            Boletins emitidos
+          </Link>
+        )}
+        {(isClient || hasPermission("portal_units")) && (
+          <Link to="/portal/unidades" onClick={onNavigate} className={item}>
+            <MapPinned className="h-4 w-4" />
+            Unidades e pátios
+          </Link>
+        )}
+        {(isClient || hasPermission("portal_reports")) && (
+          <Link
+            to="/portal/residuos"
+            search={{ aba: "relatorios" }}
+            onClick={onNavigate}
+            className={item}
+          >
+            Relatórios
+          </Link>
+        )}
         {isClient && (
           <Link to="/portal/conta" onClick={onNavigate} className={item}>
             <KeyRound className="h-4 w-4" />
             Minha conta
           </Link>
         )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function FinanceNavGroup({
+  expanded,
+  pathname,
+  onNavigate,
+}: {
+  expanded: boolean;
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  const active = ["/contas-a-receber", "/centros-de-custo", "/bancos", "/relatorios-financeiros"].includes(pathname);
+  const item =
+    "jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
+  if (!expanded)
+    return (
+      <Link to="/contas-a-receber" title="Financeiro" className={item + " justify-center"}>
+        <Wallet className="h-4 w-4" />
+      </Link>
+    );
+  return (
+    <Collapsible defaultOpen={false} className="space-y-1">
+      <CollapsibleTrigger
+        data-active={active}
+        className={`jacoby-nav-link group/finance flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
+      >
+        <Wallet className="h-4 w-4 shrink-0" />
+        <span className="flex-1 text-left">Financeiro</span>
+        <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]/finance:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-1 pl-4">
+        {[
+          ["/contas-a-receber", "Visão financeira"],
+          ["/centros-de-custo", "Centros de custo"],
+          ["/bancos", "Bancos e contas"],
+          ["/relatorios-financeiros", "Relatórios"],
+        ].map(([to, label]) => (
+          <Link
+            key={to}
+            to={to}
+            onClick={onNavigate}
+            data-active={pathname === to}
+            className={item + (pathname === to ? " bg-sidebar-accent/50" : "")}
+          >
+            {label}
+          </Link>
+        ))}
       </CollapsibleContent>
     </Collapsible>
   );

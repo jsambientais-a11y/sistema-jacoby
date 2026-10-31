@@ -305,7 +305,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const { data: clients = [] } = useClients();
   const { isAdmin, isClient, clientId: linked, loading, hasPermission } = useAuth();
   const canManageBilling = isAdmin || hasPermission("billing");
-  const canConfigureMovements = isAdmin || hasPermission("movement_settings");
+  const canConfigureMovements = hasPermission("movement_settings");
   const [clientId, setClientId] = useState(() => {
     if (typeof window === "undefined") return "";
     return new URLSearchParams(window.location.search).get("mapCliente") || sessionStorage.getItem("jacoby:faturamento:cliente") || "";
@@ -1410,6 +1410,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
           : "Gestão de Resíduos";
   if (loading || (isClient && !linked))
     return <div className="p-6 text-sm text-muted-foreground">Carregando o portal do cliente…</div>;
+  if (!isClient && !canConfigureMovements && (!requestedCatalogTab || requestedCatalogTab === "configuracoes" || requestedCatalogTab === "faturamento")) return <div className="p-6 text-sm text-muted-foreground">Acesso restrito. Use Boletim de Medição para o trabalho operacional.</div>;
   // Mantém o faturamento legado intocado: a versão 2 possui componente e tabelas próprios.
   if (requestedCatalogTab === "faturamento2" && canManageBilling) return <BillingV2Module />;
   return (

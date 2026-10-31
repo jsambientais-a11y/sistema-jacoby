@@ -1,85 +1,58 @@
 {
-  "version": "2026.10.31.1",
-  "title": "Documentos com visão geral e vencidos em destaque",
-  "summary": "A aba Documentos agora mostra todas as empresas e filiais de uma vez, com os vencidos em destaque e visualização sem sair do lugar. Logo abaixo, as novidades da atualização anterior.",
+  "version": "2026.10.31.2",
+  "title": "Financeiro empresarial e relatórios mensais",
+  "summary": "Contas a pagar e a receber, centros de custo, bancos e saldos iniciais. Acompanhe o resultado do mês e a previsão de quanto deve sobrar, com os recebíveis do Faturamento integrados.",
   "changes": [
-    "Documentos: todas as empresas e filiais numa tela só, com cartões de Vencidos e Vencem em breve, busca, filtros e visualização em janela, sem rolar a página.",
-    "Novo logo da Jacoby, verde mais forte e nova fonte em todo o sistema, com botões, campos e menus mais responsivos.",
-    "Gestão de Projetos: busca por título, filtros organizados com etiquetas removíveis e Kanban, Lista e Calendário mais claros.",
-    "Boletim de Medição: PDF redesenhado, com logos sem distorção, nomes completos dos equipamentos e numeração de páginas.",
-    "Visualizar BM e os anexos agora abrem dentro do sistema, com botões para baixar ou abrir em nova aba.",
-    "Nova aba Financeiro: tudo que a Jacoby tem a receber, de todos os meses, com o detalhamento de cada valor e baixa do recebimento em um clique.",
-    "Correções: PDF de boletins da Matriz voltou a ser gerado e a reordenação de colunas do Kanban voltou a funcionar."
+    "Financeiro com Faturado, Contas a pagar e Contas a receber; cadastro, edição, baixa e exclusão com restauração.",
+    "Centros de custo de receitas e despesas, com destaque nos lançamentos e vínculo opcional nos recebimentos já registrados.",
+    "Bancos e contas com saldo inicial e data de referência; informe em qual conta o valor entrou ou saiu.",
+    "Relatórios mensais por banco e centro de custo: recebido, pago, valores em aberto e saldo final projetado, sem somar o Faturamento duas vezes.",
+    "Alerta de contas a pagar vencidas ao abrir o sistema, exclusivo da Juliana.",
+    "Financeiro, Faturamento e Configurações de movimentação exclusivos de Juliana e Reinan. O acesso operacional aos boletins foi mantido."
   ],
-  "image": "updates/2026-10-24-capa.svg",
-  "imageAlt": "Capa da atualização com as quatro áreas renovadas: visual, projetos, boletim de medição e financeiro.",
+  "image": "updates/2026-10-31-financeiro-empresarial.svg",
+  "imageAlt": "Visão ilustrada do novo Financeiro com contas a pagar, contas a receber, bancos, centros de custo e relatório mensal.",
   "sections": [
     {
-      "title": "Documentos",
-      "description": "Visão geral de todos os documentos, com os vencidos em destaque e visualização em janela.",
-      "image": "updates/2026-10-31-documentos.svg",
-      "imageAlt": "Tela de Documentos com cartões de vencidos, vencem em breve, em dia e sem vencimento, e a lista agrupada por empresa e unidade.",
+      "title": "Financeiro empresarial",
+      "description": "As três áreas ficam na Visão financeira, dentro do menu Financeiro.",
+      "image": "updates/2026-10-31-financeiro-empresarial.svg",
+      "imageAlt": "Visão ilustrada do novo Financeiro com contas a pagar, contas a receber, bancos, centros de custo e relatório mensal.",
       "items": [
-        "Todas as empresas, matriz e filiais em uma única tela, sem precisar escolher uma unidade por vez.",
-        "Cartões no topo com quantos documentos estão Vencidos, Vencem em breve, Em dia e Sem vencimento; clique em um para filtrar a lista.",
-        "Empresas com documentos vencidos sobem para o topo, e em cada unidade os vencidos aparecem primeiro.",
-        "Cada documento mostra a situação em cores e há quantos dias venceu ou quantos faltam para vencer.",
-        "Busca por nome do documento, arquivo, empresa ou unidade, e filtro por empresa.",
-        "Visualizar abre o documento numa janela por cima da tela, com Baixar e Abrir em nova aba. Editar também abre em janela.",
-        "No Portal do Cliente, o cliente vê a mesma tela com a própria empresa e as filiais, incluindo os documentos vencidos."
+        "Faturado continua como primeira aba, preservando os lançamentos e vínculos existentes.",
+        "Cadastre despesas e receitas adicionais, informe o vencimento e registre ou desfaça a baixa.",
+        "Contas excluídas podem ser restauradas. A baixa é um registro de controle e não executa pagamentos bancários.",
+        "Os recebíveis do Faturamento aparecem automaticamente. Não é necessário cadastrá-los de novo."
       ]
     },
     {
-      "title": "Visual renovado",
-      "description": "A identidade da Jacoby ficou mais forte e nítida em todas as telas.",
-      "image": "updates/2026-10-24-visual.svg",
-      "imageAlt": "Menu lateral com o novo logo, paleta de cores verde e a nova fonte do sistema.",
+      "title": "Centros de custo e bancos",
+      "description": "Identifique para onde vão os gastos e onde entram os recebimentos.",
       "items": [
-        "Novo logo em vetor, sem fundo branco: nítido em qualquer tela, no tema escuro e nos PDFs.",
-        "Verde mais forte nos botões, menus e destaques, e nova fonte (Plus Jakarta Sans) em todo o sistema.",
-        "Botões, campos, menus e cartões reagem ao passar o mouse e ao clicar, deixando claro onde você está.",
-        "No menu recolhido e no celular aparece o símbolo da Jacoby (folhas e borboleta)."
+        "Expanda Financeiro no menu para acessar Centros de custo e Bancos e contas.",
+        "Cadastre centros para Receitas, Despesas ou ambos. Desativar mantém os vínculos históricos.",
+        "Use Centro / banco nos lançamentos para vincular um centro e uma conta bancária, inclusive após o recebimento.",
+        "Defina o saldo inicial da conta e sua data de referência: o saldo deve corresponder ao início desse dia. Zero é diferente de saldo ainda não definido.",
+        "Filtre as contas por banco ou centro de custo; o centro vinculado aparece em uma etiqueta compacta."
       ]
     },
     {
-      "title": "Gestão de Projetos",
-      "description": "Filtros organizados e as três visualizações mais fáceis de ler.",
-      "image": "updates/2026-10-24-projetos.svg",
-      "imageAlt": "Barra de filtros com busca e etiquetas de filtro, e colunas do Kanban com cartões.",
+      "title": "Relatórios mensais",
+      "description": "Uma visão do resultado da empresa e da previsão de caixa do mês.",
       "items": [
-        "Busca por título da tarefa e filtros do mesmo tamanho; o filtro aplicado fica verde.",
-        "Cada filtro aplicado vira uma etiqueta com X para remover só ele, e Limpar filtros remove todos.",
-        "Kanban: colunas mais limpas, Adicionar tarefa em cada coluna e destaque ao arrastar um cartão.",
-        "Lista: linhas mais legíveis, com responsável, status e prazo vencido em destaque.",
-        "Calendário: dia de hoje em destaque, cor do cliente e +N mais para ver todas as tarefas do dia."
+        "Acesse Financeiro → Relatórios, abaixo de Bancos e contas, e escolha o mês.",
+        "Confira recebido, pago, a receber, a pagar e os resultados realizado e previsto por centro de custo.",
+        "O saldo projetado considera o saldo inicial, as baixas e as contas previstas até o fim do mês, incluindo atrasos em aberto.",
+        "Sem banco, saldo inicial ou data de previsão, a tela sinaliza pendências e projeção parcial. O saldo calculado depende dos registros do sistema; não consulta o extrato bancário."
       ]
     },
     {
-      "title": "Boletim de Medição e PDF",
-      "description": "O PDF do BM foi redesenhado e agora é o mesmo para a equipe e para o cliente.",
-      "image": "updates/2026-10-24-boletim.svg",
-      "imageAlt": "PDF do boletim com cabeçalho verde, cartões das empresas, tabela de itens e total destacado.",
+      "title": "Alertas e acesso",
+      "description": "Aviso de atrasos para a Juliana e áreas financeiras reservadas.",
       "items": [
-        "Logos das empresas sem distorção, com até 3 empresas: gerenciadora, nota do serviço e tratamento.",
-        "Nomes completos dos equipamentos, total em destaque e Página X de Y em todas as páginas.",
-        "O Portal do Cliente passa a gerar exatamente o mesmo PDF que a equipe vê.",
-        "Visualizar BM, notas e anexos abrem dentro do sistema, com Baixar e Abrir em nova aba.",
-        "Abas do boletim com ícones e tabelas com cores para facilitar a leitura."
-      ]
-    },
-    {
-      "title": "Nova aba Financeiro",
-      "description": "Tudo que a Jacoby tem a receber, puxado do Faturamento, em um só lugar.",
-      "image": "updates/2026-10-24-financeiro.svg",
-      "imageAlt": "Tela do Financeiro com totais em aberto, vencido e recebido, lista de recebíveis e o botão Dar baixa.",
-      "items": [
-        "BM emitido pela Jacoby entra com o valor do cliente; BM de terceirizada entra com a comissão da Jacoby.",
-        "Filtro de período (por mês ou de uma data até outra) e um quadro mês a mês com o previsto e o recebido em cada mês. O mesmo filtro de período também está no Faturamento.",
-        "Mostra o que está em aberto em todos os meses, com os vencidos no topo e os que estão sem previsão.",
-        "Clique em qualquer lançamento para ver de onde vem o valor, item por item, com a conta feita e a conferência da nota.",
-        "Filtros por cliente, por quem fatura (Jacoby ou cada terceirizada) e por origem.",
-        "Dar baixa com a data em que o valor caiu na conta; a baixa aparece também no Faturamento.",
-        "Repasses que dependem de acordo pedem a conferência no Faturamento antes da baixa."
+        "A Juliana verá um aviso ao abrir ou recarregar o sistema quando houver contas a pagar vencidas, com quantidade, total e atalho para conferir todas.",
+        "Financeiro, Faturamento e Configurações de movimentação ficam disponíveis somente para Juliana e Reinan.",
+        "As permissões operacionais de Boletim de Medição foram preservadas."
       ]
     }
   ]

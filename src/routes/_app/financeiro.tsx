@@ -187,7 +187,7 @@ function FinancialControlPage() {
     if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o PDF.");
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
-  if (!hasPermission("billing")) return <Navigate to="/dashboard" />;
+  if (!hasPermission("finance")) return <Navigate to="/dashboard" />;
   if (!SHOW_ARCHIVED_FINANCIAL_VIEW) {
     return (
       <div className="mx-auto max-w-[1500px] space-y-6 p-4 sm:p-6">

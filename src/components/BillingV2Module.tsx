@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Container, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Pencil, RotateCcw, Send, Trash2, Truck, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/use-auth";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -3440,7 +3441,11 @@ function Boletim({
 
 // Comissão da Jacoby nos BMs emitidos por terceirizada. Não entra no total nem no
 // PDF do BM: é gerada ao finalizar, conforme Configurações de movimentação.
-function CycleCommissionSummary({ cycle, companyName }: { cycle: Cycle; companyName: string }) {
+function CycleCommissionSummary(props: {cycle:Cycle;companyName:string}) {
+ const {hasPermission}=useAuth();
+ return hasPermission("finance") ? <OwnerCycleCommissionSummary {...props}/> : null;
+}
+function OwnerCycleCommissionSummary({ cycle, companyName }: { cycle: Cycle; companyName: string }) {
   const { data = [] } = useQuery({
     queryKey: ["cycle-commission-summary", cycle.id, cycle.status],
     enabled: cycle.status === "closed",

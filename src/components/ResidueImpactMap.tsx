@@ -104,7 +104,7 @@ export function ResidueImpactMap({
   onClientChange: (id: string) => void;
 }) {
   const { isAdmin, hasPermission } = useAuth();
-  const canReadBilling = isAdmin || hasPermission("billing");
+  const canReadBilling = hasPermission("finance");
   const [search, setSearch] = useSessionView("jacoby:residue-map:detail:search", "");
   const [status, setStatus] = useState("active");
   const [branch, setBranch] = useSessionView("jacoby:residue-map:detail:branch", "all");
@@ -130,7 +130,7 @@ export function ResidueImpactMap({
     };
   }, [fullScreen]);
   const [editing, setEditing] = useState<MapEditTarget | null>(null);
-  const canEdit = isAdmin || hasPermission("movement_settings");
+  const canEdit = hasPermission("movement_settings");
   const canEditBranch = isAdmin || hasPermission("clients");
   const catalog = useQuery({
     queryKey: ["residue-impact-catalog"],
