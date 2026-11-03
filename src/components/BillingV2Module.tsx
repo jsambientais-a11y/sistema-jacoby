@@ -1,3 +1,4 @@
+import { matchesBulletinNumber, sortBillingBulletins } from "@/lib/billing-bulletins";
 import { CYCLE_INVOICE_BUCKET, listCycleInvoices, validateCycleInvoice, invoiceServiceFields, type CycleInvoice } from "@/lib/cycle-invoices";
 import { CycleInvoiceAttachments } from "@/components/CycleInvoiceAttachments";
 import { residueNameKey, uniqueResidueNames } from "@/lib/residue-names";
@@ -9,14 +10,10 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { BillingReadOnlyProvider, useBillingReadOnly, BillingButton as Button, BillingInput as Input, BillingSelect as Select, BillingCheckbox as Checkbox, BillingTextarea as Textarea } from "@/components/BillingReadOnly";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
@@ -51,6 +48,8 @@ type Cycle = {
   outsourced_company_id: string | null;
   bulletin_number: number;
   finalized_at: string | null;
+  updated_at: string;
+  created_at: string;
   client_portal_visible: boolean;
 };
 type ResidueEmission = {
@@ -232,6 +231,9 @@ function Field({ label, children, className = "" }: { label: string; children: R
 
 export function BillingV2Module() {
   const qc = useQueryClient();
+  const { permissions } = useAuth();
+  const lockFinalized = permissions.includes("billing_lock_finalized");
+  const isLocked = (item?: Pick<Cycle, "status"> | null) => lockFinalized && item?.status === "closed";
   const { data: clients = [] } = useClients();
   const [returnToList, setReturnToList] = useState<BulletinListState | null>(() => storedBillingView().returnToList || null);
   const [clientId, setClientId] = useState(() => storedBillingView().clientId || "");
@@ -272,6 +274,8 @@ export function BillingV2Module() {
   const [treatmentCompanyId, setTreatmentCompanyId] = useState("");
   const [expandedBMs, setExpandedBMs] = useState<string[]>([]);
   const [bmSearch, setBmSearch] = useState("");
+  const [emissionSearch, setEmissionSearch] = useState("");
+  useEffect(() => setEmissionSearch(""), [clientId]);
   const savingMovementRef = useRef(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
@@ -417,7 +421,7 @@ export function BillingV2Module() {
         if(listResidue !== "all") request=request.in("billing_v2_movements.waste_residue_id",listResidueIds);
         if (resultStatusFilter !== "all") request = request.eq("status",resultStatusFilter);
         const end = Math.min(offset+499,allClientsLimit-1);
-        const result = await request.order("bulletin_number", {ascending:false}).order("id", {ascending:false})
+        const result = await request.order("updated_at", {ascending:false}).order("bulletin_number", {ascending:false}).order("id", {ascending:false})
           .range(offset,end);
         if (result.error) throw result.error;
         total = Number(result.count || 0);
@@ -442,7 +446,7 @@ export function BillingV2Module() {
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
         .select("*")
         .eq("is_demo", false)
-        .order("created_at", { ascending: false })
+        .order("updated_at", { ascending: false })
         .limit(8);
       if (error) throw error;
       return (data || []) as Cycle[];
@@ -1347,6 +1351,7 @@ export function BillingV2Module() {
   const reopenCycle = useMutation({
     mutationFn: async () => {
       if (!cycleId) throw Error("Abra um boletim antes de reabri-lo.");
+      if (isLocked(cycle)) throw Error("Seu acesso permite somente consulta de BMs finalizados.");
       const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
         .update({ status: "draft", finalized_at: null, client_portal_visible: false })
         .eq("id", cycleId);
@@ -1522,6 +1527,7 @@ export function BillingV2Module() {
     else refresh();
   };
   const deleteCycle = async (item: Cycle) => {
+    if (isLocked(item)) { toast.error("Seu acesso permite somente consulta de BMs finalizados."); return; }
     const accepted = confirm(
       `Excluir o boletim ${bulletinNumber(item.bulletin_number)}?\n\nSerão excluídos permanentemente as locações, movimentações, trocas, valores, serviços e notas anexadas diretamente a este boletim. Os demais boletins do cliente não serão alterados.`,
     );
@@ -1634,9 +1640,20 @@ export function BillingV2Module() {
       }
     });
     const groups = Array.from(map.values());
-    groups.forEach((group) => group.emissions.sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0)));
-    return groups.sort((a, b) => a.major - b.major);
+    return sortBillingBulletins(groups.map((group) => {
+      const emissions = sortBillingBulletins(group.emissions.map((emission) => ({
+        ...emission, number: Number(emission.sequence || 0), emittedAt: emission.finalized_at,
+      })));
+      const dates = [group.parent?.finalized_at, ...emissions.map((item) => item.finalized_at)]
+        .filter((value): value is string => Boolean(value) && Number.isFinite(Date.parse(value!)))
+        .sort((a, b) => Date.parse(b) - Date.parse(a));
+      return { ...group, emissions, id: group.cycleId, number: group.major, emittedAt: dates[0] || null };
+    }));
   }, [clientCycles, residueEmissions]);
+  const shownEmittedGroups = emittedGroups.filter((group) =>
+    matchesBulletinNumber(group.major, emissionSearch)
+    || group.emissions.some((item) => matchesBulletinNumber(item.display_number, emissionSearch)),
+  );
   const finalizedResidueIds = new Set(residueEmissions.filter((item) => item.cycle_id === cycleId).map((item) => item.waste_residue_id));
   const cycleResidueIds = Array.from(new Set([
     ...placements.filter((item) => item.waste_residue_id).map((item) => item.waste_residue_id as string),
@@ -1644,11 +1661,8 @@ export function BillingV2Module() {
   ]));
   const pendingResidueNames = cycleResidueIds.filter((id) => !finalizedResidueIds.has(id)).map((id) => residues.find((item) => item.id === id)?.name || "Resíduo");
   const finalizedResidueNames = cycleResidueIds.filter((id) => finalizedResidueIds.has(id)).map((id) => residues.find((item) => item.id === id)?.name || "Resíduo");
-  const recentCycles = (recentCyclesQuery.data || [])
-    .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
-    .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0));
   const bmSearching = Number.isFinite(bmSearchNumber) && bmSearchNumber > 0;
-  const recentDisplayCycles = bmSearching ? (bmSearchQuery.data || []) : recentCycles;
+  const recentDisplayCycles = bmSearching ? (bmSearchQuery.data || []) : (recentCyclesQuery.data || []);
   const pendingMovementGroups = useMemo(() => {
     const grouped = new Map<string, PendingMovement[]>();
     (pendingMovementsQuery.data || []).forEach((item: PendingMovement) => {
@@ -1824,13 +1838,12 @@ export function BillingV2Module() {
   };
   const residuePreview = (id: string) => <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Resíduos movimentados">{residueSummary(id).map(([residueId, item]) => <span key={residueId} className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}{!residueSummary(id).length && <span className="text-xs text-muted-foreground">{residuePreviewQuery.isLoading ? "Carregando resíduos…" : residuePreviewQuery.error ? "Não foi possível carregar os resíduos" : "Sem movimentações de resíduo"}</span>}</div>;
   const matchesListResidue = (id:string) => listResidue === "all" || residueSummary(id).some(([key])=>key===listResidue);
-  const filteredRecentCycles = recentDisplayCycles.filter(item=>matchesListResidue(item.id));
-  const resultCycles = (clientId ? clientCycles : (allClientsCyclesQuery.data?.cycles || []))
-    .filter(item=>!clientId || matchesListResidue(item.id))
+  const resultCycles = sortBillingBulletins((bmSearching ? (bmSearchQuery.data || []) : clientId ? clientCycles : (allClientsCyclesQuery.data?.cycles || []))
+    .filter(item => !clientId || item.client_id === clientId)
+    .filter(item => matchesListResidue(item.id))
     .filter((item) => !cycleBranchId || branchKey(item.branch_id) === cycleBranchId)
     .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
-    .slice()
-    .sort((a, b) => Number(b.bulletin_number || 0) - Number(a.bulletin_number || 0));
+    .map(item => ({ ...item, number: Number(item.bulletin_number || 0), emittedAt: item.updated_at || item.created_at || item.finalized_at })));
   const selectedResultCycles = resultCycles.filter((item) => selectedBulkCycleIds.includes(item.id));
   const selectedEditableCycles = selectedResultCycles.filter((item) => item.status !== "closed");
   const selectedPrintableCycles = selectedResultCycles.filter((item) => item.status === "closed");
@@ -1955,8 +1968,10 @@ export function BillingV2Module() {
   };
 
   return (
+    <BillingReadOnlyProvider value={Boolean(isLocked(cycle))}>
     <div className="jacoby-billing mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6">
       {pdfPreviewDialog}
+      {isLocked(cycle) && <p role="status" className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">BM finalizado · somente consulta. Você pode navegar pelas abas, conferir locações, movimentações, medições e abrir os arquivos. Alterações estão bloqueadas neste BM.</p>}
       {!cycleId && (
         <header>
           <p className="text-sm font-medium text-primary">Portal do Cliente</p>
@@ -2036,43 +2051,12 @@ export function BillingV2Module() {
       )}
       {!cycleId ? homeTab === "boletins" ? (
         <div className="flex flex-col gap-6">
-          <Card className="order-2 p-5">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="font-semibold">Boletins recentes</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Abra rapidamente um boletim de qualquer cliente.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-60"><Input value={bmSearch} onChange={(event) => setBmSearch(event.target.value)} placeholder="Buscar BM por número (ex: 18)" className="h-9" /></div>
-                {bmSearch ? <Button variant="ghost" size="sm" onClick={() => setBmSearch("")}>Limpar</Button> : <span className="whitespace-nowrap text-xs text-muted-foreground">Últimos 8 registros</span>}
-              </div>
-            </div>
-            {!bmSearching && (
-            <div className="mt-4 inline-flex rounded-lg border bg-muted/40 p-0.5 text-sm">
-              {([["all", "Todos"], ["draft", "Em edição"], ["closed", "Finalizados"]] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setResultStatusFilter(value)}
-                  className={`rounded-md px-3 py-1.5 font-medium transition-colors ${resultStatusFilter === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            )}
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
-                {filteredRecentCycles.length ? filteredRecentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}{residuePreview(item.id)}</td><td className="p-2 font-medium"><span className="block max-w-52 truncate" title={clients.find((client) => client.id === item.client_id)?.name || "Cliente"}>{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</span></td><td className="p-2"><span className="block max-w-52 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">{listResidue !== "all" ? (residuePreviewQuery.isFetching ? "Carregando resíduos dos boletins…" : "Nenhum boletim recente corresponde ao resíduo selecionado. Consulte o resultado da busca.") : bmSearching ? "Nenhum boletim encontrado com esse número." : "Nenhum boletim criado ainda."}</td></tr>}
-              </tbody></table>
-            </div>
-          </Card>
-        <Card className="order-1 p-5">
+        <Card className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="truncate font-semibold" title={`${clientId ? clientName : "Todos os clientes"}${cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}`}>Resultado da busca · {clientId ? clientName : "Todos os clientes"}{cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{clientId ? "Boletins do cliente selecionado, do maior número para o menor." : "Boletins de todas as empresas, do maior número para o menor. Carregamento automático, 50 por vez."}</p>
-              {!clientId && allClientsCyclesQuery.data && <p className="mt-2 text-sm font-medium text-primary">Mostrando {resultCycles.length} de {allClientsCyclesQuery.data.total} boletins · todas as empresas{resultStatusFilter !== "all" ? ` · ${resultStatusFilter === "closed" ? "finalizados" : "em edição"}` : " · todas as situações"}</p>}
+              <p className="mt-1 text-sm text-muted-foreground">{clientId ? "Boletins do cliente selecionado, com os alterados mais recentemente no topo." : "Uma única lista de todas as empresas, com os alterados mais recentemente no topo. Carregamento automático, 50 por vez."}</p>
+              {!clientId && !bmSearching && allClientsCyclesQuery.data && <p className="mt-2 text-sm font-medium text-primary">Mostrando {resultCycles.length} de {allClientsCyclesQuery.data.total} boletins · todas as empresas{resultStatusFilter !== "all" ? ` · ${resultStatusFilter === "closed" ? "finalizados" : "em edição"}` : " · todas as situações"}</p>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-muted-foreground">{selectedResultCycles.length} selecionado(s) · {selectedEditableCycles.length} em edição para finalizar</span>
@@ -2084,6 +2068,7 @@ export function BillingV2Module() {
               </Button>
             </div>
           </div>
+          <div className="mt-4 flex flex-wrap items-end gap-2"><div className="w-full max-w-xs space-y-1"><Label htmlFor="bulletin-list-search">Buscar BM por número</Label><Input id="bulletin-list-search" value={bmSearch} onChange={(event) => { setBmSearch(event.target.value); setSelectedBulkCycleIds([]); }} placeholder="Ex.: 258" /></div>{bmSearch && <Button variant="ghost" onClick={() => setBmSearch("")}>Limpar</Button>}</div>
           <div className="mt-4 inline-flex rounded-lg border bg-muted/40 p-0.5 text-sm">
             {([["all", "Todos"], ["draft", "Em edição"], ["closed", "Finalizados"]] as const).map(([value, label]) => (
               <button
@@ -2098,10 +2083,10 @@ export function BillingV2Module() {
           </div>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="w-10 p-2"><Checkbox aria-label="Selecionar todos os boletins encontrados" disabled={isFinalizingBulk} checked={resultCycles.length > 0 && resultCycles.every((item) => selectedBulkCycleIds.includes(item.id))} onCheckedChange={(checked) => toggleAllResultCycles(Boolean(checked))} /></th><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
-              {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} disabled={isFinalizingBulk} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}{!clientId && <p className="mt-1 text-xs font-normal text-foreground">{clients.find(client => client.id === item.client_id)?.name || "Cliente"}</p>}{residuePreview(item.id)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{!clientId ? allClientsBranchesQuery.data?.find(branch => branch.id === item.branch_id)?.name || "Matriz" : branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{allClientsCyclesQuery.isFetching && !clientId ? "Buscando boletins…" : allClientsCyclesQuery.error && !clientId ? "Não foi possível buscar os boletins. Tente novamente." : "Nenhum boletim encontrado para esta seleção."}</td></tr>}
+              {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} disabled={isFinalizingBulk} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}{!clientId && <p className="mt-1 text-xs font-normal text-foreground">{clients.find(client => client.id === item.client_id)?.name || "Cliente"}</p>}{residuePreview(item.id)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{!clientId ? allClientsBranchesQuery.data?.find(branch => branch.id === item.branch_id)?.name || "Matriz" : branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}>{isLocked(item) ? <Eye className="mr-2 h-3.5 w-3.5" /> : <Pencil className="mr-2 h-3.5 w-3.5" />}{isLocked(item) ? "Visualizar" : "Editar"}</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} disabled={isLocked(item)} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">{allClientsCyclesQuery.isFetching && !clientId ? "Buscando boletins…" : allClientsCyclesQuery.error && !clientId ? "Não foi possível buscar os boletins. Tente novamente." : "Nenhum boletim encontrado para esta seleção."}</td></tr>}
             </tbody></table>
           </div>
-          {!clientId && (allClientsCyclesQuery.data?.total || 0) > (allClientsCyclesQuery.data?.cycles.length || 0) && <Button className="mt-4" variant="outline" disabled={allClientsCyclesQuery.isFetching} onClick={() => setAllClientsLimit(value => value+50)}>Carregar mais 50 boletins</Button>}
+          {!clientId && !bmSearching && (allClientsCyclesQuery.data?.total || 0) > (allClientsCyclesQuery.data?.cycles.length || 0) && <Button className="mt-4" variant="outline" disabled={allClientsCyclesQuery.isFetching} onClick={() => setAllClientsLimit(value => value+50)}>Carregar mais 50 boletins</Button>}
         </Card>
         </div>
       ) : (
@@ -2188,7 +2173,7 @@ export function BillingV2Module() {
       ) : (
         <>
           <Card className="jacoby-billing-header sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 overflow-hidden border-primary/20 p-3 shadow-elegant supports-[backdrop-filter]:bg-card/85 supports-[backdrop-filter]:backdrop-blur">
-            <Button variant="outline" size="sm" className="shrink-0" onClick={backToBulletinList}>
+            <Button allowReadOnly variant="outline" size="sm" className="shrink-0" onClick={backToBulletinList}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               {homeTab === "pendentes" ? "Voltar às pendências" : "Voltar aos boletins"}
             </Button>
@@ -2215,11 +2200,11 @@ export function BillingV2Module() {
               <TabsTrigger value="boletim" className="rounded-lg data-[state=active]:shadow-sm"><FileText className="h-4 w-4" />Boletim</TabsTrigger>
               <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm"><Send className="h-4 w-4" />Emissões</TabsTrigger>
             </TabsList>
-            <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}{residuePreview(item.id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(branchKey(item.branch_id)); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
-            <TabsContent value="emitidos" className="space-y-4"><Card className="p-4 sm:p-5"><h2 className="font-semibold">Boletins emitidos</h2><div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"><p className="font-medium">Publicação no Portal do Cliente + envio por e-mail</p><p className="mt-1 text-muted-foreground">Use as ações separadamente: visualize o BM, publique somente no Portal do Cliente ou confira os destinatários e envie por e-mail com uma mensagem.</p></div><p className="mt-3 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser enviadas separadamente.</p>
+            <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}{residuePreview(item.id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button allowReadOnly size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(branchKey(item.branch_id)); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} disabled={isLocked(item)} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="emitidos" className="space-y-4"><Card className="p-4 sm:p-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-xs text-muted-foreground">Mais recentes primeiro, pela data de finalização.</p></div><div className="flex items-end gap-2"><div className="space-y-1"><Label htmlFor="emission-bm-search">Filtrar por BM</Label><Input allowReadOnly id="emission-bm-search" className="w-full sm:w-52" placeholder="Ex.: 173 ou 015.2" value={emissionSearch} onChange={(event) => setEmissionSearch(event.target.value)} /></div>{emissionSearch && <Button allowReadOnly variant="ghost" onClick={() => setEmissionSearch("")}>Limpar</Button>}</div></div><div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"><p className="font-medium">Publicação no Portal do Cliente + envio por e-mail</p><p className="mt-1 text-muted-foreground">Use as ações separadamente: visualize o BM, publique somente no Portal do Cliente ou confira os destinatários e envie por e-mail com uma mensagem.</p></div><p className="mt-3 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser enviadas separadamente.</p>
               <div className="mt-4 grid gap-3 2xl:hidden">
-                {emittedGroups.length ? emittedGroups.map((group) => {
-                  const expanded = expandedBMs.includes(group.cycleId);
+                {shownEmittedGroups.length ? shownEmittedGroups.map((group) => {
+                  const expanded = expandedBMs.includes(group.cycleId) || emissionSearch.includes(".");
                   const hasEmissions = group.emissions.length > 0;
                   const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`;
                   const closedParent = Boolean(group.parent && group.parent.status === "closed");
@@ -2239,22 +2224,22 @@ export function BillingV2Module() {
                       <div><p className="text-xs font-medium text-muted-foreground">Status do e-mail</p><p className="mt-0.5" title={emailStatus.title}>{group.parent?.client_portal_visible ? emailStatus.label : "Aguardando publicação"}</p></div>
                     </div>
                     {residuePreview(group.cycleId)}{group.parent ? <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      <Button variant="outline" size="sm" className="w-full" onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button>
+                      <Button allowReadOnly variant="outline" size="sm" className="w-full" onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button>
                       {closedParent ? <>
-                        <Button variant="outline" size="sm" className="w-full" disabled={setCyclePortalVisibility.isPending} onClick={() => { if (!group.parent!.client_portal_visible || window.confirm(`Remover o ${headerNumber} do Portal do Cliente?`)) setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: !group.parent!.client_portal_visible }); }}>{group.parent.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button>
-                        <Button size="sm" className="w-full" disabled={setCyclePortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, displayNumber: headerNumber, residueId: "all" })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button>
+                        <Button variant="outline" size="sm" className="w-full" disabled={setCyclePortalVisibility.isPending || isLocked(group.parent)} onClick={() => { if (!group.parent!.client_portal_visible || window.confirm(`Remover o ${headerNumber} do Portal do Cliente?`)) setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: !group.parent!.client_portal_visible }); }}>{group.parent.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button>
+                        <Button size="sm" className="w-full" disabled={setCyclePortalVisibility.isPending || isLocked(group.parent)} onClick={() => void openPublishConfirmation({ cycle: group.parent!, displayNumber: headerNumber, residueId: "all" })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button>
                       </> : <p className="self-center text-sm text-muted-foreground sm:col-span-1 lg:col-span-2">Finalize para publicar ou enviar.</p>}
                     </div> : null}
-                    {hasEmissions && <Button variant="ghost" size="sm" className="mt-3 w-full" onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])}>{expanded ? <ChevronDown className="mr-2 h-4 w-4" /> : <ChevronRight className="mr-2 h-4 w-4" />}{expanded ? "Ocultar recortes" : "Ver recortes por resíduo"}</Button>}
+                    {hasEmissions && <Button allowReadOnly variant="ghost" size="sm" className="mt-3 w-full" onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])}>{expanded ? <ChevronDown className="mr-2 h-4 w-4" /> : <ChevronRight className="mr-2 h-4 w-4" />}{expanded ? "Ocultar recortes" : "Ver recortes por resíduo"}</Button>}
                     {expanded && <div className="mt-3 grid gap-3">{group.emissions.map((em) => { const residueEmailStatus = emailDeliverySummary(group.cycleId, em.id); return <div key={em.id} className="rounded-lg border bg-muted/20 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">#{em.display_number}</span><span className="text-xs text-muted-foreground" title={residueEmailStatus.title}>{em.client_portal_visible ? residueEmailStatus.label : "Aguardando publicação"}</span></div>
                       <div className="mt-2 grid gap-2 text-sm sm:grid-cols-2"><div><span className="text-xs text-muted-foreground">Resíduo</span><p>{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</p></div><div><span className="text-xs text-muted-foreground">Finalizado em</span><p>{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</p></div></div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]"><Button variant="outline" size="sm" className="w-full" disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button><Button variant="outline" size="sm" className="w-full" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => { if (!em.client_portal_visible || window.confirm(`Remover a emissão #${em.display_number} do Portal do Cliente?`)) setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: !em.client_portal_visible }); }}>{em.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" className="w-full" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, residueEmission: em, displayNumber: `#${em.display_number}`, residueId: em.waste_residue_id })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar</Button><Button variant="ghost" size="icon" className="mx-auto h-9 w-9" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]"><Button allowReadOnly variant="outline" size="sm" className="w-full" disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button><Button variant="outline" size="sm" className="w-full" disabled={setResidueEmissionPortalVisibility.isPending || isLocked(group.parent)} onClick={() => { if (!em.client_portal_visible || window.confirm(`Remover a emissão #${em.display_number} do Portal do Cliente?`)) setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: !em.client_portal_visible }); }}>{em.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" className="w-full" disabled={setResidueEmissionPortalVisibility.isPending || isLocked(group.parent)} onClick={() => void openPublishConfirmation({ cycle: group.parent!, residueEmission: em, displayNumber: `#${em.display_number}`, residueId: em.waste_residue_id })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar</Button><Button variant="ghost" size="icon" className="mx-auto h-9 w-9" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending || isLocked(group.parent)} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
                     </div>; })}</div>}
                   </div>;
-                }) : <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</div>}
+                }) : <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">{emissionSearch.trim() ? "Nenhum BM encontrado para este número." : "Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal."}</div>}
               </div>
-              <div className="mt-4 hidden overflow-x-auto 2xl:block"><table className="w-full min-w-[1320px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2">Status do e-mail</th><th className="p-2 text-right">Ações</th></tr></thead><tbody>{emittedGroups.length ? emittedGroups.map((group) => { const expanded = expandedBMs.includes(group.cycleId); const hasEmissions = group.emissions.length > 0; const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`; const closedParent = Boolean(group.parent && group.parent.status === "closed"); const emailStatus = emailDeliverySummary(group.cycleId); return <Fragment key={group.cycleId}><tr className="border-b"><td className="p-2 font-semibold"><div className="flex items-center gap-1.5">{hasEmissions ? <button type="button" aria-label={expanded ? "Recolher recortes" : "Expandir recortes"} onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])} className="text-muted-foreground transition-colors hover:text-primary">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button> : <span className="inline-block w-4" />}{headerNumber}{residuePreview(group.cycleId)}{hasEmissions ? <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{group.emissions.length} recorte(s)</span> : null}</div></td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{group.parent ? `${new Date(`${group.parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${group.parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</td><td className="p-2">{closedParent && group.parent?.finalized_at ? new Date(group.parent.finalized_at).toLocaleDateString("pt-BR") : group.parent ? "Em edição" : "—"}</td><td className="p-2 text-xs" title={emailStatus.title}>{group.parent?.client_portal_visible ? emailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right">{group.parent ? <div className="inline-flex items-center justify-end gap-2"><Button variant="outline" size="sm" onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button>{closedParent ? <><Button variant="outline" size="sm" disabled={setCyclePortalVisibility.isPending} onClick={() => { if (!group.parent!.client_portal_visible || window.confirm(`Remover o ${headerNumber} do Portal do Cliente?`)) setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: !group.parent!.client_portal_visible }); }}>{group.parent.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setCyclePortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, displayNumber: headerNumber, residueId: "all" })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button></> : <span className="text-sm text-muted-foreground">Finalize para publicar ou enviar</span>}</div> : <span className="text-sm text-muted-foreground">—</span>}</td></tr>{expanded ? group.emissions.map((em) => { const residueEmailStatus = emailDeliverySummary(group.cycleId, em.id); return <tr key={em.id} className="border-b bg-muted/20"><td className="p-2 pl-8 font-semibold">#{em.display_number}</td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</td><td className="p-2">{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-xs" title={residueEmailStatus.title}>{em.client_portal_visible ? residueEmailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="outline" size="sm" disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button><Button variant="outline" size="sm" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => { if (!em.client_portal_visible || window.confirm(`Remover a emissão #${em.display_number} do Portal do Cliente?`)) setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: !em.client_portal_visible }); }}>{em.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setResidueEmissionPortalVisibility.isPending} onClick={() => void openPublishConfirmation({ cycle: group.parent!, residueEmission: em, displayNumber: `#${em.display_number}`, residueId: em.waste_residue_id })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>; }) : null}</Fragment>; }) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
+              <div className="mt-4 hidden overflow-x-auto 2xl:block"><table className="w-full min-w-[1320px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2">Status do e-mail</th><th className="p-2 text-right">Ações</th></tr></thead><tbody>{shownEmittedGroups.length ? shownEmittedGroups.map((group) => { const expanded = expandedBMs.includes(group.cycleId) || emissionSearch.includes("."); const hasEmissions = group.emissions.length > 0; const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`; const closedParent = Boolean(group.parent && group.parent.status === "closed"); const emailStatus = emailDeliverySummary(group.cycleId); return <Fragment key={group.cycleId}><tr className="border-b"><td className="p-2 font-semibold"><div className="flex items-center gap-1.5">{hasEmissions ? <button type="button" aria-label={expanded ? "Recolher recortes" : "Expandir recortes"} onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])} className="text-muted-foreground transition-colors hover:text-primary">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button> : <span className="inline-block w-4" />}{headerNumber}{residuePreview(group.cycleId)}{hasEmissions ? <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{group.emissions.length} recorte(s)</span> : null}</div></td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{group.parent ? `${new Date(`${group.parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${group.parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</td><td className="p-2">{closedParent && group.parent?.finalized_at ? new Date(group.parent.finalized_at).toLocaleDateString("pt-BR") : group.parent ? "Em edição" : "—"}</td><td className="p-2 text-xs" title={emailStatus.title}>{group.parent?.client_portal_visible ? emailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right">{group.parent ? <div className="inline-flex items-center justify-end gap-2"><Button allowReadOnly variant="outline" size="sm" onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button>{closedParent ? <><Button variant="outline" size="sm" disabled={setCyclePortalVisibility.isPending || isLocked(group.parent)} onClick={() => { if (!group.parent!.client_portal_visible || window.confirm(`Remover o ${headerNumber} do Portal do Cliente?`)) setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: !group.parent!.client_portal_visible }); }}>{group.parent.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setCyclePortalVisibility.isPending || isLocked(group.parent)} onClick={() => void openPublishConfirmation({ cycle: group.parent!, displayNumber: headerNumber, residueId: "all" })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button></> : <span className="text-sm text-muted-foreground">Finalize para publicar ou enviar</span>}</div> : <span className="text-sm text-muted-foreground">—</span>}</td></tr>{expanded ? group.emissions.map((em) => { const residueEmailStatus = emailDeliverySummary(group.cycleId, em.id); return <tr key={em.id} className="border-b bg-muted/20"><td className="p-2 pl-8 font-semibold">#{em.display_number}</td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</td><td className="p-2">{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-xs" title={residueEmailStatus.title}>{em.client_portal_visible ? residueEmailStatus.label : "Aguardando publicação"}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button allowReadOnly variant="outline" size="sm" disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="mr-2 h-4 w-4" />Visualizar BM</Button><Button variant="outline" size="sm" disabled={setResidueEmissionPortalVisibility.isPending || isLocked(group.parent)} onClick={() => { if (!em.client_portal_visible || window.confirm(`Remover a emissão #${em.display_number} do Portal do Cliente?`)) setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: !em.client_portal_visible }); }}>{em.client_portal_visible ? "Remover do portal" : "Publicar somente no portal"}</Button><Button size="sm" disabled={setResidueEmissionPortalVisibility.isPending || isLocked(group.parent)} onClick={() => void openPublishConfirmation({ cycle: group.parent!, residueEmission: em, displayNumber: `#${em.display_number}`, residueId: em.waste_residue_id })}><Mail className="mr-2 h-4 w-4" />Conferir e enviar por e-mail</Button><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending || isLocked(group.parent)} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>; }) : null}</Fragment>; }) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">{emissionSearch.trim() ? "Nenhum BM encontrado para este número." : "Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal."}</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="grid gap-4 xl:grid-cols-[minmax(360px,440px)_1fr] xl:items-start">
               <Card className="jacoby-billing-form p-5 xl:sticky xl:top-40">
                 <h2 className="flex items-center gap-2 font-semibold"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/12 text-primary"><Container className="h-4 w-4" /></span>Nova colocação em locação</h2>
@@ -2263,7 +2248,7 @@ export function BillingV2Module() {
                 </p>
                 <div className="mt-4 grid gap-3">
                   <Field label="Filial ou pátio">
-                    <Select
+                    <Select allowReadOnly
                       value={lockedBranchId || placementForm.branchId}
                       disabled={Boolean(lockedBranchId)}
                       onValueChange={(value) => {
@@ -2388,7 +2373,7 @@ export function BillingV2Module() {
                 </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
                   <Field label="Filial ou pátio">
-                    <Select
+                    <Select allowReadOnly
                       value={lockedBranchId || movementForm.branchId}
                       disabled={Boolean(lockedBranchId)}
                       onValueChange={(value) => {
@@ -2700,7 +2685,7 @@ export function BillingV2Module() {
                 <Field label="Observação" className="mt-3">
                   <Input value={serviceObservation} onChange={(event) => setServiceObservation(event.target.value)} placeholder="Opcional: detalhe deste lançamento" />
                 </Field>
-                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor unitário</th><th className="p-2">Total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">Arquivo de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value, Number(item.unit_amount ?? item.amount ?? 0))} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.01" defaultValue={Number(item.unit_amount ?? item.amount ?? 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value, Number(item.quantity || 1))} /></td><td className="p-2 font-medium">{money(Number(item.amount || 0))}</td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir arquivo"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "Arquivo anexado"}</span></Button>}<label className="inline-flex"><input className="sr-only" type="file" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar arquivo" : "Anexar arquivo"}</span></Button></label></div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
+                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor unitário</th><th className="p-2">Total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">Arquivo de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value, Number(item.unit_amount ?? item.amount ?? 0))} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.01" defaultValue={Number(item.unit_amount ?? item.amount ?? 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value, Number(item.quantity || 1))} /></td><td className="p-2 font-medium">{money(Number(item.amount || 0))}</td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button allowReadOnly variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir arquivo"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "Arquivo anexado"}</span></Button>}<label className="inline-flex"><input disabled={Boolean(isLocked(cycle))} className="sr-only" type="file" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar arquivo" : "Anexar arquivo"}</span></Button></label></div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
               </Card>
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>
@@ -2744,7 +2729,7 @@ export function BillingV2Module() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="w-48">
-                    <Select value={residueFilterId} onValueChange={(value) => { setResidueFilterId(value); if (value === "all") setTreatmentCompanyId(""); }}>
+                    <Select allowReadOnly value={residueFilterId} onValueChange={(value) => { setResidueFilterId(value); if (value === "all") setTreatmentCompanyId(""); }}>
                       <SelectTrigger><SelectValue placeholder="Filtrar resíduo" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos os resíduos</SelectItem>
@@ -2754,7 +2739,7 @@ export function BillingV2Module() {
                   </div>
                   {residueFilterId !== "all" && (
                     <div className="w-56">
-                      <Select value={treatmentCompanyId || "none"} onValueChange={(value) => setTreatmentCompanyId(value === "none" ? "" : value)}>
+                      <Select allowReadOnly value={treatmentCompanyId || "none"} onValueChange={(value) => setTreatmentCompanyId(value === "none" ? "" : value)}>
                         <SelectTrigger><SelectValue placeholder="Terceirizada do tratamento" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Sem terceirizada do tratamento</SelectItem>
@@ -2770,7 +2755,7 @@ export function BillingV2Module() {
                   {cycle?.status === "closed" && (
                     <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900" disabled={reopenCycle.isPending} onClick={() => { if (window.confirm("Reabrir este boletim? Ele volta para edição e deixa de contar no faturamento até ser finalizado novamente.")) reopenCycle.mutate(); }}><RotateCcw className="mr-2 h-4 w-4" />Reabrir boletim</Button>
                   )}
-                  <Button onClick={() => void generateCurrentPdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF{residueFilterId !== "all" && finalizedResidueIds.has(residueFilterId) ? ` #${filteredEmissionPreview}` : ""}</Button>
+                  <Button allowReadOnly onClick={() => void generateCurrentPdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF{residueFilterId !== "all" && finalizedResidueIds.has(residueFilterId) ? ` #${filteredEmissionPreview}` : ""}</Button>
                 </div>
               </Card>
             </TabsContent>
@@ -2791,7 +2776,7 @@ export function BillingV2Module() {
                 <div><p className="text-xs text-muted-foreground">Conteúdo</p><p className="font-semibold">{publishDialog.residueEmission ? residues.find((item) => item.id === publishDialog.residueEmission?.waste_residue_id)?.name || "Emissão por resíduo" : "BM completo"}</p></div>
               </div>
 
-              <Button variant="outline" className="w-full" onClick={() => void viewBulletin(publishDialog.cycle, publishDialog.residueId, publishDialog.displayNumber)}>
+              <Button allowReadOnly variant="outline" className="w-full" onClick={() => void viewBulletin(publishDialog.cycle, publishDialog.residueId, publishDialog.displayNumber)}>
                 <Eye className="mr-2 h-4 w-4" />Visualizar o BM antes de enviar
               </Button>
 
@@ -2901,6 +2886,7 @@ export function BillingV2Module() {
         </DialogContent>
       </Dialog>
     </div>
+    </BillingReadOnlyProvider>
   );
 }
 
@@ -3047,6 +3033,7 @@ function MovementTable({
   onFocusDone?: () => void;
 }) {
   const { openPdfPreview, pdfPreviewDialog } = usePdfPreview();
+  const readOnly = useBillingReadOnly();
   const [editing, setEditing] = useState<Movement | null>(null);
   const [editingRows, setEditingRows] = useState<Movement[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
@@ -3195,7 +3182,7 @@ function MovementTable({
                 </td>
                 <td className="p-2">
                   {isBatch ? (
-                    <Button variant="link" size="sm" className="h-auto p-0 text-left" onClick={() => toggleDetails(key)}>
+                    <Button allowReadOnly variant="link" size="sm" className="h-auto p-0 text-left" onClick={() => toggleDetails(key)}>
                       {isExpanded ? <ChevronDown className="mr-1 h-4 w-4" /> : <ChevronRight className="mr-1 h-4 w-4" />}
                       {groupRows.length} equipamentos · detalhar
                     </Button>
@@ -3223,13 +3210,13 @@ function MovementTable({
                       const isImageFile = /\.(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(attachment.file_name);
                       return (
                       <div key={attachment.id} className="flex max-w-40 items-center gap-1">
-                        <Button variant="link" size="sm" className="h-auto min-w-0 flex-1 justify-start p-0 text-left" title={attachment.file_name} onClick={() => void openPdf(attachment)}>{isImageFile ? <ImageIcon className="mr-1 h-3.5 w-3.5 shrink-0" /> : <FileText className="mr-1 h-3.5 w-3.5 shrink-0" />}<span className="truncate">{attachment.file_name}</span></Button>
+                        <Button allowReadOnly variant="link" size="sm" className="h-auto min-w-0 flex-1 justify-start p-0 text-left" title={attachment.file_name} onClick={() => void openPdf(attachment)}>{isImageFile ? <ImageIcon className="mr-1 h-3.5 w-3.5 shrink-0" /> : <FileText className="mr-1 h-3.5 w-3.5 shrink-0" />}<span className="truncate">{attachment.file_name}</span></Button>
                         <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" title="Excluir este anexo" aria-label={`Excluir anexo ${attachment.file_name}`} disabled={removingAttachmentId === attachment.id} onClick={() => { if (window.confirm(`Excluir o anexo \"${attachment.file_name}\"?`)) onAttachmentRemove(attachment); }}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                       </div>
                       );
                     })}
                     <label className="inline-flex">
-                      <input className="sr-only" type="file" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                      <input className="sr-only" type="file" disabled={readOnly || uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
                       <Button asChild variant="outline" size="sm" disabled={uploadingId === row.id} aria-label="Adicionar arquivo ou foto à movimentação">
                         <span><Upload className="mr-1 h-3.5 w-3.5" />Adicionar arquivo</span>
                       </Button>

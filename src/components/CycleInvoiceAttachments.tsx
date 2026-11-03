@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Clock3, Eye, FileImage, FileSpreadsheet, FileText, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { BillingButton as Button, useBillingReadOnly } from "@/components/BillingReadOnly";
 import { canPreviewInline, usePdfPreview } from "@/components/PdfPreviewDialog";
 import {
   CYCLE_INVOICE_BUCKET,
@@ -34,6 +34,7 @@ export function CycleInvoiceAttachments({
   linkedPaths: string[];
   onLaunch: (invoice: CycleInvoice) => void;
 }) {
+  const readOnly = useBillingReadOnly();
   const inputId = useId();
   const { openPdfPreview, pdfPreviewDialog } = usePdfPreview();
   const qc = useQueryClient();
@@ -45,14 +46,16 @@ export function CycleInvoiceAttachments({
   });
   const launchedPath = useRef("");
   useEffect(() => {
+    if (readOnly) return;
     const invoice = attachments.data?.find(file => file.path === initialPath);
     if (invoice && initialPath !== launchedPath.current && !linkedPaths.includes(invoice.path)) {
       launchedPath.current = invoice.path;
       onLaunch(invoice);
     }
-  }, [attachments.data, initialPath, linkedPaths, onLaunch]);
+  }, [attachments.data, initialPath, linkedPaths, onLaunch, readOnly]);
   const upload = useMutation({
     mutationFn: async (file: File) => {
+      if (readOnly) throw new Error("Este BM finalizado permite somente consulta.");
       // Capture the target BM for the entire upload, even if navigation changes meanwhile.
       const targetCycleId = cycleId;
       await validateCycleInvoice(file);
@@ -122,14 +125,14 @@ export function CycleInvoiceAttachments({
             id={inputId}
             className="sr-only"
             type="file"
-            disabled={!cycleId || upload.isPending}
+            disabled={readOnly || !cycleId || upload.isPending}
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.currentTarget.value = "";
               if (file) upload.mutate(file);
             }}
           />
-          <Button asChild disabled={!cycleId || upload.isPending}>
+          <Button asChild disabled={readOnly || !cycleId || upload.isPending}>
             <label
               htmlFor={inputId}
               className={upload.isPending ? "pointer-events-none" : "cursor-pointer"}
@@ -149,7 +152,7 @@ export function CycleInvoiceAttachments({
       ) : attachments.error ? (
         <div role="alert" className="text-sm text-destructive">
           <p>Não foi possível consultar os anexos: {attachments.error.message}</p>
-          <Button
+          <Button allowReadOnly
             variant="outline"
             size="sm"
             className="mt-2"
@@ -191,7 +194,7 @@ export function CycleInvoiceAttachments({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => void open(file)}>
+              <Button allowReadOnly variant="outline" size="sm" onClick={() => void open(file)}>
                 <Eye className="h-4 w-4" />
                 Abrir nota
               </Button>

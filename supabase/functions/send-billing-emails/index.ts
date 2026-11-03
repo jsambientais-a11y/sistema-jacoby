@@ -96,6 +96,14 @@ export default {
       // Corpo vazio processa a fila vencida.
     }
 
+    // The service client below bypasses RLS. Enforce the caller's per-user
+    // restriction before creating queues or dispatching any existing delivery.
+    const { data: lockFinalized, error: lockError } = await authClient.rpc("has_finalized_bulletin_lock");
+    if (lockError) return json({ error: "Não foi possível conferir a permissão de envio." }, 500);
+    if (lockFinalized && !input.previewOnly) {
+      return json({ error: "Seu acesso permite somente consulta de BMs finalizados. O envio por e-mail não está disponível." }, 403);
+    }
+
     const admin = createClient(projectUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
