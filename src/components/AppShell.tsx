@@ -586,6 +586,7 @@ function FinanceNav({
           ["/contas-a-pagar", "Contas a pagar"],
           ["/contas-a-receber", "Contas a receber"],
           ["/centros-de-custo", "Centros de custo"],
+          ["/bancos", "Bancos e contas"],
           ["/cartoes", "Cartões de crédito"],
           ["/relatorios-financeiros", "Relatórios"],
         ].map(([to, label]) => (

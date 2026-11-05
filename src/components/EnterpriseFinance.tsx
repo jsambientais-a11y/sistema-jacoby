@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -857,6 +858,9 @@ export function EnterpriseFinance({
                     </option>
                   ))}
               </select>
+              <Link to="/bancos" className="text-xs text-primary underline underline-offset-2">
+                Cadastrar conta em Bancos e contas
+              </Link>
             </div>
           )}
           <div className="flex justify-end gap-2">
