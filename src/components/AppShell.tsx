@@ -3,6 +3,8 @@
  * Não contém regras de uma tela específica; novas áreas devem ser adicionadas em `allNav`.
  */
 import { Link, useRouterState } from "@tanstack/react-router";
+import { usePayableAlerts } from "@/hooks/use-payable-alerts";
+import { seesPayableAlerts } from "@/lib/finance-access";
 import { useAuth } from "@/hooks/use-auth";
 import { useTasks } from "@/hooks/use-data";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -527,15 +529,25 @@ function PortalNavGroup({
   );
 }
 
-function FinanceNavGroup({
+type FinanceNavProps = { expanded: boolean; pathname: string; onNavigate?: () => void };
+function FinanceNavGroup(props: FinanceNavProps) {
+  const { user, hasPermission } = useAuth();
+  return seesPayableAlerts(user?.id, hasPermission("finance")) ? (
+    <AlertedFinanceNav {...props} />
+  ) : (
+    <FinanceNav {...props} alertCount={0} />
+  );
+}
+function AlertedFinanceNav(props: FinanceNavProps) {
+  const { urgent } = usePayableAlerts();
+  return <FinanceNav {...props} alertCount={urgent.length} />;
+}
+function FinanceNav({
   expanded,
   pathname,
   onNavigate,
-}: {
-  expanded: boolean;
-  pathname: string;
-  onNavigate?: () => void;
-}) {
+  alertCount,
+}: FinanceNavProps & { alertCount: number }) {
   const active = [
     "/contas-a-pagar",
     "/contas-a-receber",
@@ -544,12 +556,18 @@ function FinanceNavGroup({
     "/relatorios-financeiros",
     "/cartoes",
   ].includes(pathname);
+  const alertLabel = `${alertCount} conta(s) vencida(s) ou vencendo hoje`;
   const item =
     "jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
   if (!expanded)
     return (
-      <Link to="/contas-a-pagar" title="Financeiro" className={item + " justify-center"}>
+      <Link
+        to="/contas-a-pagar"
+        title={alertCount ? `Financeiro: ${alertLabel}` : "Financeiro"}
+        className={item + " relative justify-center"}
+      >
         <Wallet className="h-4 w-4" />
+        {alertCount > 0 && <span className="jacoby-alert-dot absolute right-2 top-1.5" />}
       </Link>
     );
   return (
@@ -560,6 +578,7 @@ function FinanceNavGroup({
       >
         <Wallet className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left">Financeiro</span>
+        {alertCount > 0 && <span className="jacoby-alert-dot" title={alertLabel} />}
         <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]/finance:rotate-180" />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-1 pl-4">
@@ -577,7 +596,15 @@ function FinanceNavGroup({
             data-active={pathname === to}
             className={item + (pathname === to ? " bg-sidebar-accent/50" : "")}
           >
-            {label}
+            <span className="flex-1">{label}</span>
+            {to === "/contas-a-pagar" && alertCount > 0 && (
+              <span
+                aria-label={alertLabel}
+                className="rounded-full bg-destructive px-1.5 text-xs font-bold leading-5 text-destructive-foreground"
+              >
+                {alertCount}
+              </span>
+            )}
           </Link>
         ))}
       </CollapsibleContent>

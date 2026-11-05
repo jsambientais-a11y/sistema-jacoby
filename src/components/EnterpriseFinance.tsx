@@ -1,6 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
-import { Plus, Tags, Pencil, Trash2, Undo2, CheckCircle2 } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { compatibleCenter, useCostCenters, useBanks } from "@/hooks/use-cost-centers";
 import { useReceiptDetails } from "@/hooks/use-receipt-details";
@@ -14,7 +13,6 @@ import { useBillingFlowData } from "@/hooks/use-billing-flow";
 import { billingAgreement } from "@/lib/billing-agreement";
 import { toReceivable, inPeriod, type Period, settlementInput } from "@/lib/receivables";
 import {
-  financeStatus,
   localFinanceToday,
   manualFinanceRow,
   parseFinanceMoney,
@@ -28,10 +26,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PeriodFilter } from "@/components/PeriodFilter";
+import { FinanceTable } from "@/components/FinanceTable";
 const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const date = (value: string | null) =>
   value ? value.split("-").reverse().join("/") : "Sem previsão";
+const selectClass = "h-10 w-full rounded-md border bg-background px-3 text-sm";
 const accountTitles = {
   payable: "Contas a pagar",
   receivable: "Contas a receber",
@@ -51,10 +51,10 @@ type Draft = {
 };
 export function EnterpriseFinance({
   kind,
-  overdue = false,
+  focus,
 }: {
   kind: FinanceKind;
-  overdue?: boolean;
+  focus?: "overdue" | "urgent";
 }) {
   const payable = kind === "payable";
   const accounts = useFinanceAccounts();
@@ -73,24 +73,29 @@ export function EnterpriseFinance({
   const flow = useBillingFlowData();
   const today = localFinanceToday();
   const [period, setPeriod] = useState<Period>(
-      overdue ? { kind: "all" } : { kind: "month", month: today.slice(0, 7) },
+      focus ? { kind: "all" } : { kind: "month", month: today.slice(0, 7) },
     ),
     [search, setSearch] = useState(""),
-    [status, setStatus] = useState(overdue ? "overdue" : "all"),
+    [status, setStatus] = useState<string>(focus || "all"),
     [showDeleted, setShowDeleted] = useState(false);
   useEffect(() => {
-    if (overdue) {
+    if (focus) {
       setPeriod({ kind: "all" });
-      setStatus("overdue");
+      setStatus(focus);
       setShowDeleted(false);
     }
-  }, [overdue]);
+  }, [focus]);
   const [draft, setDraft] = useState<Draft | null>(null),
     [confirm, setConfirm] = useState<{
       row: FinanceRow;
       action: "settle" | "reopen" | "delete" | "restore";
     } | null>(null),
-    [settleDate, setSettleDate] = useState(today);
+    [settleDate, setSettleDate] = useState(today),
+    [settleBank, setSettleBank] = useState(""),
+    [optimistic, setOptimistic] = useState<Record<string, string | null>>({});
+  // A trava de concorrência usa updated_at: o "Desfazer" do aviso precisa da versão mais recente.
+  const latestAccounts = useRef(accounts.data);
+  latestAccounts.current = accounts.data;
   const active = (accounts.data || []).filter((a) => !a.deleted_at).map(manualFinanceRow);
   const billing = flow.billingFlowEntries.map((entry) => {
     const r = toReceivable(entry, today, billingAgreement(entry).requiresAgreement);
@@ -154,7 +159,8 @@ export function EnterpriseFinance({
         (status === "all" ||
           (status === "open" && !r.settledOn) ||
           (status === "settled" && !!r.settledOn) ||
-          (status === "overdue" && !r.settledOn && !!r.dueOn && r.dueOn < today)),
+          (status === "overdue" && !r.settledOn && !!r.dueOn && r.dueOn < today) ||
+          (status === "urgent" && !r.settledOn && !!r.dueOn && r.dueOn <= today)),
     )
     .sort((a, b) => (a.dueOn || "9999").localeCompare(b.dueOn || "9999"));
   const flowError = [
@@ -182,6 +188,7 @@ export function EnterpriseFinance({
   ].some((q) => q.isLoading);
   const busy =
     accounts.save.isPending ||
+    credit.settle.isPending ||
     recurring.saveInline.isPending ||
     flow.settleReceivable.isPending ||
     receiptDetails.save.isPending;
@@ -241,11 +248,81 @@ export function EnterpriseFinance({
       fail(e);
     }
   };
+  const paint = async (id: string, settledOn: string | null, write: () => Promise<void>) => {
+    setOptimistic((current) => ({ ...current, [id]: settledOn }));
+    try {
+      await write();
+    } finally {
+      setOptimistic(({ [id]: _done, ...rest }) => rest);
+    }
+  };
+  const setManualSettled = (row: FinanceRow, settledOn: string | null) =>
+    paint(row.id, settledOn, async () => {
+      const old = latestAccounts.current?.find((a) => a.id === row.manual?.id);
+      if (!old) throw new Error("Lançamento não encontrado.");
+      await accounts.save.mutateAsync({ old, values: { settled_on: settledOn } });
+    });
+  const setCardSettled = (row: FinanceRow, settledOn: string | null, bank: string | null) =>
+    paint(row.id, settledOn, () =>
+      credit.settle.mutateAsync({
+        cardId: row.cardId!,
+        month: row.invoiceMonth!,
+        date: settledOn,
+        bank,
+        total: row.amountCents,
+      }),
+    );
+  // Um clique registra a baixa com a data de hoje; o aviso oferece desfazer na hora.
+  const quickToggle = async (row: FinanceRow) => {
+    const openDialog = (action: "settle" | "reopen", bank = "") => {
+      setSettleDate(today);
+      setSettleBank(bank);
+      setConfirm({ row, action });
+    };
+    try {
+      if (row.source === "billing") return openDialog(row.settledOn ? "reopen" : "settle");
+      if (row.source === "card") {
+        // Desfazer limpa todas as baixas da fatura, então pede confirmação.
+        if (row.settledOn) return openDialog("reopen");
+        const defaultBank = credit.cards.data?.find((c) => c.id === row.cardId)?.bank_account_id;
+        const bank = banks.data?.find((b) => b.id === defaultBank && b.active);
+        if (!bank) return openDialog("settle", "");
+        await setCardSettled(row, today, bank.id);
+        toast.success(`Fatura paga em ${date(today)} pela conta ${bank.name}.`, {
+          // Com pagamento parcial anterior, desfazer apagaria também aquelas baixas.
+          action: row.paidCents
+            ? undefined
+            : {
+                label: "Desfazer",
+                onClick: () => void setCardSettled(row, null, null).catch(fail),
+              },
+        });
+        return;
+      }
+      const previous = row.settledOn;
+      const next = previous ? null : today;
+      await setManualSettled(row, next);
+      toast.success(next ? `Baixa registrada em ${date(next)}.` : "Baixa desfeita.", {
+        action: {
+          label: "Desfazer",
+          onClick: () => void setManualSettled(row, previous).catch(fail),
+        },
+      });
+    } catch (e) {
+      fail(e);
+    }
+  };
   const execute = async () => {
     if (!confirm) return;
     try {
       const { row, action } = confirm;
-      if (row.source === "billing") {
+      if (row.source === "card") {
+        await setCardSettled(
+          row,
+          action === "settle" ? settleDate : null,
+          action === "settle" ? settleBank : null,
+        );
+      } else if (row.source === "billing") {
         const b = billing.find((b) => b.id === row.id);
         if (!b) throw new Error("Atualize para conferir este recebível.");
         const values = settlementInput(
@@ -282,46 +359,10 @@ export function EnterpriseFinance({
   return (
     <div className="mx-auto min-w-0 max-w-[1500px] space-y-5 p-4 sm:p-6">
       <header>
-        <p className="text-sm font-semibold text-primary">Controle empresarial</p>
         <h1 className="text-3xl font-bold">{accountTitles[kind]}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {payable
-            ? "Acompanhe despesas e registre pagamentos."
-            : "Acompanhe receitas e registre recebimentos."}
-        </p>
       </header>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodFilter value={period} onChange={setPeriod} />
-        <select
-          aria-label="Filtrar por centro de custo"
-          className="h-10 max-w-xs rounded-md border bg-background px-3 text-sm"
-          value={centerFilter}
-          onChange={(e) => setCenterFilter(e.target.value)}
-        >
-          <option value="">Todos os centros de custo</option>
-          <option value="none">Sem centro de custo</option>
-          {(centers.data || []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-              {c.active ? "" : " (desativado)"}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Filtrar por banco"
-          className="h-10 max-w-xs rounded-md border bg-background px-3 text-sm"
-          value={bankFilter}
-          onChange={(e) => setBankFilter(e.target.value)}
-        >
-          <option value="">Todos os bancos/contas</option>
-          <option value="none">Banco não informado</option>
-          {(banks.data || []).map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-              {b.active ? "" : " (desativado)"}
-            </option>
-          ))}
-        </select>
         <Button onClick={newAccount}>
           <Plus className="mr-2 h-4 w-4" />
           Nova conta {payable ? "a pagar" : "a receber"}
@@ -372,258 +413,107 @@ export function EnterpriseFinance({
           {missingDate} conta(s) sem previsão. Ver todos os períodos
         </Button>
       )}
-      <section className="space-y-3 rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-semibold">
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="mr-auto font-semibold">
             {accountTitles[kind]} ({rows.length})
           </h2>
-          <div className="flex flex-wrap gap-2">
-            <Input
-              aria-label="Buscar conta"
-              placeholder="Descrição, cliente ou fornecedor"
-              className="w-64"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <select
-              aria-label="Situação da conta"
-              className="rounded-md border bg-background p-2 text-sm"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="all">Todas as situações</option>
-              <option value="open">Em aberto</option>
-              <option value="overdue">Vencidas</option>
-              <option value="settled">{payable ? "Pagas" : "Recebidas"}</option>
-            </select>
-            <Button variant="outline" onClick={() => setShowDeleted(!showDeleted)}>
-              {showDeleted ? "Ver ativas" : "Excluídas"}
-            </Button>
-          </div>
+          <Input
+            aria-label="Buscar conta"
+            placeholder="Descrição, cliente ou fornecedor"
+            className="h-9 w-64"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            aria-label="Filtrar por centro de custo"
+            className={`${selectClass} h-9 w-auto max-w-52`}
+            value={centerFilter}
+            onChange={(e) => setCenterFilter(e.target.value)}
+          >
+            <option value="">Todos os centros</option>
+            <option value="none">Sem centro de custo</option>
+            {(centers.data || []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.active ? "" : " (desativado)"}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Filtrar por banco"
+            className={`${selectClass} h-9 w-auto max-w-52`}
+            value={bankFilter}
+            onChange={(e) => setBankFilter(e.target.value)}
+          >
+            <option value="">Todos os bancos</option>
+            <option value="none">Banco não informado</option>
+            {(banks.data || []).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+                {b.active ? "" : " (desativado)"}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Situação da conta"
+            className={`${selectClass} h-9 w-auto`}
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="all">Todas as situações</option>
+            <option value="open">Em aberto</option>
+            <option value="urgent">Vencidas e de hoje</option>
+            <option value="overdue">Vencidas</option>
+            <option value="settled">{payable ? "Pagas" : "Recebidas"}</option>
+          </select>
+          <Button variant="outline" size="sm" onClick={() => setShowDeleted(!showDeleted)}>
+            {showDeleted ? "Ver ativas" : "Excluídas"}
+          </Button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                {[
-                  "Descrição / origem",
-                  "Cliente / fornecedor",
-                  "Vencimento",
-                  "Valor",
-                  "Situação / baixa",
-                  "Ações",
-                ].map((h) => (
-                  <th key={h} className="p-3 font-medium">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-b last:border-0">
-                  <td className="p-3">
-                    <b className="block">{row.description}</b>
-                    {row.manual?.recurrence_id && (
-                      <span className="mt-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">
-                        Recorrente
-                        {row.manual.recurrence_overridden ? " · ocorrência ajustada" : ""}
-                      </span>
-                    )}
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {row.source === "card"
-                        ? "Fatura do cartão"
-                        : row.source === "billing"
-                          ? "Vinculado ao Faturamento"
-                          : "Cadastro manual"}
-                      {row.category ? ` · ${row.category}` : ""}
-                    </p>
-                    <div className="mt-1.5">
-                      {row.source === "card" ? (
-                        <span className="text-xs text-muted-foreground">
-                          Compras e centros de custo na fatura
-                        </span>
-                      ) : row.costCenterId ? (
-                        <span
-                          className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100"
-                          aria-label={`Centro de custo vinculado: ${centers.data?.find((c) => c.id === row.costCenterId)?.name || "Carregando"}`}
-                        >
-                          <Tags
-                            className="h-3 w-3 shrink-0 text-blue-600 dark:text-blue-300"
-                            aria-hidden="true"
-                          />
-                          <span className="min-w-0 break-words text-xs leading-4">
-                            <span className="text-blue-700 dark:text-blue-300">Centro: </span>
-                            <span className="font-semibold">
-                              {centers.data?.find((c) => c.id === row.costCenterId)?.name ||
-                                "Carregando…"}
-                            </span>
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground">
-                          <Tags className="h-3 w-3" aria-hidden="true" />
-                          Sem centro de custo
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Banco/conta:{" "}
-                      {row.bankAccountId
-                        ? banks.data?.find((b) => b.id === row.bankAccountId)?.name || "Carregando…"
-                        : "Não informado"}
-                    </p>
-                  </td>
-                  <td className="p-3">{row.counterparty || "—"}</td>
-                  <td className="whitespace-nowrap p-3">{date(row.dueOn)}</td>
-                  <td className="whitespace-nowrap p-3 font-semibold">
-                    {money(row.amountCents)}
-                    {row.source === "card" && !!row.paidCents && !row.settledOn && (
-                      <span className="block text-xs font-normal text-muted-foreground">
-                        Pago: {money(row.paidCents)} · Em aberto:{" "}
-                        {money(row.amountCents - row.paidCents)}
-                      </span>
-                    )}
-                    {row.provisional && (
-                      <span className="block text-xs font-normal text-amber-700">
-                        Provisório · conferir no Faturamento
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    <span
-                      className={
-                        row.settledOn
-                          ? "text-primary"
-                          : row.dueOn && row.dueOn < today
-                            ? "text-destructive"
-                            : ""
-                      }
-                    >
-                      {row.source === "card" && !!row.paidCents && !row.settledOn
-                        ? "Parcialmente paga"
-                        : financeStatus(row, today)}
-                    </span>
-                    {row.settledOn && <span className="block text-xs">{date(row.settledOn)}</span>}
-                  </td>
-                  <td className="p-3">
-                    <div className="flex flex-wrap gap-2">
-                      {showDeleted ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => setConfirm({ row, action: "restore" })}
-                        >
-                          Restaurar
-                        </Button>
-                      ) : row.source === "card" ? (
-                        <Button size="sm" variant="outline" asChild>
-                          <Link
-                            to="/cartoes"
-                            search={{ card: row.cardId, month: row.invoiceMonth }}
-                          >
-                            Ver fatura
-                          </Link>
-                        </Button>
-                      ) : (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy || receiptDetails.isLoading || !!receiptDetails.error}
-                            onClick={() =>
-                              setClassification({
-                                row,
-                                center: row.costCenterId || "",
-                                bank: row.bankAccountId || "",
-                              })
-                            }
-                          >
-                            Centro / banco
-                          </Button>
-                          {row.canSettle ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={busy}
-                              onClick={() => {
-                                setSettleDate(today);
-                                setConfirm({
-                                  row,
-                                  action: row.settledOn ? "reopen" : "settle",
-                                });
-                              }}
-                            >
-                              {row.settledOn ? (
-                                <>
-                                  <Undo2 className="mr-1 h-3 w-3" />
-                                  Desfazer baixa
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                                  {row.kind === "payable"
-                                    ? "Registrar pagamento"
-                                    : "Registrar recebimento"}
-                                </>
-                              )}
-                            </Button>
-                          ) : (
-                            <Button asChild size="sm" variant="outline">
-                              <Link to="/financeiro" search={{ aba: "faturado" }}>
-                                Conferir em Faturamento
-                              </Link>
-                            </Button>
-                          )}
-                          {row.manual && !row.manual.credit_card_id && (
-                            <>
-                              <Button
-                                disabled={recurring.isLoading || !!recurring.error}
-                                aria-label={`Editar ${row.description}`}
-                                size="icon"
-                                variant="ghost"
-                                onClick={() =>
-                                  setDraft({
-                                    repeat: inlineRecurrence(
-                                      recurring.data?.find(
-                                        (r) => r.id === row.manual?.recurrence_id,
-                                      ),
-                                    ),
-                                    old: row.manual,
-                                    kind: row.kind,
-                                    description: row.description,
-                                    counterparty: row.counterparty,
-                                    category: row.category,
-                                    cost_center_id: row.costCenterId || "",
-                                    bank_account_id: row.bankAccountId || "",
-                                    value: (row.amountCents / 100).toFixed(2).replace(".", ","),
-                                    due_on: row.dueOn || today,
-                                    notes: row.manual!.notes,
-                                  })
-                                }
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                aria-label={`Excluir ${row.description}`}
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => setConfirm({ row, action: "delete" })}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <FinanceTable
+          rows={rows}
+          kind={kind}
+          today={today}
+          showDeleted={showDeleted}
+          centers={centers.data}
+          banks={banks.data}
+          pending={optimistic}
+          busy={busy}
+          classifyDisabled={receiptDetails.isLoading || !!receiptDetails.error}
+          editDisabled={recurring.isLoading || !!recurring.error}
+          onToggle={(row) => void quickToggle(row)}
+          onChangeDate={(row) => {
+            setSettleDate(row.settledOn || today);
+            setConfirm({ row, action: "settle" });
+          }}
+          onClassify={(row) =>
+            setClassification({
+              row,
+              center: row.costCenterId || "",
+              bank: row.bankAccountId || "",
+            })
+          }
+          onEdit={(row) =>
+            setDraft({
+              repeat: inlineRecurrence(
+                recurring.data?.find((r) => r.id === row.manual?.recurrence_id),
+              ),
+              old: row.manual,
+              kind: row.kind,
+              description: row.description,
+              counterparty: row.counterparty,
+              category: row.category,
+              cost_center_id: row.costCenterId || "",
+              bank_account_id: row.bankAccountId || "",
+              value: (row.amountCents / 100).toFixed(2).replace(".", ","),
+              due_on: row.dueOn || today,
+              notes: row.manual!.notes,
+            })
+          }
+          onDelete={(row) => setConfirm({ row, action: "delete" })}
+          onRestore={(row) => setConfirm({ row, action: "restore" })}
+        />
         {!rows.length && (
           <p className="p-5 text-center text-sm text-muted-foreground">
             {accounts.isLoading || flowLoading
@@ -686,7 +576,7 @@ export function EnterpriseFinance({
                 <Label htmlFor="receipt-center">Centro de custo</Label>
                 <select
                   id="receipt-center"
-                  className="h-10 w-full rounded-md border bg-background px-3"
+                  className={selectClass}
                   value={classification.center}
                   onChange={(e) => setClassification({ ...classification, center: e.target.value })}
                 >
@@ -713,7 +603,7 @@ export function EnterpriseFinance({
                 </Label>
                 <select
                   id="receipt-bank"
-                  className="h-10 w-full rounded-md border bg-background px-3"
+                  className={selectClass}
                   value={classification.bank}
                   onChange={(e) => setClassification({ ...classification, bank: e.target.value })}
                 >
@@ -759,7 +649,7 @@ export function EnterpriseFinance({
           if (!v && !busy) setDraft(null);
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogTitle>
             {draft?.old ? "Editar conta" : "Nova conta"}{" "}
             {draft?.kind === "payable" ? "a pagar" : "a receber"}
@@ -770,8 +660,8 @@ export function EnterpriseFinance({
               : "Cadastro operacional do Financeiro. Ative Repetir esta despesa para torná-la recorrente."}
           </DialogDescription>
           {draft && (
-            <form onSubmit={save} className="space-y-3">
-              <div className="space-y-1">
+            <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="finance-description">Descrição</Label>
                 <Input
                   id="finance-description"
@@ -781,7 +671,29 @@ export function EnterpriseFinance({
                   onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                 />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="finance-value">Valor (R$)</Label>
+                <Input
+                  id="finance-value"
+                  inputMode="decimal"
+                  required
+                  placeholder="1.500,00"
+                  value={draft.value}
+                  onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="finance-due">Vencimento</Label>
+                <Input
+                  id="finance-due"
+                  disabled={!!draft.old?.recurrence_id && draft.repeat?.scope === "future"}
+                  type="date"
+                  required
+                  value={draft.due_on}
+                  onChange={(e) => setDraft({ ...draft, due_on: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="finance-party">
                   {draft.kind === "payable" ? "Fornecedor / favorecido" : "Cliente / origem"}
                 </Label>
@@ -792,35 +704,21 @@ export function EnterpriseFinance({
                   onChange={(e) => setDraft({ ...draft, counterparty: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="finance-value">Valor (R$)</Label>
-                  <Input
-                    id="finance-value"
-                    inputMode="decimal"
-                    required
-                    placeholder="1.500,00"
-                    value={draft.value}
-                    onChange={(e) => setDraft({ ...draft, value: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="finance-due">Vencimento</Label>
-                  <Input
-                    id="finance-due"
-                    disabled={!!draft.old?.recurrence_id && draft.repeat?.scope === "future"}
-                    type="date"
-                    required
-                    value={draft.due_on}
-                    onChange={(e) => setDraft({ ...draft, due_on: e.target.value })}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="finance-category">Categoria</Label>
+                <Input
+                  id="finance-category"
+                  maxLength={200}
+                  placeholder="Ex.: aluguel, pessoal, serviços"
+                  value={draft.category}
+                  onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <Label htmlFor="finance-center">Centro de custo</Label>
                 <select
                   id="finance-center"
-                  className="h-10 w-full rounded-md border bg-background px-3"
+                  className={selectClass}
                   value={draft.cost_center_id}
                   onChange={(e) => setDraft({ ...draft, cost_center_id: e.target.value })}
                 >
@@ -839,13 +737,13 @@ export function EnterpriseFinance({
                     ))}
                 </select>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <Label htmlFor="finance-bank">
                   Banco / conta {draft.kind === "receivable" ? "de entrada" : "de saída"}
                 </Label>
                 <select
                   id="finance-bank"
-                  className="h-10 w-full rounded-md border bg-background px-3"
+                  className={selectClass}
                   value={draft.bank_account_id}
                   onChange={(e) => setDraft({ ...draft, bank_account_id: e.target.value })}
                 >
@@ -860,36 +758,29 @@ export function EnterpriseFinance({
                     ))}
                 </select>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="finance-category">Categoria</Label>
-                <Input
-                  id="finance-category"
-                  maxLength={200}
-                  placeholder="Ex.: aluguel, pessoal, serviços"
-                  value={draft.category}
-                  onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-                />
-              </div>
               {draft.kind === "payable" && (
-                <InlineRecurrenceFields
-                  value={draft.repeat || inlineRecurrence()}
-                  onChange={(repeat) => setDraft({ ...draft, repeat })}
-                  existing={!!draft.old?.recurrence_id}
-                  start={draft.due_on}
-                  disabled={busy}
-                />
+                <div className="sm:col-span-2">
+                  <InlineRecurrenceFields
+                    value={draft.repeat || inlineRecurrence()}
+                    onChange={(repeat) => setDraft({ ...draft, repeat })}
+                    existing={!!draft.old?.recurrence_id}
+                    start={draft.due_on}
+                    disabled={busy}
+                  />
+                </div>
               )}
-              <div className="space-y-1">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="finance-notes">Observações</Label>
                 <textarea
                   id="finance-notes"
-                  className="w-full rounded border bg-background p-2 text-sm"
+                  rows={2}
+                  className="w-full rounded-md border bg-background p-2 text-sm"
                   maxLength={10000}
                   value={draft.notes}
                   onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 sm:col-span-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -915,7 +806,9 @@ export function EnterpriseFinance({
         <DialogContent>
           <DialogTitle>
             {confirm?.action === "settle"
-              ? "Registrar baixa"
+              ? confirm.row.settledOn
+                ? "Alterar data da baixa"
+                : "Registrar baixa"
               : confirm?.action === "reopen"
                 ? "Desfazer baixa?"
                 : confirm?.action === "delete"
@@ -926,7 +819,11 @@ export function EnterpriseFinance({
             {confirm?.row.description} · {confirm && money(confirm.row.amountCents)}.{" "}
             {confirm?.action === "delete"
               ? "A conta sairá do comparativo e ficará recuperável em Excluídas."
-              : "Confira antes de salvar. A baixa de um recebível do Faturamento é compartilhada com aquela tela."}
+              : confirm?.row.source === "card"
+                ? confirm.action === "reopen"
+                  ? "As baixas desta fatura serão desfeitas e os valores voltarão ao contas a pagar. Nenhum dinheiro será movimentado."
+                  : "Este cartão não tem conta padrão ativa. Informe de qual conta a fatura saiu. Nenhum dinheiro será movimentado."
+                : "Confira antes de salvar. A baixa de um recebível do Faturamento é compartilhada com aquela tela."}
           </DialogDescription>
           {confirm?.action === "settle" && (
             <div className="space-y-1">
@@ -942,13 +839,37 @@ export function EnterpriseFinance({
               />
             </div>
           )}
+          {confirm?.action === "settle" && confirm.row.source === "card" && (
+            <div className="space-y-1">
+              <Label htmlFor="finance-settlement-bank">Conta bancária de saída</Label>
+              <select
+                id="finance-settlement-bank"
+                className={selectClass}
+                value={settleBank}
+                onChange={(e) => setSettleBank(e.target.value)}
+              >
+                <option value="">Selecione a conta</option>
+                {(banks.data || [])
+                  .filter((b) => b.active)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="outline" disabled={busy} onClick={() => setConfirm(null)}>
               Cancelar
             </Button>
             <Button
               disabled={
-                busy || (confirm?.action === "settle" && (!settleDate || settleDate > today))
+                busy ||
+                (confirm?.action === "settle" &&
+                  (!settleDate ||
+                    settleDate > today ||
+                    (confirm.row.source === "card" && !settleBank)))
               }
               onClick={() => void execute()}
             >

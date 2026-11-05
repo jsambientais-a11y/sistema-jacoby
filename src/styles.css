@@ -341,3 +341,29 @@
 .jacoby-billing tbody button:hover svg { transform: scale(1.12); }
 .jacoby-billing tbody button:hover svg.lucide-pencil { color: var(--primary); }
 .jacoby-billing-form { box-shadow: var(--shadow-lift); border-color: color-mix(in oklab, var(--primary) 18%, var(--border)); }
+
+/* Aviso de contas vencidas ou vencendo hoje: precisa chamar atenção de propósito. */
+.jacoby-alert-dot {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--destructive);
+  animation: jacoby-alert-blink 1s ease-in-out infinite;
+}
+@keyframes jacoby-alert-blink {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--destructive) 60%, transparent);
+  }
+  50% {
+    opacity: 0.25;
+    box-shadow: 0 0 0 6px color-mix(in oklab, var(--destructive) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jacoby-alert-dot {
+    animation: none;
+  }
+}

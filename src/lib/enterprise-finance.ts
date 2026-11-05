@@ -68,6 +68,19 @@ export function financeStatus(row: FinanceRow, today: string) {
           ? "A pagar"
           : "A receber";
 }
+export function financeUrgency(
+  row: Pick<FinanceRow, "dueOn" | "settledOn">,
+  today: string,
+): "settled" | "overdue" | "today" | "upcoming" {
+  if (row.settledOn) return "settled";
+  if (!row.dueOn || row.dueOn > today) return "upcoming";
+  return row.dueOn === today ? "today" : "overdue";
+}
+export function overdueDays(dueOn: string, today: string) {
+  return Math.round(
+    (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${dueOn}T00:00:00Z`)) / 86400000,
+  );
+}
 export function summarizeFinance(rows: FinanceRow[]) {
   let expectedIn = 0,
     expectedOut = 0,
