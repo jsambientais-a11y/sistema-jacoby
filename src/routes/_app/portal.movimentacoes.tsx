@@ -1,3 +1,5 @@
+import { ResidueReportExport } from "@/components/ResidueReportExport";
+import { buildPortalMovementReport } from "@/lib/waste-residue-report";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -31,24 +33,39 @@ const HISTORY_TAG = "[Histórico LDJ]";
 
 function ClientMovementsPage() {
   const { clientId } = useAuth();
-  const { data: movements = [], isLoading } = useQuery({
+  const { data: movements = [], isLoading, isFetching, error: movementsError } = useQuery({
     // Nunca reutilizar a memória de outro login no mesmo navegador. Isso evita
     // que uma troca de conta mostre momentaneamente dados de outro cliente.
     queryKey: ["client-confirmed-movements", clientId],
     enabled: !!clientId,
     queryFn: async () => {
-      const [{ data, error }, history] = await Promise.all([
-        (supabase.rpc("jacoby_client_confirmed_movements") as any),
+      const [data, history] = await Promise.all([
+        (async () => {
+          const rows: Movement[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const result = await (supabase.rpc("jacoby_client_confirmed_movements") as any).order("id").range(offset, offset + 499);
+            if (result.error) throw result.error;
+            rows.push(...(result.data || []));
+            if ((result.data || []).length < 500) break;
+          }
+          return rows;
+        })(),
         // Coletas anteriores ao sistema, importadas dos relatórios mensais publicados.
-        (supabase.from("waste_movements" as any) as any)
-          .select("id,occurred_on,weight_kg,service_order,observation,placed_quantity,removed_quantity,operation_type,waste_residues(name),client_branches(name),waste_reports!inner(client_id,status)")
-          .eq("waste_reports.client_id", clientId)
-          .eq("waste_reports.status", "published")
-          .neq("operation_type", "container_placement"),
+        (async () => {
+          const rows: any[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const result = await (supabase.from("waste_movements" as any) as any)
+              .select("id,occurred_on,weight_kg,service_order,observation,placed_quantity,removed_quantity,operation_type,waste_residues(name),client_branches(name),waste_reports!inner(client_id,status)")
+              .eq("waste_reports.client_id", clientId).eq("waste_reports.status", "published")
+              .neq("operation_type", "container_placement").order("id").range(offset, offset + 499);
+            if (result.error) throw result.error;
+            rows.push(...(result.data || []));
+            if ((result.data || []).length < 500) break;
+          }
+          return rows;
+        })(),
       ]);
-      if (error) throw error;
-      if (history.error) throw history.error;
-      const historical = (history.data ?? []).map((item: any) => ({
+      const historical = history.map((item: any) => ({
         id: item.id, occurred_on: item.occurred_on, branch_name: item.client_branches?.name || "Matriz",
         residue_name: item.waste_residues?.name ?? null, removed_equipment: null, placed_equipment: null,
         placed_quantity: Number(item.placed_quantity || 0), removed_quantity: Number(item.removed_quantity || 0),
@@ -73,6 +90,14 @@ function ClientMovementsPage() {
       return (data ?? []) as Branch[];
     },
   });
+  const clientIdentity = useQuery({
+    queryKey: ["client-movement-report-identity", clientId], enabled: !!clientId,
+    queryFn: async () => {
+      const result = await supabase.from("clients").select("name").eq("id", clientId!).single();
+      if (result.error) throw result.error;
+      return result.data;
+    },
+  });
   const years = useMemo(() => Array.from(new Set(movements.map((item) => item.occurred_on.slice(0, 4)))).sort().reverse(), [movements]);
   const branches = useMemo(() => Array.from(new Set([
     ...clientBranches.map((branch) => branch.name),
@@ -90,6 +115,9 @@ function ClientMovementsPage() {
     const items = yearBranchAndResidueMovements.filter((item) => Number(item.occurred_on.slice(5, 7)) === index + 1);
     return { month, movimentacoes: items.length, peso: items.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0) };
   }), [yearBranchAndResidueMovements]);
+  const reportModel = useMemo(() => buildPortalMovementReport(filteredMovements, {
+    year:selectedYear, month:selectedMonth, branch:selectedBranch, residue:selectedResidue,
+  }), [filteredMovements, selectedYear, selectedMonth, selectedBranch, selectedResidue]);
   const totalWeight = filteredMovements.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
   const periodLabel = `${selectedMonth === "all" ? "Todo o ano" : months[Number(selectedMonth) - 1]} de ${selectedYear}${selectedBranch === "all" ? "" : ` · ${selectedBranch}`}${selectedResidue === "all" ? "" : ` · ${selectedResidue}`}`;
   const openAttachment = async (attachment: MovementAttachment) => {
@@ -99,8 +127,10 @@ function ClientMovementsPage() {
   };
 
   return <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
-    <header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Movimentações</h1><p className="text-sm text-muted-foreground">Acompanhe as movimentações confirmadas para cobrança. Os valores completos de cada boletim estão em Boletins emitidos.</p></header>
+    <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Movimentações</h1><p className="text-sm text-muted-foreground">Acompanhe as movimentações confirmadas para cobrança. Os valores completos de cada boletim estão em Boletins emitidos.</p></div></header>
     <Card className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4"><div className="space-y-1.5"><label className="text-sm font-medium">Ano</label><Select value={selectedYear} onValueChange={(year) => { setSelectedYear(year); setSelectedMonth("all"); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Array.from(new Set([String(new Date().getFullYear()), ...years])).sort().reverse().map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Mês</label><Select value={selectedMonth} onValueChange={setSelectedMonth}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os meses</SelectItem>{months.map((month, index) => <SelectItem key={month} value={String(index + 1).padStart(2, "0")}>{month}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Filial ou pátio</label><Select value={selectedBranch} onValueChange={setSelectedBranch}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os pátios e filiais</SelectItem>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Resíduo</label><Select value={selectedResidue} onValueChange={setSelectedResidue}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os resíduos</SelectItem>{residues.map((residue) => <SelectItem key={residue} value={residue}>{residue}</SelectItem>)}</SelectContent></Select></div></Card>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Relatório em PDF com os registros e filtros exibidos abaixo.</p><ResidueReportExport key={clientId} clientName={clientIdentity.data?.name || "Cliente"} report={reportModel} loading={!clientId || isFetching || clientIdentity.isPending} error={Boolean(movementsError || clientIdentity.error)} /></div>
+    {(movementsError || clientIdentity.error) && <Card className="p-4 text-sm text-destructive" role="alert">Não foi possível carregar todos os dados do relatório. Atualize a página para tentar novamente.</Card>}
     <div className="grid gap-4 sm:grid-cols-3"><Metric icon={ClipboardCheck} label="Movimentações confirmadas" value={String(filteredMovements.length)} /><Metric icon={Scale} label="Peso movimentado" value={formatKg(totalWeight)} /><Metric icon={Recycle} label="Resíduos movimentados" value={String(new Set(filteredMovements.map((item) => item.residue_name || "Sem resíduo")).size)} /></div>
     <Card className="p-5"><div className="mb-4"><h2 className="font-semibold">Movimentações por mês</h2><p className="text-sm text-muted-foreground">Gráfico anual de {selectedYear}{selectedBranch === "all" ? "" : ` para ${selectedBranch}`}{selectedResidue === "all" ? "" : ` · ${selectedResidue}`}. Ele é alimentado automaticamente pelas movimentações confirmadas.</p></div><div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid vertical={false} strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis allowDecimals={false} /><Tooltip formatter={(value: number, name: string) => [name === "peso" ? formatKg(value) : value, name === "peso" ? "Peso" : "Movimentações"]} /><Bar dataKey="movimentacoes" name="Movimentações" fill="hsl(var(--primary))" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div></Card>
     <Card className="overflow-hidden"><div className="border-b p-5"><h2 className="font-semibold">Movimentações confirmadas · {periodLabel}</h2><p className="text-sm text-muted-foreground">Registro operacional do período.</p></div>{isLoading ? <p className="p-8 text-sm text-muted-foreground">Carregando movimentações...</p> : !filteredMovements.length ? <p className="p-10 text-center text-sm text-muted-foreground">Nenhuma movimentação confirmada para estes filtros.</p> : <div className="divide-y">{filteredMovements.map((item) => <div key={item.id} className="flex flex-wrap items-start gap-4 p-4"><Recycle className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="font-medium">{item.residue_name || "Resíduo não informado"}</p><span className="text-sm text-muted-foreground">· {item.branch_name || "Unidade não informada"}</span></div><p className="mt-1 text-sm text-muted-foreground">{new Intl.DateTimeFormat("pt-BR").format(new Date(`${item.occurred_on}T00:00:00`))}{item.service_order ? ` · OS ${item.service_order}` : ""}</p><p className="mt-1 text-sm text-muted-foreground">Retirada: {item.removed_equipment || "—"} · Colocação: {item.placed_equipment || "—"}{item.observation ? ` · ${item.observation}` : ""}</p></div><div className="flex flex-col items-end gap-1 text-right text-sm"><div><p className="font-semibold">{formatKg(Number(item.weight_kg || 0))}</p><p className="text-muted-foreground">{Number(item.removed_quantity || 0)} retirada(s) · {Number(item.placed_quantity || 0)} colocada(s)</p></div>{(item.attachments || []).map((attachment) => <Button key={attachment.id} size="sm" variant="outline" title={attachment.name} onClick={() => void openAttachment(attachment)}><FileText className="mr-2 h-4 w-4" /><span className="max-w-48 truncate">{attachment.name}</span></Button>)}</div></div>)}</div>}</Card>

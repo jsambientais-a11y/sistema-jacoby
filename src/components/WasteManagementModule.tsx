@@ -1,3 +1,5 @@
+import { buildWasteResidueReport } from "@/lib/waste-residue-report";
+import { ResidueReportExport } from "@/components/ResidueReportExport";
 /** Cadastros do cliente alimentam diretamente o demonstrativo mensal. */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -215,10 +217,6 @@ const formatDate = (value: string) =>
     ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${value}T00:00:00`))
     : "—";
 const isContainerPlacement = (move: Movement) => move.operation_type === "container_placement";
-const chartResidueName = (name: string) => {
-  const clean = name.trim().toLocaleUpperCase("pt-BR");
-  return clean.startsWith("MADEIRA") ? "MADEIRA" : clean;
-};
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div>
     <Label>{label}</Label>
@@ -428,7 +426,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         return (data ?? []) as T[];
       },
     });
-  const { data: residues = [] } = clientQuery<Residue>("waste-residues", "waste_residues");
+  const { data: residues = [], isFetching: residuesLoading, error: residuesError } = clientQuery<Residue>("waste-residues", "waste_residues");
   const { data: standardResidueTypes = [] } = useQuery({
     queryKey: ["standard-residue-types"],
     enabled: canConfigureMovements,
@@ -504,7 +502,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       return (data || []) as ClientServiceRate[];
     },
   });
-  const { data: branches = [] } = useQuery({
+  const { data: branches = [], isFetching: branchesLoading, error: branchesError } = useQuery({
     queryKey: ["client-branches", clientId],
     enabled: !!clientId,
     queryFn: async () => {
@@ -516,7 +514,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       return (data ?? []) as Branch[];
     },
   });
-  const { data: reports = [] } = useQuery({
+  const { data: reports = [], isFetching: reportsLoading, error: reportsError } = useQuery({
     queryKey: ["waste-reports", clientId],
     enabled: !!clientId,
     queryFn: async () => {
@@ -561,26 +559,39 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   );
   const { data: tickets = [] } = reportQuery<Ticket>("waste-tickets", "waste_weighing_tickets");
   const reportIds = reports.map((item) => item.id);
-  const { data: reportHistoryMoves = [] } = useQuery({
+  const { data: reportHistoryMoves = [], isFetching: historyLoading, error: historyError } = useQuery({
     queryKey: ["waste-report-history", clientId, reportIds.join(",")],
     enabled: !!clientId && reportIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await (supabase.from("waste_movements" as any) as any)
-        .select("*")
-        .in("report_id", reportIds);
-      if (error) throw error;
-      return (data ?? []) as Movement[];
+      const rows: Movement[] = [];
+      for (let start = 0; start < reportIds.length; start += 100) {
+        for (let offset = 0; ; offset += 500) {
+          const result = await (supabase.from("waste_movements" as any) as any)
+            .select("*").in("report_id", reportIds.slice(start, start + 100))
+            .order("id").range(offset, offset + 499);
+          if (result.error) throw result.error;
+          rows.push(...(result.data || []));
+          if ((result.data || []).length < 500) break;
+        }
+      }
+      return rows;
     },
   });
   // O gráfico do portal também soma as coletas confirmadas dos boletins já
   // publicados ao cliente, além do histórico importado nos relatórios mensais.
-  const { data: bulletinChartMoves = [] } = useQuery({
+  const { data: bulletinChartMoves = [], isFetching: bulletinMovesLoading, error: bulletinMovesError } = useQuery({
     queryKey: ["waste-bulletin-chart-moves", clientId],
     enabled: !!clientId,
     queryFn: async () => {
-      const { data, error } = await (supabase.rpc as any)("jacoby_client_chart_bulletin_movements", { p_client_id: clientId });
-      if (error) throw error;
-      return ((data ?? []) as Pick<Movement, "id" | "occurred_on" | "weight_kg" | "waste_residue_id" | "branch_id" | "service_order">[]).map((item) => ({
+      const rows: Pick<Movement, "id" | "occurred_on" | "weight_kg" | "waste_residue_id" | "branch_id" | "service_order">[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const result = await (supabase.rpc as any)("jacoby_client_chart_bulletin_movements", { p_client_id: clientId })
+          .order("id").range(offset, offset + 499);
+        if (result.error) throw result.error;
+        rows.push(...(result.data || []));
+        if ((result.data || []).length < 500) break;
+      }
+      return rows.map((item) => ({
         ...item, equipment_id: null, operation_type: "movement", placed_quantity: 0, removed_quantity: 0, mtr_number: null, destination_name: null,
       }) as Movement);
     },
@@ -1571,6 +1582,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         )}
         <TabsContent value="painel" className="space-y-4">
           <AnnualWasteReport
+            key={clientId}
+            sourceLoading={!clientId || reportsLoading || historyLoading || bulletinMovesLoading || branchesLoading || residuesLoading}
+            sourceError={Boolean(reportsError || historyError || bulletinMovesError || branchesError || residuesError)}
             moves={catalogTab === "relatorios" ? allClientMoves : moves}
             branches={branches}
             residues={residues}
@@ -2899,177 +2913,32 @@ function Metric({ title, value, icon }: { title: string; value: string; icon: Re
   );
 }
 function AnnualWasteReport({
-  moves,
-  branches,
-  residues,
-  clientName,
-  year,
-  month,
-  onYear,
-  onMonth,
+  moves, branches, residues, clientName, year, month, onYear, onMonth, sourceLoading = false, sourceError = false,
 }: {
-  moves: Movement[];
-  branches: Branch[];
-  residues: Residue[];
-  clientName: string;
-  year: string;
-  month: string;
-  onYear: (value: string) => void;
-  onMonth: (value: string) => void;
+  moves: Movement[]; branches: Branch[]; residues: Residue[]; clientName: string;
+  year: string; month: string; onYear: (value: string) => void; onMonth: (value: string) => void;
+  sourceLoading?: boolean; sourceError?: boolean;
 }) {
   const reportRef = useRef<HTMLDivElement>(null);
-  const reportMoves = moves.filter((move) => !isContainerPlacement(move));
-  const years = Array.from(new Set(reportMoves.map((move) => move.occurred_on.slice(0, 4)))).sort(
-    (a, b) => b.localeCompare(a),
-  );
-  const filtered = reportMoves.filter(
-    (move) =>
-      move.occurred_on.slice(0, 4) === year &&
-      (month === "todos" || move.occurred_on.slice(5, 7) === month),
-  );
-  const periodLabel =
-    month === "todos"
-      ? `Ano de ${year}`
-      : `${new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(Number(year), Number(month) - 1, 1))} de ${year}`;
-  // Agrupa pelo nome: o mesmo resíduo cadastrado em vários pátios vira uma
-  // única barra, e as variações de madeira (por tipo de viagem) somam juntas.
-  const residueData = Array.from(
-    filtered.reduce((totals, move) => {
-      const residue = residues.find((item) => item.id === move.waste_residue_id);
-      if (!residue) return totals;
-      const name = chartResidueName(residue.name);
-      return totals.set(name, (totals.get(name) || 0) + Number(move.weight_kg || 0));
-    }, new Map<string, number>()),
-    ([name, kg]) => ({ name, kg }),
-  )
-    .filter((item) => item.kg > 0)
-    .sort((a, b) => b.kg - a.kg);
-  const months =
-    month === "todos"
-      ? Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"))
-      : [month];
-  const monthlyData = months.map((value) => ({
-    name: new Intl.DateTimeFormat("pt-BR", { month: "short" })
-      .format(new Date(Number(year), Number(value) - 1, 1))
-      .replace(".", ""),
-    kg: filtered
-      .filter((move) => move.occurred_on.slice(5, 7) === value)
-      .reduce((sum, move) => sum + Number(move.weight_kg || 0), 0),
-  }));
-  const days = Array.from(new Set(filtered.map((move) => move.occurred_on)))
-    .sort((a, b) => b.localeCompare(a))
-    .map((date) => {
-      const movements = filtered.filter((move) => move.occurred_on === date);
-      const units = Array.from(new Set(movements.map((move) => move.branch_id || "matriz"))).map(
-        (branchId) => {
-          const unitMoves = movements.filter((move) => (move.branch_id || "matriz") === branchId);
-          return {
-            name:
-              branchId === "matriz"
-                ? "Matriz"
-                : branches.find((branch) => branch.id === branchId)?.name || "Filial",
-            weight: unitMoves.reduce((sum, move) => sum + Number(move.weight_kg || 0), 0),
-          };
-        },
-      );
-      return { date, units, total: units.reduce((sum, unit) => sum + unit.weight, 0) };
-    });
-  const exportPdf = async () => {
-    const { jsPDF } = await import("jspdf");
-    const doc = new jsPDF();
-    doc.setFillColor(62, 122, 79);
-    doc.rect(0, 0, 210, 42, "F");
-    doc.setFillColor(138, 190, 92);
-    doc.circle(198, 12, 17, "F");
-    try {
-      const image = new Image();
-      image.src = jacobyLogo;
-      await image.decode();
-      // Mantém a proporção do logo dentro da área reservada.
-      const scale = Math.min(42 / image.naturalWidth, 25 / image.naturalHeight);
-      const logoW = image.naturalWidth * scale, logoH = image.naturalHeight * scale;
-      doc.addImage(image, "PNG", 14 + (42 - logoW) / 2, 7 + (25 - logoH) / 2, logoW, logoH);
-    } catch {}
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("RELATÓRIO DE GESTÃO DE RESÍDUOS", 64, 18);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(clientName, 64, 26);
-    doc.text(periodLabel, 64, 33);
-    let y = 54;
-    doc.setTextColor(39, 61, 45);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("Resíduos mais movimentados", 14, y);
-    doc.setFont("helvetica", "normal");
-    const topResidues = residueData.slice(0, 6);
-    const maxResidue = Math.max(...topResidues.map((item) => item.kg), 1);
-    topResidues.forEach((item) => {
-      y += 10;
-      doc.setTextColor(39, 61, 45);
-      doc.setFontSize(9);
-      doc.text(item.name, 14, y);
-      doc.setFillColor(229, 240, 225);
-      doc.roundedRect(70, y - 5, 92, 5, 2, 2, "F");
-      doc.setFillColor(55, 122, 74);
-      doc.roundedRect(70, y - 5, (92 * item.kg) / maxResidue, 5, 2, 2, "F");
-      doc.setTextColor(39, 61, 45);
-      doc.text(`${n(item.kg)} kg`, 196, y, { align: "right" });
-    });
-    if (!topResidues.length) {
-      doc.setTextColor(93, 112, 97);
-      doc.text("Nenhum resíduo movimentado no período.", 14, y + 10);
-      y += 10;
-    }
-    y += 18;
-    doc.setTextColor(39, 61, 45);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("Evolução mensal", 14, y);
-    doc.setFont("helvetica", "normal");
-    const maxMonth = Math.max(...monthlyData.map((item) => item.kg), 1);
-    const barWidth = monthlyData.length === 1 ? 36 : 11;
-    monthlyData.forEach((item, index) => {
-      const x = 18 + index * 14;
-      const height = (48 * item.kg) / maxMonth;
-      doc.setFillColor(127, 176, 105);
-      doc.roundedRect(x, y + 54 - height, barWidth, height, 2, 2, "F");
-      doc.setTextColor(93, 112, 97);
-      doc.setFontSize(7);
-      doc.text(item.name, x + barWidth / 2, y + 61, { align: "center" });
-      if (item.kg > 0) {
-        doc.setTextColor(39, 61, 45);
-        doc.text(n(item.kg), x + barWidth / 2, y + 51 - height, { align: "center" });
-      }
-    });
-    y += 75;
-    doc.setFillColor(244, 248, 242);
-    doc.roundedRect(14, y, 182, 27, 3, 3, "F");
-    doc.setTextColor(39, 61, 45);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("Resumo do período", 20, y + 9);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    const totalKg = filtered.reduce((sum, move) => sum + Number(move.weight_kg || 0), 0);
-    doc.text(
-      `Peso movimentado: ${n(totalKg)} kg · Resíduos registrados: ${residueData.length} · Lançamentos: ${filtered.length}`,
-      20,
-      y + 18,
-    );
-    doc.setDrawColor(153, 190, 125);
-    doc.line(14, 274, 196, 274);
-    doc.setTextColor(93, 112, 97);
-    doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 14, 283);
-    doc.text("Soluções que respeitam o meio ambiente.", 196, 283, { align: "right" });
-    appendDetailedMovements(doc, filtered, branches, residues, clientName, periodLabel);
-    doc.save(`relatorio-residuos-${year}${month === "todos" ? "" : `-${month}`}.pdf`);
-  };
+  const [selectedBranch, setSelectedBranch] = useState("all");
+  const [selectedResidue, setSelectedResidue] = useState("all");
+  const model = useMemo(() => buildWasteResidueReport(moves, branches, residues, {
+    year, month, branch: selectedBranch, residue: selectedResidue,
+  }), [moves, branches, residues, year, month, selectedBranch, selectedResidue]);
+  const years = Array.from(new Set([year, ...model.years])).sort().reverse();
+  const residueData = model.summary;
+  const monthlyData = model.monthly;
+  const periodLabel = `${model.period} · ${model.branchLabel} · ${model.residueLabel}`;
+  const days = Array.from(new Set(model.rows.map(item => item.date))).sort().reverse().map(date => {
+    const rows = model.rows.filter(item => item.date === date);
+    const units = Array.from(new Set(rows.map(item => item.branch))).map(name => ({
+      name, weight: rows.filter(item => item.branch === name).reduce((sum,item) => sum + item.kg, 0),
+    }));
+    return {date, units, total: units.reduce((sum,item) => sum + item.weight, 0)};
+  });
   return (
     <>
-      <Card className="grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]">
+      <Card className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Ano">
           <Select value={year} onValueChange={onYear}>
             <SelectTrigger>
@@ -3104,17 +2973,19 @@ function AnnualWasteReport({
             </SelectContent>
           </Select>
         </Field>
-        <Button className="self-end" onClick={() => void exportPdf()}>
-          <Download className="mr-2 h-4 w-4" />
-          Exportar PDF
-        </Button>
+        <Field label="Filial ou pátio"><Select value={selectedBranch} onValueChange={setSelectedBranch}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os pátios e filiais</SelectItem>{model.branchOptions.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></Field>
+        <Field label="Resíduo"><Select value={selectedResidue} onValueChange={setSelectedResidue}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os resíduos</SelectItem>{model.residueOptions.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent></Select></Field>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 sm:col-span-2 lg:col-span-4"><p className="text-xs text-muted-foreground">O PDF inclui o resumo e as movimentações dos filtros selecionados. As variações de madeira são agrupadas.</p><ResidueReportExport clientName={clientName} report={model} loading={sourceLoading} error={sourceError} /></div>
       </Card>
+      {sourceError && <Card className="p-4 text-sm text-destructive" role="alert">Não foi possível carregar todos os dados. Atualize a página antes de gerar o relatório.</Card>}
+      {sourceLoading && <p role="status" className="text-sm text-muted-foreground">Carregando os dados do relatório…</p>}
       <div ref={reportRef} className="space-y-4 bg-background p-1">
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
           <p className="text-sm text-primary">Relatório de gestão de resíduos</p>
           <h2 className="text-xl font-bold">{clientName}</h2>
           <p className="text-sm text-muted-foreground">{periodLabel}</p>
         </div>
+        <div className="grid gap-3 sm:grid-cols-3"><Metric title="Peso movimentado" value={`${n(model.totalKg)} kg`} icon={<Scale className="h-4 w-4" />} /><Metric title="Movimentações" value={String(model.rows.length)} icon={<Truck className="h-4 w-4" />} /><Metric title="Tipos de resíduo" value={String(model.summary.length)} icon={<Package className="h-4 w-4" />} /></div>
         <Suspense fallback={<div className="h-64 rounded-lg border bg-card" />}>
           <WasteReportCharts residueData={residueData} monthlyData={monthlyData} formatWeight={n} />
         </Suspense>
@@ -3164,74 +3035,6 @@ function AnnualWasteReport({
       </div>
     </>
   );
-}
-function appendDetailedMovements(
-  doc: any,
-  moves: Movement[],
-  branches: Branch[],
-  residues: Residue[],
-  clientName: string,
-  periodLabel: string,
-) {
-  doc.addPage();
-  doc.setFillColor(62, 122, 79);
-  doc.rect(0, 0, 210, 28, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("MOVIMENTAÇÕES POR FILIAL", 14, 13);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(`${clientName} · ${periodLabel}`, 14, 20);
-  let y = 40;
-  doc.setFillColor(232, 244, 226);
-  doc.roundedRect(14, y, 182, 8, 2, 2, "F");
-  doc.setTextColor(39, 61, 45);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text("DATA", 18, y + 5);
-  doc.text("FILIAL / PÁTIO", 48, y + 5);
-  doc.text("RESÍDUO", 107, y + 5);
-  doc.text("KG", 192, y + 5, { align: "right" });
-  y += 14;
-  moves
-    .slice()
-    .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on))
-    .forEach((move, index) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      if (index % 2 === 0) {
-        doc.setFillColor(247, 250, 246);
-        doc.rect(14, y - 5, 182, 8, "F");
-      }
-      doc.setTextColor(39, 61, 45);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.text(formatDate(move.occurred_on), 18, y);
-      doc.text(
-        move.branch_id
-          ? branches.find((branch) => branch.id === move.branch_id)?.name || "Filial"
-          : "Matriz",
-        48,
-        y,
-      );
-      doc.text(
-        residues.find((residue) => residue.id === move.waste_residue_id)?.name || "—",
-        107,
-        y,
-      );
-      doc.text(`${n(move.weight_kg)} kg`, 192, y, { align: "right" });
-      y += 8;
-    });
-  if (!moves.length) {
-    doc.setTextColor(93, 112, 97);
-    doc.text("Nenhuma movimentação encontrada no período.", 14, y);
-  }
-  doc.setTextColor(93, 112, 97);
-  doc.setFontSize(8);
-  doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 14, 286);
 }
 function InvoiceConfigurator({
   clientName,
