@@ -79,13 +79,13 @@ export function EnterpriseFinance({
     [search, setSearch] = useState(""),
     [status, setStatus] = useState<string>(focus || "all"),
     [showDeleted, setShowDeleted] = useState(false);
+  // O padrão é o mês vigente. Só a chegada por um aviso abre todos os períodos, e sair
+  // dela (ou trocar entre pagar e receber) volta ao padrão.
   useEffect(() => {
-    if (focus) {
-      setPeriod({ kind: "all" });
-      setStatus(focus);
-      setShowDeleted(false);
-    }
-  }, [focus]);
+    setPeriod(focus ? { kind: "all" } : { kind: "month", month: localFinanceToday().slice(0, 7) });
+    setStatus(focus || "all");
+    setShowDeleted(false);
+  }, [focus, kind]);
   const [draft, setDraft] = useState<Draft | null>(null),
     [confirm, setConfirm] = useState<{
       row: FinanceRow;
