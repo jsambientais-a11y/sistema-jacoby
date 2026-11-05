@@ -1,6 +1,7 @@
+import { BilledReceivables } from "@/components/BilledReceivables";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileText, HandCoins, Pencil } from "lucide-react";
+import { CheckCircle2, FileText, HandCoins, Pencil, Wallet } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
@@ -32,7 +33,12 @@ import type { BillingBulletin } from "@/lib/billing-bulletins";
 import { CYCLE_INVOICE_BUCKET, listFinancialCycleInvoices } from "@/lib/cycle-invoices";
 import { useBillingFlowData, type FinancialService, type MovementCommission } from "@/hooks/use-billing-flow";
 
-export const Route = createFileRoute("/_app/financeiro")({ component: FinancialControlPage });
+export const Route = createFileRoute("/_app/financeiro")({
+  component: FinancialControlPage,
+  validateSearch: (search: Record<string, unknown>): { aba?: "faturado" } => ({
+    aba: search.aba === "faturado" ? "faturado" : undefined,
+  }),
+});
 
 // Mantém a tela anterior no código para consulta durante a validação do novo fluxo.
 // Ela não aparece na navegação nem altera os lançamentos existentes.
@@ -65,6 +71,8 @@ const paymentIsReceived = (item: Pick<FinancialService, "payment_status" | "rece
 };
 
 function FinancialControlPage() {
+  const { aba } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const { data: clients = [] } = useClients();
@@ -73,13 +81,14 @@ function FinancialControlPage() {
   const [financialView, setFinancialView] = useState("painel");
   const [editing, setEditing] = useState<FinancialService | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const flow = useBillingFlowData();
   const {
     servicesQuery, movementCommissionsQuery, billingTrackingQuery, cyclesQuery, directBillingDataQuery,
     companiesQuery, servicesCatalogQuery, branchesQuery, cycleNotesQuery, invoiceLinksQuery,
     cycles, companies, catalog, branches, residues,
     serviceRows, movementCommissionRows: allMovementCommissionRows, directBillingRows,
     issuedBulletins, billingFlowEntries, saveBillingTracking,
-  } = useBillingFlowData();
+  } = flow;
   // Filtros da tela anterior (arquivada); o fluxo atual usa todos os lançamentos.
   const rows = useMemo(
     () => serviceRows.filter((row) =>
@@ -198,14 +207,37 @@ function FinancialControlPage() {
             Acompanhe cada BM até a emissão da nota, a previsão da comissão e o recebimento.
           </p>
         </header>
-        <BillingFlowPreview
-          entries={billingFlowEntries}
-          bulletins={issuedBulletins}
-          isLoading={servicesQuery.isLoading || movementCommissionsQuery.isLoading || cyclesQuery.isLoading || directBillingDataQuery.isLoading || billingTrackingQuery.isLoading || cycleNotesQuery.isLoading || invoiceLinksQuery.isLoading}
-          loadError={[servicesQuery, movementCommissionsQuery, cyclesQuery, directBillingDataQuery, billingTrackingQuery, companiesQuery, branchesQuery, servicesCatalogQuery, cycleNotesQuery, invoiceLinksQuery].map((query) => query.error).find((error) => error instanceof Error)?.message || null}
-          isSaving={saveBillingTracking.isPending}
-          onSave={(input) => saveBillingTracking.mutateAsync(input).then(() => undefined)}
-        />
+        <Tabs
+          value={aba ?? "lancamentos"}
+          onValueChange={(value) => {
+            void navigate({ search: { aba: value === "faturado" ? "faturado" : undefined } });
+          }}
+          className="min-w-0 space-y-4"
+        >
+          <TabsList aria-label="Visões do faturamento" className="jacoby-billing-tabs h-auto w-full flex-wrap justify-start gap-1 rounded-xl bg-muted/50 p-1">
+            <TabsTrigger value="lancamentos" className="gap-2 rounded-lg">
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Lançamentos
+            </TabsTrigger>
+            <TabsTrigger value="faturado" className="gap-2 rounded-lg">
+              <Wallet className="h-4 w-4" aria-hidden="true" />
+              Faturado
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="lancamentos" forceMount className="min-w-0 data-[state=inactive]:hidden">
+            <BillingFlowPreview
+              entries={billingFlowEntries}
+              bulletins={issuedBulletins}
+              isLoading={servicesQuery.isLoading || movementCommissionsQuery.isLoading || cyclesQuery.isLoading || directBillingDataQuery.isLoading || billingTrackingQuery.isLoading || cycleNotesQuery.isLoading || invoiceLinksQuery.isLoading}
+              loadError={[servicesQuery, movementCommissionsQuery, cyclesQuery, directBillingDataQuery, billingTrackingQuery, companiesQuery, branchesQuery, servicesCatalogQuery, cycleNotesQuery, invoiceLinksQuery].map((query) => query.error).find((error) => error instanceof Error)?.message || null}
+              isSaving={saveBillingTracking.isPending}
+              onSave={(input) => saveBillingTracking.mutateAsync(input).then(() => undefined)}
+            />
+          </TabsContent>
+          <TabsContent value="faturado" forceMount className="min-w-0 data-[state=inactive]:hidden">
+            <BilledReceivables flow={flow} />
+          </TabsContent>
+        </Tabs>
       </div>
     );
   }

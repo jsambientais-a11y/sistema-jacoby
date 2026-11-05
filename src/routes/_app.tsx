@@ -37,6 +37,7 @@ function AppLayout() {
     [
       "/financeiro",
       "/contas-a-receber",
+      "/contas-a-pagar",
       "/centros-de-custo",
       "/bancos",
       "/relatorios-financeiros",

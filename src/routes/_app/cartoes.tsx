@@ -750,8 +750,7 @@ function CreditCardsPage() {
             </div>
           </section>
           <Link
-            to="/contas-a-receber"
-            search={{ view: "payable" }}
+            to="/contas-a-pagar"
             className="inline-block text-sm text-primary underline"
           >
             Conferir faturas no Contas a pagar

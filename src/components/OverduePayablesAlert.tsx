@@ -114,8 +114,8 @@ function JulianaPayablesAlert({ openingKey }: { openingKey: string }) {
               onClick={() => {
                 setOpen(false);
                 void navigate({
-                  to: "/contas-a-receber",
-                  search: { view: "payable", status: "overdue" },
+                  to: "/contas-a-pagar",
+                  search: { status: "overdue" },
                 });
               }}
             >

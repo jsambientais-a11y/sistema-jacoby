@@ -537,6 +537,7 @@ function FinanceNavGroup({
   onNavigate?: () => void;
 }) {
   const active = [
+    "/contas-a-pagar",
     "/contas-a-receber",
     "/centros-de-custo",
     "/bancos",
@@ -547,12 +548,12 @@ function FinanceNavGroup({
     "jacoby-nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
   if (!expanded)
     return (
-      <Link to="/contas-a-receber" title="Financeiro" className={item + " justify-center"}>
+      <Link to="/contas-a-pagar" title="Financeiro" className={item + " justify-center"}>
         <Wallet className="h-4 w-4" />
       </Link>
     );
   return (
-    <Collapsible defaultOpen={false} className="space-y-1">
+    <Collapsible defaultOpen={active} className="space-y-1">
       <CollapsibleTrigger
         data-active={active}
         className={`jacoby-nav-link group/finance flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
@@ -563,9 +564,9 @@ function FinanceNavGroup({
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-1 pl-4">
         {[
-          ["/contas-a-receber", "Visão financeira"],
+          ["/contas-a-pagar", "Contas a pagar"],
+          ["/contas-a-receber", "Contas a receber"],
           ["/centros-de-custo", "Centros de custo"],
-          ["/bancos", "Bancos e contas"],
           ["/cartoes", "Cartões de crédito"],
           ["/relatorios-financeiros", "Relatórios"],
         ].map(([to, label]) => (

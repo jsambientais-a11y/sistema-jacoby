@@ -1,22 +1,12 @@
-import { Link, useSearch } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode, type FormEvent } from "react";
-import {
-  Plus,
-  Tags,
-  Pencil,
-  Trash2,
-  Undo2,
-  CheckCircle2,
-  ArrowDownLeft,
-  ArrowUpRight,
-} from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useState, type FormEvent } from "react";
+import { Plus, Tags, Pencil, Trash2, Undo2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { compatibleCenter, useCostCenters, useBanks } from "@/hooks/use-cost-centers";
 import { useReceiptDetails } from "@/hooks/use-receipt-details";
 import { InlineRecurrenceFields } from "@/components/InlineRecurrenceFields";
 import { useFinanceRecurrences } from "@/hooks/use-finance-recurrences";
 import { inlineRecurrence, type InlineRecurrence } from "@/lib/finance-recurrence";
-import { FinanceComparison } from "@/components/FinanceComparison";
 import { aggregateCardInvoices } from "@/lib/credit-cards";
 import { useCreditCards } from "@/hooks/use-credit-cards";
 import { useFinanceAccounts } from "@/hooks/use-finance-accounts";
@@ -42,8 +32,7 @@ const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const date = (value: string | null) =>
   value ? value.split("-").reverse().join("/") : "Sem previsão";
-const tabNames = {
-  billed: "Faturado",
+const accountTitles = {
   payable: "Contas a pagar",
   receivable: "Contas a receber",
 } as const;
@@ -60,8 +49,14 @@ type Draft = {
   kind: FinanceKind;
   old?: FinanceAccount;
 };
-export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
-  const initial = useSearch({ strict: false }) as { view?: string; status?: string };
+export function EnterpriseFinance({
+  kind,
+  overdue = false,
+}: {
+  kind: FinanceKind;
+  overdue?: boolean;
+}) {
+  const payable = kind === "payable";
   const accounts = useFinanceAccounts();
   const recurring = useFinanceRecurrences();
   const credit = useCreditCards();
@@ -77,23 +72,19 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
   const [centerFilter, setCenterFilter] = useState("");
   const flow = useBillingFlowData();
   const today = localFinanceToday();
-  const [tab, setTab] = useState<keyof typeof tabNames>(
-      initial.view === "payable" ? "payable" : "billed",
-    ),
-    [period, setPeriod] = useState<Period>(
-      initial.status === "overdue" ? { kind: "all" } : { kind: "month", month: today.slice(0, 7) },
+  const [period, setPeriod] = useState<Period>(
+      overdue ? { kind: "all" } : { kind: "month", month: today.slice(0, 7) },
     ),
     [search, setSearch] = useState(""),
-    [status, setStatus] = useState(initial.status === "overdue" ? "overdue" : "all"),
+    [status, setStatus] = useState(overdue ? "overdue" : "all"),
     [showDeleted, setShowDeleted] = useState(false);
   useEffect(() => {
-    if (initial.view === "payable" && initial.status === "overdue") {
-      setTab("payable");
+    if (overdue) {
       setPeriod({ kind: "all" });
       setStatus("overdue");
       setShowDeleted(false);
     }
-  }, [initial.view, initial.status]);
+  }, [overdue]);
   const [draft, setDraft] = useState<Draft | null>(null),
     [confirm, setConfirm] = useState<{
       row: FinanceRow;
@@ -141,8 +132,10 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
             detailInScope(d),
         )
       : detailInScope(r);
-  const summary = summarizeFinance(allDetails.filter(detailInScope));
-  const missingDate = all.filter((r) => !r.dueOn && !r.settledOn).length;
+  const summary = summarizeFinance(
+    allDetails.filter((row) => row.kind === kind && detailInScope(row)),
+  );
+  const missingDate = all.filter((r) => r.kind === kind && !r.dueOn && !r.settledOn).length;
   const rows = (
     showDeleted
       ? (accounts.data || [])
@@ -152,7 +145,7 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
   )
     .filter(
       (r) =>
-        r.kind === tab &&
+        r.kind === kind &&
         inScope(r) &&
         (!search ||
           `${r.description} ${r.counterparty} ${r.category}`
@@ -204,7 +197,7 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
       value: "",
       due_on: today,
       notes: "",
-      kind: tab === "payable" ? "payable" : "receivable",
+      kind,
     });
   const save = async (e: FormEvent) => {
     e.preventDefault();
@@ -290,424 +283,361 @@ export function EnterpriseFinance({ billed }: { billed: ReactNode }) {
     <div className="mx-auto min-w-0 max-w-[1500px] space-y-5 p-4 sm:p-6">
       <header>
         <p className="text-sm font-semibold text-primary">Controle empresarial</p>
-        <h1 className="text-3xl font-bold">Financeiro</h1>
+        <h1 className="text-3xl font-bold">{accountTitles[kind]}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Acompanhe obrigações, recebimentos e o comparativo do período. As baixas registram o
-          controle; não executam pagamentos bancários.
+          {payable
+            ? "Acompanhe despesas e registre pagamentos."
+            : "Acompanhe receitas e registre recebimentos."}
         </p>
       </header>
-      <nav aria-label="Áreas do Financeiro" className="flex flex-wrap gap-2 border-b pb-3">
-        {Object.entries(tabNames).map(([id, label]) => (
-          <Button
-            key={id}
-            variant={tab === id ? "default" : "outline"}
-            onClick={() => {
-              setTab(id as keyof typeof tabNames);
-              setShowDeleted(false);
-            }}
-          >
-            {label}
-          </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PeriodFilter value={period} onChange={setPeriod} />
+        <select
+          aria-label="Filtrar por centro de custo"
+          className="h-10 max-w-xs rounded-md border bg-background px-3 text-sm"
+          value={centerFilter}
+          onChange={(e) => setCenterFilter(e.target.value)}
+        >
+          <option value="">Todos os centros de custo</option>
+          <option value="none">Sem centro de custo</option>
+          {(centers.data || []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+              {c.active ? "" : " (desativado)"}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filtrar por banco"
+          className="h-10 max-w-xs rounded-md border bg-background px-3 text-sm"
+          value={bankFilter}
+          onChange={(e) => setBankFilter(e.target.value)}
+        >
+          <option value="">Todos os bancos/contas</option>
+          <option value="none">Banco não informado</option>
+          {(banks.data || []).map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+              {b.active ? "" : " (desativado)"}
+            </option>
+          ))}
+        </select>
+        <Button onClick={newAccount}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nova conta {payable ? "a pagar" : "a receber"}
+        </Button>
+      </div>
+      {(accounts.error || flowError) && (
+        <div
+          role="alert"
+          className="rounded border border-destructive bg-destructive/5 p-3 text-sm"
+        >
+          Não foi possível carregar todos os valores. Os totais podem estar incompletos.{" "}
+          {accounts.error?.message || flowError?.message}
+        </div>
+      )}
+      <section aria-label="Resumo do período" className="grid gap-3 sm:grid-cols-2">
+        {[
+          [
+            payable ? "A pagar em aberto" : "A receber em aberto",
+            payable ? summary.openOut : summary.openIn,
+          ],
+          [
+            payable ? "Pago no período" : "Recebido no período",
+            payable ? summary.paid : summary.received,
+          ],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-xl border bg-card p-4">
+            <p className="text-sm text-muted-foreground">{label}</p>
+            <p className="mt-1 text-xl font-bold text-primary">
+              {accounts.error || flowError
+                ? "Indisponível"
+                : flowLoading || accounts.isLoading
+                  ? "Carregando…"
+                  : money(Number(value))}
+            </p>
+          </div>
         ))}
-      </nav>
-      {tab === "billed" ? (
-        billed
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <PeriodFilter value={period} onChange={setPeriod} />
+      </section>
+      {missingDate > 0 && (
+        <Button
+          variant="link"
+          className="h-auto px-0 text-xs"
+          onClick={() => {
+            setPeriod({ kind: "all" });
+            setStatus("open");
+            setShowDeleted(false);
+          }}
+        >
+          {missingDate} conta(s) sem previsão. Ver todos os períodos
+        </Button>
+      )}
+      <section className="space-y-3 rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold">
+            {accountTitles[kind]} ({rows.length})
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              aria-label="Buscar conta"
+              placeholder="Descrição, cliente ou fornecedor"
+              className="w-64"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
             <select
-              aria-label="Filtrar por centro de custo"
-              className="h-10 max-w-xs rounded-md border bg-background px-3 text-sm"
-              value={centerFilter}
-              onChange={(e) => setCenterFilter(e.target.value)}
+              aria-label="Situação da conta"
+              className="rounded-md border bg-background p-2 text-sm"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
             >
-              <option value="">Todos os centros de custo</option>
-              <option value="none">Sem centro de custo</option>
-              {(centers.data || []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.active ? "" : " (desativado)"}
-                </option>
-              ))}
+              <option value="all">Todas as situações</option>
+              <option value="open">Em aberto</option>
+              <option value="overdue">Vencidas</option>
+              <option value="settled">{payable ? "Pagas" : "Recebidas"}</option>
             </select>
-            <select
-              aria-label="Filtrar por banco"
-              className="h-10 max-w-xs rounded-md border bg-background px-3 text-sm"
-              value={bankFilter}
-              onChange={(e) => setBankFilter(e.target.value)}
-            >
-              <option value="">Todos os bancos/contas</option>
-              <option value="none">Banco não informado</option>
-              {(banks.data || []).map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                  {b.active ? "" : " (desativado)"}
-                </option>
-              ))}
-            </select>
-            <Button onClick={newAccount}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nova conta {tab === "payable" ? "a pagar" : "a receber"}
+            <Button variant="outline" onClick={() => setShowDeleted(!showDeleted)}>
+              {showDeleted ? "Ver ativas" : "Excluídas"}
             </Button>
           </div>
-          {(accounts.error || flowError) && (
-            <div
-              role="alert"
-              className="rounded border border-destructive bg-destructive/5 p-3 text-sm"
-            >
-              Não foi possível carregar todos os valores. O comparativo pode estar incompleto.{" "}
-              {accounts.error?.message || flowError?.message}
-            </div>
-          )}
-          <section aria-label="Comparativo financeiro" className="rounded-xl border bg-card p-4">
-            <div className="mb-3">
-              <h2 className="font-semibold">Entradas × saídas</h2>
-              <p className="text-xs text-muted-foreground">
-                Período por vencimento/previsão para contas abertas e por data de baixa para
-                concluídas. Valores do Faturamento seguem a comissão ou receita da Jacoby.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["A receber em aberto", summary.openIn, "Receitas ainda não recebidas"],
-                ["A pagar em aberto", summary.openOut, "Despesas ainda não pagas"],
-                [
-                  "Saldo previsto do período",
-                  summary.expectedNet,
-                  "Receitas previstas e recebidas − despesas previstas e pagas",
-                ],
-                [
-                  "Resultado realizado",
-                  summary.realizedNet,
-                  "Recebido − pago no período; não é o saldo bancário",
-                ],
-              ].map(([label, value, hint]) => (
-                <div key={String(label)} className="rounded-lg border p-3">
-                  <p className="text-sm text-muted-foreground">{label}</p>
-                  <b
-                    className={`mt-1 block text-xl ${Number(value) < 0 ? "text-destructive" : "text-primary"}`}
-                  >
-                    {accounts.error || flowError
-                      ? "Indisponível"
-                      : flowLoading || accounts.isLoading
-                        ? "Carregando…"
-                        : money(Number(value))}
-                  </b>
-                  <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-5 text-sm">
-              <span className="inline-flex items-center gap-1">
-                <ArrowDownLeft className="h-4 w-4 text-primary" />
-                Recebido: {money(summary.received)}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <ArrowUpRight className="h-4 w-4 text-destructive" />
-                Pago: {money(summary.paid)}
-              </span>
-            </div>
-            {billing.some((r) => r.provisional && inScope(r)) && (
-              <p className="mt-2 text-xs text-amber-700">
-                O comparativo inclui valores provisórios do Faturamento, sujeitos à conferência.
-              </p>
-            )}
-            {missingDate > 0 && (
-              <Button
-                variant="link"
-                className="mt-1 h-auto px-0 text-xs"
-                onClick={() => {
-                  setPeriod({ kind: "all" });
-                  setTab("receivable");
-                  setStatus("open");
-                }}
-              >
-                {missingDate} recebível(is) sem previsão: ver em todos os períodos
-              </Button>
-            )}
-          </section>
-          <FinanceComparison
-            income={summary.openIn}
-            expenses={summary.openOut}
-            loading={flowLoading || accounts.isLoading}
-            error={!!accounts.error || !!flowError}
-          />
-          <section className="space-y-3 rounded-xl border bg-card p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-semibold">
-                {tabNames[tab]} ({rows.length})
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  aria-label="Buscar conta"
-                  placeholder="Descrição, cliente ou fornecedor"
-                  className="w-64"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                <select
-                  aria-label="Situação da conta"
-                  className="rounded-md border bg-background p-2 text-sm"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  <option value="all">Todas as situações</option>
-                  <option value="open">Em aberto</option>
-                  <option value="overdue">Vencidas</option>
-                  <option value="settled">{tab === "payable" ? "Pagas" : "Recebidas"}</option>
-                </select>
-                <Button variant="outline" onClick={() => setShowDeleted(!showDeleted)}>
-                  {showDeleted ? "Ver ativas" : "Excluídas"}
-                </Button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    {[
-                      "Descrição / origem",
-                      "Cliente / fornecedor",
-                      "Vencimento",
-                      "Valor",
-                      "Situação / baixa",
-                      "Ações",
-                    ].map((h) => (
-                      <th key={h} className="p-3 font-medium">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id} className="border-b last:border-0">
-                      <td className="p-3">
-                        <b className="block">{row.description}</b>
-                        {row.manual?.recurrence_id && (
-                          <span className="mt-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">
-                            Recorrente
-                            {row.manual.recurrence_overridden ? " · ocorrência ajustada" : ""}
-                          </span>
-                        )}
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {row.source === "card"
-                            ? "Fatura do cartão"
-                            : row.source === "billing"
-                              ? "Vinculado ao Faturamento"
-                              : "Cadastro manual"}
-                          {row.category ? ` · ${row.category}` : ""}
-                        </p>
-                        <div className="mt-1.5">
-                          {row.source === "card" ? (
-                            <span className="text-xs text-muted-foreground">
-                              Compras e centros de custo na fatura
-                            </span>
-                          ) : row.costCenterId ? (
-                            <span
-                              className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100"
-                              aria-label={`Centro de custo vinculado: ${centers.data?.find((c) => c.id === row.costCenterId)?.name || "Carregando"}`}
-                            >
-                              <Tags
-                                className="h-3 w-3 shrink-0 text-blue-600 dark:text-blue-300"
-                                aria-hidden="true"
-                              />
-                              <span className="min-w-0 break-words text-xs leading-4">
-                                <span className="text-blue-700 dark:text-blue-300">Centro: </span>
-                                <span className="font-semibold">
-                                  {centers.data?.find((c) => c.id === row.costCenterId)?.name ||
-                                    "Carregando…"}
-                                </span>
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground">
-                              <Tags className="h-3 w-3" aria-hidden="true" />
-                              Sem centro de custo
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          Banco/conta:{" "}
-                          {row.bankAccountId
-                            ? banks.data?.find((b) => b.id === row.bankAccountId)?.name ||
-                              "Carregando…"
-                            : "Não informado"}
-                        </p>
-                      </td>
-                      <td className="p-3">{row.counterparty || "—"}</td>
-                      <td className="whitespace-nowrap p-3">{date(row.dueOn)}</td>
-                      <td className="whitespace-nowrap p-3 font-semibold">
-                        {money(row.amountCents)}
-                        {row.source === "card" && !!row.paidCents && !row.settledOn && (
-                          <span className="block text-xs font-normal text-muted-foreground">
-                            Pago: {money(row.paidCents)} · Em aberto:{" "}
-                            {money(row.amountCents - row.paidCents)}
-                          </span>
-                        )}
-                        {row.provisional && (
-                          <span className="block text-xs font-normal text-amber-700">
-                            Provisório · conferir no Faturamento
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={
-                            row.settledOn
-                              ? "text-primary"
-                              : row.dueOn && row.dueOn < today
-                                ? "text-destructive"
-                                : ""
-                          }
-                        >
-                          {row.source === "card" && !!row.paidCents && !row.settledOn
-                            ? "Parcialmente paga"
-                            : financeStatus(row, today)}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                {[
+                  "Descrição / origem",
+                  "Cliente / fornecedor",
+                  "Vencimento",
+                  "Valor",
+                  "Situação / baixa",
+                  "Ações",
+                ].map((h) => (
+                  <th key={h} className="p-3 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-b last:border-0">
+                  <td className="p-3">
+                    <b className="block">{row.description}</b>
+                    {row.manual?.recurrence_id && (
+                      <span className="mt-1 inline-flex rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">
+                        Recorrente
+                        {row.manual.recurrence_overridden ? " · ocorrência ajustada" : ""}
+                      </span>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {row.source === "card"
+                        ? "Fatura do cartão"
+                        : row.source === "billing"
+                          ? "Vinculado ao Faturamento"
+                          : "Cadastro manual"}
+                      {row.category ? ` · ${row.category}` : ""}
+                    </p>
+                    <div className="mt-1.5">
+                      {row.source === "card" ? (
+                        <span className="text-xs text-muted-foreground">
+                          Compras e centros de custo na fatura
                         </span>
-                        {row.settledOn && (
-                          <span className="block text-xs">{date(row.settledOn)}</span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex flex-wrap gap-2">
-                          {showDeleted ? (
+                      ) : row.costCenterId ? (
+                        <span
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100"
+                          aria-label={`Centro de custo vinculado: ${centers.data?.find((c) => c.id === row.costCenterId)?.name || "Carregando"}`}
+                        >
+                          <Tags
+                            className="h-3 w-3 shrink-0 text-blue-600 dark:text-blue-300"
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 break-words text-xs leading-4">
+                            <span className="text-blue-700 dark:text-blue-300">Centro: </span>
+                            <span className="font-semibold">
+                              {centers.data?.find((c) => c.id === row.costCenterId)?.name ||
+                                "Carregando…"}
+                            </span>
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground">
+                          <Tags className="h-3 w-3" aria-hidden="true" />
+                          Sem centro de custo
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Banco/conta:{" "}
+                      {row.bankAccountId
+                        ? banks.data?.find((b) => b.id === row.bankAccountId)?.name || "Carregando…"
+                        : "Não informado"}
+                    </p>
+                  </td>
+                  <td className="p-3">{row.counterparty || "—"}</td>
+                  <td className="whitespace-nowrap p-3">{date(row.dueOn)}</td>
+                  <td className="whitespace-nowrap p-3 font-semibold">
+                    {money(row.amountCents)}
+                    {row.source === "card" && !!row.paidCents && !row.settledOn && (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        Pago: {money(row.paidCents)} · Em aberto:{" "}
+                        {money(row.amountCents - row.paidCents)}
+                      </span>
+                    )}
+                    {row.provisional && (
+                      <span className="block text-xs font-normal text-amber-700">
+                        Provisório · conferir no Faturamento
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <span
+                      className={
+                        row.settledOn
+                          ? "text-primary"
+                          : row.dueOn && row.dueOn < today
+                            ? "text-destructive"
+                            : ""
+                      }
+                    >
+                      {row.source === "card" && !!row.paidCents && !row.settledOn
+                        ? "Parcialmente paga"
+                        : financeStatus(row, today)}
+                    </span>
+                    {row.settledOn && <span className="block text-xs">{date(row.settledOn)}</span>}
+                  </td>
+                  <td className="p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {showDeleted ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => setConfirm({ row, action: "restore" })}
+                        >
+                          Restaurar
+                        </Button>
+                      ) : row.source === "card" ? (
+                        <Button size="sm" variant="outline" asChild>
+                          <Link
+                            to="/cartoes"
+                            search={{ card: row.cardId, month: row.invoiceMonth }}
+                          >
+                            Ver fatura
+                          </Link>
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy || receiptDetails.isLoading || !!receiptDetails.error}
+                            onClick={() =>
+                              setClassification({
+                                row,
+                                center: row.costCenterId || "",
+                                bank: row.bankAccountId || "",
+                              })
+                            }
+                          >
+                            Centro / banco
+                          </Button>
+                          {row.canSettle ? (
                             <Button
                               size="sm"
                               variant="outline"
                               disabled={busy}
-                              onClick={() => setConfirm({ row, action: "restore" })}
+                              onClick={() => {
+                                setSettleDate(today);
+                                setConfirm({
+                                  row,
+                                  action: row.settledOn ? "reopen" : "settle",
+                                });
+                              }}
                             >
-                              Restaurar
-                            </Button>
-                          ) : row.source === "card" ? (
-                            <Button size="sm" variant="outline" asChild>
-                              <Link
-                                to="/cartoes"
-                                search={{ card: row.cardId, month: row.invoiceMonth }}
-                              >
-                                Ver fatura
-                              </Link>
+                              {row.settledOn ? (
+                                <>
+                                  <Undo2 className="mr-1 h-3 w-3" />
+                                  Desfazer baixa
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                                  {row.kind === "payable"
+                                    ? "Registrar pagamento"
+                                    : "Registrar recebimento"}
+                                </>
+                              )}
                             </Button>
                           ) : (
+                            <Button asChild size="sm" variant="outline">
+                              <Link to="/financeiro" search={{ aba: "faturado" }}>
+                                Conferir em Faturamento
+                              </Link>
+                            </Button>
+                          )}
+                          {row.manual && !row.manual.credit_card_id && (
                             <>
                               <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={
-                                  busy || receiptDetails.isLoading || !!receiptDetails.error
-                                }
+                                disabled={recurring.isLoading || !!recurring.error}
+                                aria-label={`Editar ${row.description}`}
+                                size="icon"
+                                variant="ghost"
                                 onClick={() =>
-                                  setClassification({
-                                    row,
-                                    center: row.costCenterId || "",
-                                    bank: row.bankAccountId || "",
+                                  setDraft({
+                                    repeat: inlineRecurrence(
+                                      recurring.data?.find(
+                                        (r) => r.id === row.manual?.recurrence_id,
+                                      ),
+                                    ),
+                                    old: row.manual,
+                                    kind: row.kind,
+                                    description: row.description,
+                                    counterparty: row.counterparty,
+                                    category: row.category,
+                                    cost_center_id: row.costCenterId || "",
+                                    bank_account_id: row.bankAccountId || "",
+                                    value: (row.amountCents / 100).toFixed(2).replace(".", ","),
+                                    due_on: row.dueOn || today,
+                                    notes: row.manual!.notes,
                                   })
                                 }
                               >
-                                Centro / banco
+                                <Pencil className="h-4 w-4" />
                               </Button>
-                              {row.canSettle ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setSettleDate(today);
-                                    setConfirm({
-                                      row,
-                                      action: row.settledOn ? "reopen" : "settle",
-                                    });
-                                  }}
-                                >
-                                  {row.settledOn ? (
-                                    <>
-                                      <Undo2 className="mr-1 h-3 w-3" />
-                                      Desfazer baixa
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CheckCircle2 className="mr-1 h-3 w-3" />
-                                      {row.kind === "payable"
-                                        ? "Registrar pagamento"
-                                        : "Registrar recebimento"}
-                                    </>
-                                  )}
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setTab("billed")}
-                                >
-                                  Conferir faturado
-                                </Button>
-                              )}
-                              {row.manual && !row.manual.credit_card_id && (
-                                <>
-                                  <Button
-                                    disabled={recurring.isLoading || !!recurring.error}
-                                    aria-label={`Editar ${row.description}`}
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      setDraft({
-                                        repeat: inlineRecurrence(
-                                          recurring.data?.find(
-                                            (r) => r.id === row.manual?.recurrence_id,
-                                          ),
-                                        ),
-                                        old: row.manual,
-                                        kind: row.kind,
-                                        description: row.description,
-                                        counterparty: row.counterparty,
-                                        category: row.category,
-                                        cost_center_id: row.costCenterId || "",
-                                        bank_account_id: row.bankAccountId || "",
-                                        value: (row.amountCents / 100).toFixed(2).replace(".", ","),
-                                        due_on: row.dueOn || today,
-                                        notes: row.manual!.notes,
-                                      })
-                                    }
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    aria-label={`Excluir ${row.description}`}
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => setConfirm({ row, action: "delete" })}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </>
-                              )}
+                              <Button
+                                aria-label={`Excluir ${row.description}`}
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setConfirm({ row, action: "delete" })}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
                             </>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {!rows.length && (
-              <p className="p-5 text-center text-sm text-muted-foreground">
-                {accounts.isLoading || flowLoading
-                  ? "Carregando contas…"
-                  : "Nenhuma conta nesta seleção."}
-              </p>
-            )}
-            {tab === "receivable" && (
-              <p className="text-xs text-muted-foreground">
-                Os recebíveis do Faturamento aparecem automaticamente. Cadastre manualmente somente
-                receitas adicionais, para não duplicar o mesmo recebimento.
-              </p>
-            )}
-          </section>
-        </>
-      )}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!rows.length && (
+          <p className="p-5 text-center text-sm text-muted-foreground">
+            {accounts.isLoading || flowLoading
+              ? "Carregando contas…"
+              : "Nenhuma conta nesta seleção."}
+          </p>
+        )}
+        {!payable && (
+          <p className="text-xs text-muted-foreground">
+            Os recebíveis do Faturamento aparecem automaticamente. Cadastre manualmente somente
+            receitas adicionais, para não duplicar o mesmo recebimento.
+          </p>
+        )}
+      </section>
       <Dialog
         open={!!classification}
         onOpenChange={(open) => {
