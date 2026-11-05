@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { ASSIGNMENT_NOTIFICATION_TYPES, mergeNotifications } from "@/lib/task-notifications";
 
 interface Notification {
   id: string;
@@ -34,13 +35,17 @@ export function NotificationBell() {
 
   const load = async () => {
     if (!user) return;
-    const { data } = await (supabase.from("notifications") as any)
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(30);
-    const next = (data ?? []) as Notification[];
-    setItems(next);
+    const notifications = () =>
+      (supabase.from("notifications") as any).select("*").eq("user_id", user.id);
+    const [{ data: recent }, { data: unreadAssignments }] = await Promise.all([
+      notifications().order("created_at", { ascending: false }).limit(30),
+      notifications()
+        .eq("is_read", false)
+        .in("type", ASSIGNMENT_NOTIFICATION_TYPES)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+    setItems(mergeNotifications((recent ?? []) as Notification[], (unreadAssignments ?? []) as Notification[]));
   };
 
   useEffect(() => {

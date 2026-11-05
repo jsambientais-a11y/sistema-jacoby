@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Trash2, Paperclip, Send, Download, ExternalLink, X, Plus, Link2, ChevronDown, ChevronRight, Clock3 } from "lucide-react";
 import { format } from "date-fns";
 import { AttachmentPreviewDialog } from "@/components/AttachmentPreviewDialog";
+import { collaboratorChanges } from "@/lib/task-notifications";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { RichTextEditor } from "@/components/RichTextEditor";
 
@@ -173,13 +174,24 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
   };
 
   const syncCollaborators = async (taskId: string) => {
-    const { error: deleteError } = await (supabase.from("task_collaborators") as any)
-      .delete()
+    const { data: saved, error: loadError } = await (supabase.from("task_collaborators") as any)
+      .select("collaborator_id")
       .eq("task_id", taskId);
-    if (deleteError) throw deleteError;
-    if (collaboratorIds.length === 0) return;
+    if (loadError) throw loadError;
+    const { toAdd, toRemove } = collaboratorChanges(
+      (saved ?? []).map((row: { collaborator_id: string }) => row.collaborator_id),
+      collaboratorIds,
+    );
+    if (toRemove.length > 0) {
+      const { error: deleteError } = await (supabase.from("task_collaborators") as any)
+        .delete()
+        .eq("task_id", taskId)
+        .in("collaborator_id", toRemove);
+      if (deleteError) throw deleteError;
+    }
+    if (toAdd.length === 0) return;
     const { error: insertError } = await (supabase.from("task_collaborators") as any).insert(
-      collaboratorIds.map((collaboratorId) => ({
+      toAdd.map((collaboratorId) => ({
         task_id: taskId,
         collaborator_id: collaboratorId,
         added_by: user?.id ?? null,
