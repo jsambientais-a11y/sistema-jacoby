@@ -18,11 +18,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ClientDocumentsManager } from "@/components/ClientDocumentsManager";
 import { ClientBranchesManager } from "@/components/ClientBranchesManager";
+import { ClientPortalAccessPanel } from "@/components/ClientPortalAccessPanel";
+import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/_app/clients/$clientId/edit")({
   component: EditClientPage,
   validateSearch: (search: Record<string, unknown>) => ({
-    aba: search.aba === "documentos" ? "documentos" : undefined,
+    aba: search.aba === "documentos" ? ("documentos" as const) : search.aba === "portal" ? ("portal" as const) : undefined,
   }),
 });
 
@@ -32,8 +34,12 @@ const EMPTY_EMPLOYEES: ClientDepartmentEmployee[] = [];
 function EditClientPage() {
   const { clientId } = Route.useParams();
   const { aba } = Route.useSearch();
-  const [activeTab, setActiveTab] = useState(aba === "documentos" ? "departments" : "client");
-  useEffect(() => { if (aba === "documentos") setActiveTab("departments"); }, [aba]);
+  const { isAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState(aba === "documentos" ? "departments" : aba === "portal" ? "portal" : "client");
+  useEffect(() => {
+    if (aba === "documentos") setActiveTab("departments");
+    if (aba === "portal") setActiveTab("portal");
+  }, [aba]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: client, isLoading } = useQuery({
@@ -424,13 +430,14 @@ function EditClientPage() {
 
       <Card className="p-6">
         <Tabs
-          value={activeTab}
-          onValueChange={(tab) => { setActiveTab(tab); navigate({ to: "/clients/$clientId/edit", params: { clientId }, search: tab === "departments" ? { aba: "documentos" } : {}, replace: true }); }}
+          value={activeTab === "portal" && !isAdmin ? "client" : activeTab}
+          onValueChange={(tab) => { setActiveTab(tab); navigate({ to: "/clients/$clientId/edit", params: { clientId }, search: tab === "departments" ? { aba: "documentos" } : tab === "portal" ? { aba: "portal" } : {}, replace: true }); }}
         >
           <TabsList>
             <TabsTrigger value="client">Dados do cliente</TabsTrigger>
             <TabsTrigger value="branches">Filiais e pátios</TabsTrigger>
             <TabsTrigger value="departments">Controle de documentos</TabsTrigger>
+            {isAdmin && <TabsTrigger value="portal">Acesso ao portal</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="client" className="mt-6">
@@ -567,6 +574,16 @@ function EditClientPage() {
           <TabsContent value="branches" className="mt-6">
             <ClientBranchesManager clientId={clientId} />
           </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="portal" className="mt-6">
+              <ClientPortalAccessPanel
+                clientId={clientId}
+                defaultName={client.responsible ?? ""}
+                defaultEmail={client.email ?? ""}
+              />
+            </TabsContent>
+          )}
 
           <TabsContent value="legacy-departments" className="hidden">
             <div className="flex flex-wrap items-center justify-between gap-3">

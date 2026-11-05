@@ -7,6 +7,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useQueryClient } from "@tanstack/react-query";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { isImpersonatingClient, stopClientImpersonation } from "@/lib/client-impersonation";
 
 interface Profile {
   id: string;
@@ -310,6 +311,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new Event(localAuthChanged));
       return;
     }
+    // Sair durante "Entrar como cliente" volta ao administrador; o signOut abaixo
+    // derrubaria também a sessão real do cliente.
+    if (isImpersonatingClient()) return stopClientImpersonation();
     // Supabase clears the persisted browser session; the listener above resets local React state.
     synchronizeQuerySession(null);
     await supabase.auth.signOut();

@@ -13,6 +13,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { invokeAdminUserAccess, setPortalAccessEnabled } from "@/lib/client-portal-access";
+import { usersManagedInClients } from "@/lib/client-portal-rules";
 import { toast } from "sonner";
 import { ChevronDown, KeyRound, Plus, ShieldCheck, User as UserIcon, UserCheck, UserX } from "lucide-react";
 
@@ -75,7 +77,7 @@ function AccessForm({ value, onChange, includeCredentials = false, passwordRequi
   const toggle = (permission: string) => onChange({ ...value, permissions: value.permissions.includes(permission) ? value.permissions.filter((item) => item !== permission) : [...value.permissions, permission] });
   return <div className="space-y-4">
     {includeCredentials && <><div className="space-y-2"><Label>Nome completo</Label><Input value={value.fullName} onChange={(e) => onChange({ ...value, fullName: e.target.value })} required /></div><div className="space-y-2"><Label>Login (e-mail)</Label><Input type="email" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} required /></div><div className="space-y-2"><Label>{passwordRequired ? "Senha provisória" : "Nova senha (opcional)"}</Label><Input type="password" minLength={6} autoComplete="new-password" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} required={passwordRequired} placeholder={passwordRequired ? "Mínimo de 6 caracteres" : "Deixe em branco para manter a senha atual"} />{!passwordRequired && <p className="text-xs text-muted-foreground">Por segurança, a senha anterior não é exibida. Preencha apenas se quiser substituí-la.</p>}</div></>}
-    <div className="space-y-2"><Label>Categoria</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={value.role} onChange={(e) => onChange({ ...value, role: e.target.value as Role, permissions: e.target.value === "client" ? ["portal"] : value.permissions })}><option value="collaborator">Colaboradores</option><option value="client">Cliente</option><option value="admin">Administrador</option></select></div>
+    <div className="space-y-2"><Label>Categoria</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={value.role} onChange={(e) => onChange({ ...value, role: e.target.value as Role, permissions: e.target.value === "client" ? ["portal"] : value.permissions })}><option value="collaborator">Colaboradores</option>{value.role === "client" && <option value="client">Cliente</option>}<option value="admin">Administrador</option></select></div>
     {value.role === "client" && <div className="space-y-2"><Label>Cliente vinculado</Label><select required className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={value.clientId} onChange={(e) => onChange({ ...value, clientId: e.target.value })}><option value="">Selecione o cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><p className="text-xs text-muted-foreground">Este usuário verá somente as tarefas e faturas deste cliente.</p></div>}
     {value.role === "collaborator" && <label className="flex items-start gap-3 rounded-lg border p-3"><Checkbox checked={value.permissions.includes("billing_lock_finalized")} onCheckedChange={(checked) => onChange({ ...value, permissions: checked ? [...new Set([...value.permissions, "billing_lock_finalized"])] : value.permissions.filter(item => item !== "billing_lock_finalized") })} /><span className="text-sm"><span className="font-medium">Bloquear alterações em BMs finalizados</span><span className="mt-1 block text-xs text-muted-foreground">Mantém os acessos atuais e a edição dos BMs abertos. Nos finalizados permite somente consulta, sem alterar, excluir, reabrir, publicar ou enviar.</span></span></label>}
     <div className="space-y-2"><Label>Acessos do sistema</Label><p className="text-xs text-muted-foreground">Marque somente as áreas que este colaborador poderá usar. Financeiro, Faturamento e Configurações de movimentação são exclusivos de Juliana e Reinan.</p><div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">{ACCESS_OPTIONS.map(([key, label]) => <label key={key} className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={value.role === "admin" || value.permissions.includes(key)} disabled={value.role === "admin" || value.role === "client"} onCheckedChange={() => toggle(key)} />{label}</label>)}</div></div>
@@ -83,7 +85,7 @@ function AccessForm({ value, onChange, includeCredentials = false, passwordRequi
 }
 
 function UsersPage() {
-  const { isAdmin, user, loading } = useAuth(); const qc = useQueryClient(); const { data: profiles = [] } = useProfiles();
+  const { isAdmin, user, loading } = useAuth(); const qc = useQueryClient(); const { data: profiles = [] } = useProfiles(); const { data: clients = [] } = useClients();
   const [createOpen, setCreateOpen] = useState(false); const [editing, setEditing] = useState<string | null>(null); const [form, setForm] = useState<FormState>(defaults);
   const [resetTarget, setResetTarget] = useState<any | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -101,23 +103,9 @@ function UsersPage() {
   });
   const { data: clientLinks = [] } = useQuery({ queryKey: ["client_user_links"], queryFn: async () => ((await (supabase.from("client_user_links" as any) as any).select("user_id, client_id")).data ?? []) as { user_id: string; client_id: string }[] });
   const { data: permissionRows = [] } = useQuery({ queryKey: ["user_permissions"], queryFn: async () => ((await (supabase.from("user_permissions") as any).select("user_id, permissions")).data ?? []) as { user_id: string; permissions: string[] }[] });
-  const invokeAccessManager = async (action: "create" | "update", data: Record<string, unknown>) => {
-    const { data: result, error } = await supabase.functions.invoke("admin-user-access", { body: { action, data } });
-    if (error) {
-      const response = (error as any).context;
-      if (response && typeof response.json === "function") {
-        const payload = await response.json().catch(() => null);
-        if (payload?.error) throw new Error(payload.error);
-      }
-      throw error;
-    }
-    if (result?.error) throw new Error(result.error);
-    return result;
-  };
   const refresh = () => { qc.invalidateQueries({ queryKey: ["profiles"] }); qc.invalidateQueries({ queryKey: ["roles"] }); qc.invalidateQueries({ queryKey: ["user_permissions"] }); qc.invalidateQueries({ queryKey: ["client_user_links"] }); qc.invalidateQueries({ queryKey: ["admin_profile_emails"] }); };
   const createMutation = useMutation({ mutationFn: () => {
-    if (form.role === "client" && !form.clientId) throw new Error("Selecione o cliente que será vinculado ao acesso do portal.");
-    return invokeAccessManager("create", form);
+    return invokeAdminUserAccess("create", form);
   }, onSuccess: () => { refresh(); setCreateOpen(false); setForm(defaults); toast.success("Acesso criado com sucesso."); }, onError: (e: any) => toast.error(e?.message ?? "Erro ao criar acesso") });
   const updateMutation = useMutation({ mutationFn: async () => {
     if (!editing) throw new Error("Usuário inválido.");
@@ -140,9 +128,13 @@ function UsersPage() {
         if (error) throw error;
       }
     }
-    return invokeAccessManager("update", { userId: editing, role: form.role, permissions: form.permissions, clientId: form.clientId || null });
+    return invokeAdminUserAccess("update", { userId: editing, role: form.role, permissions: form.permissions, clientId: form.clientId || null });
   }, onSuccess: () => { refresh(); setEditing(null); toast.success("Acesso atualizado."); }, onError: (e: any) => toast.error(e?.message ?? "Erro ao atualizar acessos") });
-  const setActive = useMutation({ mutationFn: async ({ userId, active }: { userId: string; active: boolean }) => { const { error } = await (supabase.from("profiles") as any).update({ is_active: active }).eq("id", userId); if (error) throw error; }, onSuccess: () => { qc.invalidateQueries({ queryKey: ["profiles"] }); toast.success("Status atualizado"); }, onError: (e: any) => toast.error(e.message) });
+  const setActive = useMutation({ mutationFn: async ({ userId, active }: { userId: string; active: boolean }) => {
+    // Login de cliente (a RAG, nesta tela) precisa do bloqueio real de entrada.
+    if (roles.some((item: { user_id: string; role: string }) => item.user_id === userId && item.role === "client")) return setPortalAccessEnabled(userId, active);
+    const { error } = await (supabase.from("profiles") as any).update({ is_active: active }).eq("id", userId); if (error) throw error;
+  }, onSuccess: () => { qc.invalidateQueries({ queryKey: ["profiles"] }); toast.success("Status atualizado"); }, onError: (e: any) => toast.error(e.message) });
   const emailFor = (profile: any) => profileEmails.find((item) => item.id === profile.id)?.email ?? profile.email ?? null;
   const resetPasswordMutation = useMutation({
     mutationFn: async () => {
@@ -161,7 +153,9 @@ function UsersPage() {
     },
     onError: (error: any) => toast.error(error?.message ?? "Não foi possível redefinir a senha."),
   });
-  const activeProfiles = useMemo(() => profiles.filter((p) => (p as any).is_active !== false), [profiles]); const inactiveProfiles = useMemo(() => profiles.filter((p) => (p as any).is_active === false), [profiles]);
+  const managedInClients = useMemo(() => usersManagedInClients(clientLinks, clients.map((client) => client.id)), [clientLinks, clients]);
+  const listedProfiles = useMemo(() => profiles.filter((p) => !managedInClients.has(p.id)), [profiles, managedInClients]);
+  const activeProfiles = useMemo(() => listedProfiles.filter((p) => (p as any).is_active !== false), [listedProfiles]); const inactiveProfiles = useMemo(() => listedProfiles.filter((p) => (p as any).is_active === false), [listedProfiles]);
   const openEdit = async (id: string) => {
     const role = (roles.find((r: { user_id: string; role: string }) => r.user_id === id)?.role ?? "collaborator") as Role;
     const profile = profiles.find((item) => item.id === id);
@@ -209,7 +203,7 @@ function UsersPage() {
       <section className="space-y-3">
         <div>
           <h2 className="text-sm font-semibold text-muted-foreground">Usuários ativos ({activeProfiles.length})</h2>
-          <p className="text-xs text-muted-foreground">Abra uma categoria para visualizar e gerenciar seus acessos.</p>
+          <p className="text-xs text-muted-foreground">Abra uma categoria para visualizar e gerenciar seus acessos. Os logins das empresas ficam em Clientes, na aba Acesso ao portal.</p>
         </div>
         <UserCategorySection title="Administradores" count={profilesByRole.admin.length}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{profilesByRole.admin.map(renderProfile)}</div>

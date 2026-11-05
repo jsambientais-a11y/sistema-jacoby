@@ -64,6 +64,32 @@ export default {
       return response({ ok: true });
     }
 
+    // Gera um acesso de uso único para o administrador abrir o portal como o
+    // cliente. Não usa nem altera a senha, e nada é enviado ao cliente.
+    if (action === "impersonate_client") {
+      if (!validUuid(data.userId)) return response({ error: "Usuário inválido." }, 400);
+      const { data: targetRoles, error: targetRoleError } = await admin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", data.userId);
+      if (targetRoleError) throw targetRoleError;
+      if (!targetRoles?.some((item) => item.role === "client")) {
+        return response({ error: "Este acesso não é um cliente vinculado ao portal." }, 400);
+      }
+      const { data: target, error: targetError } = await admin.auth.admin.getUserById(data.userId);
+      if (targetError || !target.user?.email) throw targetError ?? new Error("Usuário não encontrado.");
+      const bannedUntil = target.user.banned_until;
+      if (bannedUntil && new Date(bannedUntil) > new Date()) {
+        return response({ error: "Este acesso está desativado. Reative antes de entrar." }, 400);
+      }
+      const { data: link, error: linkError } = await admin.auth.admin.generateLink({
+        type: "magiclink",
+        email: target.user.email,
+      });
+      if (linkError) throw linkError;
+      return response({ tokenHash: link.properties.hashed_token });
+    }
+
     const role = data.role;
     if (!['admin', 'collaborator', 'client'].includes(role)) return response({ error: "Categoria de acesso inválida." }, 400);
     if (role === "client" && !validUuid(data.clientId)) return response({ error: "Selecione o cliente que será vinculado a este acesso." }, 400);

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Archive, ArchiveRestore, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { useClients, useTasks, type Client } from "@/hooks/use-data";
+import { useClients, useProfiles, useTasks, type Client } from "@/hooks/use-data";
+import { portalStatusByClient, type PortalStatus } from "@/lib/client-portal-rules";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/clients")({
@@ -19,8 +20,9 @@ export const Route = createFileRoute("/_app/clients")({
 export function ClientsIndexPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { data: clients = [], isLoading: clientsLoading } = useClients();
+  const { data: profiles = [] } = useProfiles();
   const { data: tasks = [] } = useTasks();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Client | null>(null);
@@ -37,6 +39,23 @@ export function ClientsIndexPage() {
   const [responsible, setResponsible] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [portalFilter, setPortalFilter] = useState<"all" | PortalStatus>("all");
+  // O banco só entrega todos os vínculos a administradores; para os demais a lista
+  // viria vazia e o filtro mostraria todo cliente como "Sem acesso".
+  const { data: portalLinks = [] } = useQuery({
+    queryKey: ["client_user_links"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("client_user_links" as any) as any).select("user_id, client_id");
+      if (error) throw error;
+      return (data ?? []) as { user_id: string; client_id: string }[];
+    },
+  });
+  const portalStatus = useMemo(
+    () => portalStatusByClient(portalLinks, profiles.filter((profile) => profile.is_active === false).map((profile) => profile.id)),
+    [portalLinks, profiles],
+  );
+  const portalStatusOf = (client: Client): PortalStatus => portalStatus.get(client.id) ?? "none";
   const { data: branches = [] } = useQuery({
     queryKey: ["clients-list-branches"],
     queryFn: async () => {
@@ -74,7 +93,8 @@ export function ClientsIndexPage() {
     const matchesStatus = statusFilter === "all" || (statusFilter === "active" ? isActive(client) : !isActive(client));
     const haystack = [client.name, client.description, client.cnpj, client.legal_name, client.trade_name, client.responsible, client.email]
       .filter(Boolean).join(" ").toLocaleLowerCase("pt-BR");
-    return matchesStatus && haystack.includes(term);
+    const matchesPortal = portalFilter === "all" || portalStatusOf(client) === portalFilter;
+    return matchesStatus && matchesPortal && haystack.includes(term);
   });
   // Informações resumidas da linha: CNPJ, responsável e quantidade de pátios.
   const infoOf = (client: Client) => {
@@ -153,6 +173,8 @@ export function ClientsIndexPage() {
   };
 
   const statusTabs = [["all", "Todos"], ["active", "Ativos"], ["inactive", "Inativos"]] as const;
+  const portalTabs = [["all", "Todos"], ["enabled", "Com acesso"], ["disabled", "Desativado"], ["none", "Sem acesso"]] as const;
+  const portalLabel: Record<PortalStatus, string> = { enabled: "Portal ativo", disabled: "Portal desativado", none: "Sem portal" };
   const iconButton = "h-9 w-9 rounded-lg text-foreground/80 hover:bg-primary/10 hover:text-primary";
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 p-6 lg:px-10">
@@ -174,6 +196,14 @@ export function ClientsIndexPage() {
             <button key={value} type="button" onClick={() => setStatusFilter(value)} className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${statusFilter === value ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/80 hover:bg-muted"}`}>{label}</button>
           ))}
         </div>
+        {isAdmin && (
+          <div className="flex items-center gap-1">
+            <span className="mr-1 text-sm text-muted-foreground">Portal:</span>
+            {portalTabs.map(([value, label]) => (
+              <button key={value} type="button" onClick={() => setPortalFilter(value)} className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${portalFilter === value ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/80 hover:bg-muted"}`}>{label}</button>
+            ))}
+          </div>
+        )}
         <p className="ml-auto text-sm text-muted-foreground">{loadingList ? "Carregando..." : <>{filteredClients.length} {filteredClients.length === 1 ? "resultado" : "resultados"}</>}</p>
       </div>
 
@@ -219,6 +249,7 @@ export function ClientsIndexPage() {
                       <span className="min-w-0">
                         <span className="block truncate font-semibold" title={c.name}>{c.name}</span>
                         <span className={`text-xs ${active ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300"}`}>{active ? "Cliente ativo" : "Cliente inativo"}</span>
+                        {isAdmin && <span className="text-xs text-muted-foreground"> · {portalLabel[portalStatusOf(c)]}</span>}
                       </span>
                     </Link>
                   </td>

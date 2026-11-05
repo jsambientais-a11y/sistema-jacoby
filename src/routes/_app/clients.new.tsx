@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { PortalLoginFields } from "@/components/ClientPortalAccessPanel";
+import { createPortalLogin } from "@/lib/client-portal-access";
+import { emptyPortalLogin, portalLoginError } from "@/lib/client-portal-rules";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
@@ -17,7 +21,7 @@ export const Route = createFileRoute("/_app/clients/new")({
 function NewClientPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [saving, setSaving] = useState(false);
   const [cnpj, setCnpj] = useState("");
   const [legalName, setLegalName] = useState("");
@@ -31,6 +35,8 @@ function NewClientPage() {
   const [color, setColor] = useState("#1e3a8a");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [portalEnabled, setPortalEnabled] = useState(false);
+  const [portalLogin, setPortalLogin] = useState(emptyPortalLogin);
 
   useEffect(() => {
     if (!avatarFile) {
@@ -47,6 +53,11 @@ function NewClientPage() {
     const name = tradeName.trim() || legalName.trim();
     if (!name) {
       toast.error("Preencha o Nome fantasia ou a Razão social.");
+      return;
+    }
+    const portalProblem = portalEnabled ? portalLoginError(portalLogin) : null;
+    if (portalProblem) {
+      toast.error(portalProblem);
       return;
     }
 
@@ -103,9 +114,23 @@ function NewClientPage() {
       }
     }
 
+    if (portalEnabled && newClient) {
+      try {
+        await createPortalLogin(newClient.id, portalLogin);
+      } catch (portalError) {
+        // A empresa já existe: leva para a aba do portal em vez de permitir um
+        // novo envio deste formulário, que cadastraria o cliente em duplicidade.
+        setSaving(false);
+        queryClient.invalidateQueries({ queryKey: ["clients"] });
+        toast.error(`Cliente cadastrado, mas o acesso ao portal falhou: ${(portalError as Error).message}`);
+        navigate({ to: "/clients/$clientId/edit", params: { clientId: newClient.id }, search: { aba: "portal" } });
+        return;
+      }
+    }
+
     setSaving(false);
     queryClient.invalidateQueries({ queryKey: ["clients"] });
-    toast.success("Cliente cadastrado");
+    toast.success(portalEnabled ? "Cliente cadastrado com acesso ao portal" : "Cliente cadastrado");
     navigate({ to: "/clients" });
   };
 
@@ -218,6 +243,43 @@ function NewClientPage() {
               <Input value={address} onChange={(event) => setAddress(event.target.value)} />
             </Field>
           </section>
+
+          {isAdmin && (
+            <section className="space-y-4 border-t pt-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label htmlFor="new-client-portal" className="font-semibold">
+                    Acesso ao Portal do Cliente
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Ative para criar agora o login desta empresa. Dá para liberar depois, na aba
+                    Acesso ao portal.
+                  </p>
+                </div>
+                <Switch
+                  id="new-client-portal"
+                  checked={portalEnabled}
+                  onCheckedChange={(checked) => {
+                    setPortalEnabled(checked);
+                    if (checked) {
+                      setPortalLogin((current) => ({
+                        ...current,
+                        fullName: current.fullName || responsible,
+                        email: current.email || email,
+                      }));
+                    }
+                  }}
+                />
+              </div>
+              {portalEnabled && (
+                <PortalLoginFields
+                  idPrefix="new-client-portal-login"
+                  value={portalLogin}
+                  onChange={setPortalLogin}
+                />
+              )}
+            </section>
+          )}
 
           <div className="border-t pt-5">
             <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2.5">

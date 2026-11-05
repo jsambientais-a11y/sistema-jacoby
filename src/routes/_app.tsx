@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, Navigate, useRouterState } from "@tanstack/rea
 import { useAuth } from "@/hooks/use-auth";
 import { OverduePayablesAlert } from "@/components/OverduePayablesAlert";
 import { AppShell } from "@/components/AppShell";
+import { ClientImpersonationBanner } from "@/components/ClientImpersonationBanner";
 import { isoRemoteEnabled } from "@/lib/iso-remote";
 import { IsoShell } from "@/components/iso/IsoShell";
 
@@ -66,6 +67,7 @@ function AppLayout() {
     <AppShell>
       <OverduePayablesAlert />
       <Outlet />
+      <ClientImpersonationBanner />
     </AppShell>
   );
 }
