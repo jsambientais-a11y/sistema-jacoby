@@ -185,6 +185,60 @@ function ConnectionDetails() {
           publicado, o acesso é exclusivo da Juliana.
         </p>
       )}
+      {authorization_id && (
+        <Card className="space-y-4 border-primary/30 p-5">
+          <h2 className="font-semibold">Autorizar acesso do ChatGPT</h2>
+          {consent.isFetching ? (
+            <p className="text-sm">Carregando solicitação…</p>
+          ) : consent.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {consent.error.message}
+            </p>
+          ) : consent.data && "redirect_url" in consent.data ? (
+            <>
+              <p className="text-sm">
+                A autorização desta conexão já existe. Continue para voltar ao ChatGPT.
+              </p>
+              <Button
+                onClick={() => {
+                  if (
+                    consent.data &&
+                    "redirect_url" in consent.data &&
+                    isChatGptCallback(consent.data.redirect_url)
+                  )
+                    window.location.assign(consent.data.redirect_url);
+                }}
+              >
+                Continuar no ChatGPT
+              </Button>
+            </>
+          ) : consent.data ? (
+            <>
+              <p className="text-sm">
+                O aplicativo <strong>{consent.data.client.name}</strong> solicita acesso à Jacoby
+                pela conta <strong>{user?.email}</strong>.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Poderá consultar clientes e BMs, explicar os fluxos e preparar tarefas. Os dados
+                retornados pelas consultas serão enviados ao ChatGPT. Os rascunhos só serão salvos
+                depois de revisados na Jacoby.
+              </p>
+              <div className="flex gap-2">
+                <Button disabled={busy} onClick={() => void decide(true)}>
+                  Autorizar conexão
+                </Button>
+                <Button variant="outline" disabled={busy} onClick={() => void decide(false)}>
+                  Recusar
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Conclua a ativação do servidor para avaliar esta solicitação.
+            </p>
+          )}
+        </Card>
+      )}
       <Card className="space-y-4 border-primary/20 p-5 sm:p-6">
         <div>
           <h2 className="text-lg font-semibold">O que você quer fazer no sistema?</h2>
@@ -383,60 +437,6 @@ function ConnectionDetails() {
               )}
             </div>
           ))}
-        </Card>
-      )}
-      {authorization_id && (
-        <Card className="space-y-4 border-primary/30 p-5">
-          <h2 className="font-semibold">Autorizar acesso do ChatGPT</h2>
-          {consent.isFetching ? (
-            <p className="text-sm">Carregando solicitação…</p>
-          ) : consent.isError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {consent.error.message}
-            </p>
-          ) : consent.data && "redirect_url" in consent.data ? (
-            <>
-              <p className="text-sm">
-                A autorização desta conexão já existe. Continue para voltar ao ChatGPT.
-              </p>
-              <Button
-                onClick={() => {
-                  if (
-                    consent.data &&
-                    "redirect_url" in consent.data &&
-                    isChatGptCallback(consent.data.redirect_url)
-                  )
-                    window.location.assign(consent.data.redirect_url);
-                }}
-              >
-                Continuar no ChatGPT
-              </Button>
-            </>
-          ) : consent.data ? (
-            <>
-              <p className="text-sm">
-                O aplicativo <strong>{consent.data.client.name}</strong> solicita acesso à Jacoby
-                pela conta <strong>{user?.email}</strong>.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Poderá consultar clientes e BMs, explicar os fluxos e preparar tarefas. Os dados
-                retornados pelas consultas serão enviados ao ChatGPT. Os rascunhos só serão salvos
-                depois de revisados na Jacoby.
-              </p>
-              <div className="flex gap-2">
-                <Button disabled={busy} onClick={() => void decide(true)}>
-                  Autorizar conexão
-                </Button>
-                <Button variant="outline" disabled={busy} onClick={() => void decide(false)}>
-                  Recusar
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Conclua a ativação do servidor para avaliar esta solicitação.
-            </p>
-          )}
         </Card>
       )}
       {rascunho && (

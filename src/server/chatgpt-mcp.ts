@@ -25,7 +25,13 @@ const schemas = {
   buscar_clientes: z
     .object({
       nome: z.string().trim().min(1).max(80),
-      pagina: z.number().int().min(0).max(100).default(0),
+      pagina: z
+        .number()
+        .int()
+        .min(0)
+        .max(100)
+        .default(1)
+        .transform((value) => Math.max(1, value)),
     })
     .strict(),
   buscar_boletins: z
@@ -35,7 +41,13 @@ const schemas = {
         .regex(/^\d{1,10}$/)
         .optional(),
       cliente_id: z.string().uuid().optional(),
-      pagina: z.number().int().min(0).max(100).default(0),
+      pagina: z
+        .number()
+        .int()
+        .min(0)
+        .max(100)
+        .default(1)
+        .transform((value) => Math.max(1, value)),
     })
     .strict(),
   consultar_boletim: z.object({ id: z.string().uuid() }).strict(),
@@ -64,12 +76,24 @@ const properties: Record<string, object> = {
   },
   buscar_clientes: {
     nome: { type: "string", minLength: 1, maxLength: 80 },
-    pagina: { type: "integer", minimum: 0, maximum: 100 },
+    pagina: {
+      type: "integer",
+      minimum: 1,
+      maximum: 100,
+      default: 1,
+      description: "Primeira página é 1. Incremente somente se temMais for true.",
+    },
   },
   buscar_boletins: {
     numero: { type: "string", pattern: "^[0-9]{1,10}$" },
     cliente_id: { type: "string", format: "uuid" },
-    pagina: { type: "integer", minimum: 0, maximum: 100 },
+    pagina: {
+      type: "integer",
+      minimum: 1,
+      maximum: 100,
+      default: 1,
+      description: "Primeira página é 1. Incremente somente se temMais for true.",
+    },
   },
   consultar_boletim: { id: { type: "string", format: "uuid" } },
   preparar_tarefa: {
@@ -375,7 +399,7 @@ export function createChatGptHandler(options?: {
             .ilike("name", `%${pattern}%`)
             .order("name")
             .order("id")
-            .range(args.pagina * 25, args.pagina * 25 + 25),
+            .range((args.pagina - 1) * 25, (args.pagina - 1) * 25 + 25),
         );
         result = { clientes: rows.slice(0, 25), pagina: args.pagina, temMais: rows.length > 25 };
       }
@@ -392,7 +416,7 @@ export function createChatGptHandler(options?: {
           await query
             .order("updated_at", { ascending: false })
             .order("id")
-            .range(args.pagina * 25, args.pagina * 25 + 25),
+            .range((args.pagina - 1) * 25, (args.pagina - 1) * 25 + 25),
         );
         result = { boletins: rows.slice(0, 25), pagina: args.pagina, temMais: rows.length > 25 };
       }

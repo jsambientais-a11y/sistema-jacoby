@@ -266,7 +266,7 @@ test("paginação de BMs pede só 26 linhas e devolve 25 com indicação de mais
   const call = f.calls.find((c) => c.table === "billing_v2_cycles");
   assert.deepEqual(
     call.operations.find((o) => o[0] === "range"),
-    ["range", 50, 75],
+    ["range", 25, 50],
   );
   assert.ok(call.operations.some((o) => o[0] === "eq" && o[1] === "is_demo" && o[2] === false));
 });
@@ -329,4 +329,28 @@ test("descoberta pública anuncia somente schemas, sem acessar tabelas; execuç�
   assert.equal(f.calls.length, 0);
   assert.ok(tools.every((t) => t.securitySchemes[0].type === "oauth2"));
   assert.equal((await f.handle(req(undefined, { token: null }))).status, 401);
+});
+
+test("primeira página começa em 1 e não ignora o primeiro BM", async () => {
+  for (const pagina of [undefined, 0, 1]) {
+    const f = fixture({ records: { billing_v2_cycles: [{ bulletin_number: 211 }] } });
+    const response = await f.handle(
+      req({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "buscar_boletins",
+          arguments: { numero: "211", ...(pagina === undefined ? {} : { pagina }) },
+        },
+      }),
+    );
+    const result = JSON.parse((await response.json()).result.content[0].text);
+    assert.equal(result.pagina, 1);
+    assert.equal(result.boletins[0].bulletin_number, 211);
+    assert.deepEqual(
+      f.calls.find((c) => c.table === "billing_v2_cycles").operations.find((o) => o[0] === "range"),
+      ["range", 0, 25],
+    );
+  }
 });
