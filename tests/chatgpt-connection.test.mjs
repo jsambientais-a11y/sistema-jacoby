@@ -17,7 +17,28 @@ const libUrl = compile("../src/lib/chatgpt-connection.ts", {
   '"zod"': JSON.stringify(pathToFileURL(require.resolve("zod")).href),
 });
 const access = await import(libUrl);
+const actionsUrl = compile("../src/lib/chatgpt-actions.ts", {
+  '"zod"': JSON.stringify(pathToFileURL(require.resolve("zod")).href),
+});
+const invoicesUrl = compile("../src/lib/cycle-invoices.ts");
+const receivablesUrl = compile("../src/lib/receivables.ts");
+const agreementUrl = compile("../src/lib/billing-agreement.ts");
+const invoiceEntriesUrl = compile("../src/lib/service-invoice-entries.ts");
+const modelUrl = compile("../src/lib/billing-flow-model.ts", {
+  '"./service-invoice-entries"': JSON.stringify(invoiceEntriesUrl),
+});
+const systemUrl = compile("../src/server/chatgpt-system.ts", {
+  '"zod"': JSON.stringify(pathToFileURL(require.resolve("zod")).href),
+  '"../lib/chatgpt-actions"': JSON.stringify(actionsUrl),
+  '"../lib/cycle-invoices"': JSON.stringify(invoicesUrl),
+  '"../lib/receivables"': JSON.stringify(receivablesUrl),
+  '"../lib/billing-agreement"': JSON.stringify(agreementUrl),
+  '"../lib/billing-flow-model"': JSON.stringify(modelUrl),
+});
+const actions = await import(actionsUrl);
+const model = await import(modelUrl);
 const serverUrl = compile("../src/server/chatgpt-mcp.ts", {
+  '"./chatgpt-system"': JSON.stringify(systemUrl),
   '"../lib/chatgpt-connection"': JSON.stringify(libUrl),
   '"@supabase/supabase-js"': JSON.stringify(
     pathToFileURL(require.resolve("@supabase/supabase-js")).href,
@@ -53,9 +74,17 @@ function fixture({
   config = cfg,
   development = false,
   records = {},
+  queryErrors = [],
+  isoState = null,
 } = {}) {
   const calls = [];
   const client = {
+    storage: { from: () => ({ list: async () => ({ data: [], error: null }) }) },
+    rpc: async (name) => {
+      assert.equal(name, "iso_open_workspace");
+      calls.push({ rpc: name });
+      return { data: { state: isoState, revision: 1 }, error: null };
+    },
     auth: {
       getUser: async () => ({
         data: { user: authError ? null : { id: userId, email: "owner@example.com" } },
@@ -75,16 +104,24 @@ function fixture({
         {
           get(_target, prop) {
             if (prop === "then")
-              return (resolve, reject) =>
-                Promise.resolve({
-                  data:
-                    table === "user_roles"
-                      ? roles
-                      : table === "profiles"
-                        ? { is_active: active }
-                        : records[table] || [],
-                  error: null,
+              return (resolve, reject) => {
+                let data =
+                  table === "user_roles"
+                    ? roles
+                    : table === "profiles"
+                      ? { is_active: active }
+                      : records[table] || [];
+                if (Array.isArray(data)) {
+                  const range = call.operations.findLast((o) => o[0] === "range");
+                  const limit = call.operations.findLast((o) => o[0] === "limit");
+                  if (range) data = data.slice(range[1], range[2] + 1);
+                  else if (limit) data = data.slice(0, limit[1]);
+                }
+                return Promise.resolve({
+                  data,
+                  error: queryErrors.includes(table) ? new Error("query_failed") : null,
                 }).then(resolve, reject);
+              };
             if (["insert", "update", "delete", "upsert", "rpc"].includes(prop))
               throw new Error("No writes allowed");
             return (...args) => {
@@ -246,11 +283,11 @@ test("negocia MCP e lista apenas ferramentas sem gravação ou exclusão", async
   assert.equal((await response.json()).result.protocolVersion, "2025-03-26");
   response = await f.handle(req({ jsonrpc: "2.0", id: 2, method: "tools/list" }));
   const tools = (await response.json()).result.tools;
-  assert.equal(tools.length, 6);
+  assert.equal(tools.length, 12);
   assert.ok(tools.every((t) => t.annotations.readOnlyHint));
 });
 test("paginação de BMs pede só 26 linhas e devolve 25 com indicação de mais", async () => {
-  const rows = Array.from({ length: 26 }, (_, i) => ({ id: String(i) }));
+  const rows = Array.from({ length: 51 }, (_, i) => ({ id: String(i) }));
   const f = fixture({ records: { billing_v2_cycles: rows } });
   const response = await f.handle(
     req({
@@ -325,7 +362,7 @@ test("descoberta pública anuncia somente schemas, sem acessar tabelas; execuç�
   );
   assert.equal(response.status, 200);
   const tools = (await response.json()).result.tools;
-  assert.equal(tools.length, 6);
+  assert.equal(tools.length, 12);
   assert.equal(f.calls.length, 0);
   assert.ok(tools.every((t) => t.securitySchemes[0].type === "oauth2"));
   assert.equal((await f.handle(req(undefined, { token: null }))).status, 401);
@@ -364,4 +401,322 @@ test("rascunho sobrevive ao parser JSON de busca do TanStack", () => {
     undefined,
   );
   assert.equal(access.normalizeChatGptDraftSearch(undefined), undefined);
+});
+
+async function callTool(f, name, args = {}) {
+  const r = await f.handle(
+    req({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name, arguments: args } }),
+  );
+  const envelope = await r.json();
+  return {
+    status: r.status,
+    envelope,
+    data: envelope.result?.content?.[0]?.text ? JSON.parse(envelope.result.content[0].text) : null,
+  };
+}
+const cycleId = "11111111-1111-4111-8111-111111111111";
+const clientId = "22222222-2222-4222-8222-222222222222";
+const taskId = "33333333-3333-4333-8333-333333333333";
+const baseCycle = {
+  id: cycleId,
+  client_id: clientId,
+  branch_id: null,
+  bulletin_number: 211,
+  status: "closed",
+  issuer_type: "jacoby",
+  period_start: "2026-10-01",
+  period_end: "2026-10-31",
+};
+const recordsForFlow = {
+  billing_v2_cycles: [baseCycle],
+  clients: [{ id: clientId, name: "Empresa Teste" }],
+  billing_v2_cycle_services: [
+    {
+      id: "s",
+      cycle_id: cycleId,
+      amount: 1500,
+      waste_service_id: "catalog",
+      outsourced_company_id: null,
+    },
+  ],
+};
+test("cruza BM fechado, Faturamento e recebimento sem inferir baixa nem duplicar receita", async () => {
+  const f = fixture({ records: recordsForFlow });
+  const r = await callTool(f, "consultar_fluxo_bm", { numero: "211" });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.completo, true);
+  assert.equal(r.data.faturamento[0].baseBM, 1500);
+  assert.equal(r.data.contasReceber[0].valor, 1500);
+  assert.equal(r.data.contasReceber[0].conferido, false);
+  assert.equal(r.data.contasReceber[0].status, "no_date");
+  assert.equal(r.data.resumo.open, 1500);
+  assert.equal(r.data.resumo.receivedThisMonth, 0);
+  for (const c of f.calls.filter((c) =>
+    [
+      "billing_v2_cycle_services",
+      "billing_receivable_tracking",
+      "outsourced_movement_commissions",
+    ].includes(c.table),
+  ))
+    assert.ok(c.operations.some((o) => o[0] === "eq" && o[1] === "cycle_id" && o[2] === cycleId));
+  assert.equal(
+    f.calls.some((c) => c.table === "enterprise_finance_accounts"),
+    false,
+  );
+});
+test("recebível usa conferência salva inclusive valor diferente do BM e data de baixa", async () => {
+  const f = fixture({
+    records: {
+      ...recordsForFlow,
+      billing_receivable_tracking: [
+        {
+          id: "saved",
+          cycle_id: cycleId,
+          category: "service",
+          source_key: "jacoby",
+          commission_amount: 1300,
+          invoice_number: "NF123",
+          received_on: "2026-01-01",
+          expected_on: "2026-01-01",
+        },
+      ],
+    },
+  });
+  const r = await callTool(f, "consultar_fluxo_bm", { id: cycleId });
+  assert.equal(r.data.contasReceber[0].valor, 1300);
+  assert.equal(r.data.contasReceber[0].status, "received");
+  assert.equal(r.data.contasReceber[0].nota, "NF123");
+  assert.equal(r.data.faturamento[0].notaInformada, true);
+});
+test("falha de uma fonte ou limite excedido nunca gera total financeiro incompleto", async () => {
+  for (const options of [
+    { queryErrors: ["billing_receivable_tracking"], records: recordsForFlow },
+    {
+      records: {
+        ...recordsForFlow,
+        billing_v2_movements: Array.from({ length: 1001 }, () => ({ cycle_id: cycleId })),
+      },
+    },
+  ]) {
+    const r = await callTool(fixture(options), "consultar_fluxo_bm", { id: cycleId });
+    assert.equal(r.data.completo, false);
+    assert.equal(r.data.resumo, undefined);
+    assert.equal(r.data.contasReceber, undefined);
+  }
+});
+test("BM ambíguo exige escolha antes de cruzar registros de clientes diferentes", async () => {
+  const f = fixture({
+    records: { billing_v2_cycles: [baseCycle, { ...baseCycle, id: taskId, client_id: taskId }] },
+  });
+  const r = await callTool(f, "consultar_fluxo_bm", { numero: "211" });
+  assert.equal(r.data.ambiguo, true);
+  assert.equal(r.data.candidatos.length, 2);
+  assert.equal(
+    f.calls.some((c) => c.table === "billing_receivable_tracking"),
+    false,
+  );
+});
+test("cadastros ativos por padrão, texto escapado, página delimitada e filtros incompatíveis recusados", async () => {
+  const f = fixture();
+  await callTool(f, "buscar_registros", {
+    area: "residuos",
+    texto: "LIXO%_",
+    cliente_id: clientId,
+    pagina: 2,
+  });
+  const q = f.calls.find((c) => c.table === "waste_residues");
+  assert.ok(q.operations.some((o) => o[0] === "eq" && o[1] === "active" && o[2] === true));
+  assert.ok(q.operations.some((o) => o[0] === "ilike" && o[2] === "%LIXO\\%\\_%"));
+  assert.ok(q.operations.some((o) => o[0] === "range" && o[1] === 25 && o[2] === 50));
+  const bad = await callTool(f, "buscar_registros", {
+    area: "contas_receber",
+    cliente_id: clientId,
+  });
+  assert.match(bad.data.erro, /vínculo direto/);
+  const unknown = await f.handle(
+    req({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "buscar_registros", arguments: { area: "auth.users" } },
+    }),
+  );
+  assert.equal((await unknown.json()).result.isError, true);
+});
+test("ISO usa apenas RPC de leitura e pagina a auditoria escolhida sem acessar arquivos", async () => {
+  const f = fixture({
+    isoState: {
+      selectedId: "auditA",
+      audits: [
+        { id: "auditA", plans: [{ title: "A" }] },
+        { id: "auditB", plans: [{ title: "B" }] },
+      ],
+    },
+  });
+  const r = await callTool(f, "consultar_iso", { secao: "planos", auditoria_id: "auditB" });
+  assert.equal(r.data.registros.length, 1);
+  assert.equal(r.data.registros[0].title, "B");
+  assert.deepEqual(
+    f.calls.filter((c) => c.rpc).map((c) => c.rpc),
+    ["iso_open_workspace"],
+  );
+});
+test("prepara alteração com snapshot atual e proposta financeira sem gravar", async () => {
+  const current = {
+    id: taskId,
+    title: "Conferir BM",
+    due_date: null,
+    priority: "medium",
+    updated_at: "2026-11-07T12:00:00Z",
+  };
+  const f = fixture({ records: { tasks: [current] } });
+  const r = await callTool(f, "preparar_acao", {
+    tipo: "editar_tarefa",
+    id: taskId,
+    prazo: "2026-11-15",
+    prioridade: "high",
+  });
+  assert.equal(r.data.salvo, false);
+  assert.equal(r.data.proposta.anterior.updated_at, current.updated_at);
+  const link = new URL(r.data.revisarEm);
+  assert.ok(actions.normalizeAssistantAction(link.searchParams.get("acao")));
+  const c = await callTool(f, "preparar_acao", {
+    tipo: "criar_conta",
+    natureza: "payable",
+    descricao: "Despesa de teste",
+    valor_centavos: 150000,
+    vencimento: "2026-12-10",
+  });
+  assert.equal(c.data.salvo, false);
+  assert.equal(c.data.proposta.pedido.valor_centavos, 150000);
+  assert.equal(
+    f.calls.some((c) => c.table === "enterprise_finance_accounts"),
+    false,
+  );
+});
+test("ação estrita rejeita pagamento, SQL, valor fracionário e data impossível", () => {
+  const base = {
+    tipo: "criar_conta",
+    natureza: "payable",
+    descricao: "Teste",
+    valor_centavos: 100,
+    vencimento: "2026-12-10",
+  };
+  for (const patch of [
+    { settled_on: "2026-11-07" },
+    { valor_centavos: 1.2 },
+    { vencimento: "2026-02-31" },
+    { tipo: "pagar" },
+    { sql: "drop table" },
+  ])
+    assert.equal(actions.assistantActionInput.safeParse({ ...base, ...patch }).success, false);
+});
+test("gravação revisada é idempotente na conta e exige versão da tarefa; proposta expirada não escreve", async () => {
+  const operations = [];
+  let response = { data: [{ id: taskId }], error: null };
+  const db = {
+    from(table) {
+      operations.push(["table", table]);
+      const q = new Proxy(
+        {},
+        {
+          get(_, p) {
+            if (p === "then") return (resolve) => resolve(response);
+            return (...args) => {
+              operations.push([p, ...args]);
+              return q;
+            };
+          },
+        },
+      );
+      return q;
+    },
+  };
+  const now = Date.now();
+  const action = {
+    version: 1,
+    requestId: cycleId,
+    expiresAt: now + 10000,
+    pedido: { tipo: "editar_tarefa", id: taskId, prazo: "2026-12-10" },
+    anterior: {
+      title: "Teste",
+      due_date: null,
+      priority: "medium",
+      updated_at: "2026-11-07T12:00:00Z",
+    },
+  };
+  await actions.applyAssistantAction(db, action, access.CHATGPT_OWNER_ID, now);
+  assert.ok(
+    operations.some(
+      (o) => o[0] === "eq" && o[1] === "updated_at" && o[2] === action.anterior.updated_at,
+    ),
+  );
+  assert.deepEqual(operations.find((o) => o[0] === "update")[1], { due_date: "2026-12-10" });
+  response = { data: [], error: null };
+  await assert.rejects(
+    () => actions.applyAssistantAction(db, action, access.CHATGPT_OWNER_ID, now),
+    /mudou/,
+  );
+  operations.length = 0;
+  await assert.rejects(
+    () =>
+      actions.applyAssistantAction(
+        db,
+        { ...action, expiresAt: now - 1 },
+        access.CHATGPT_OWNER_ID,
+        now,
+      ),
+    /expirou/,
+  );
+  assert.equal(operations.length, 0);
+  response = { data: [{ id: cycleId }], error: null };
+  const create = {
+    version: 1,
+    requestId: cycleId,
+    expiresAt: now + 10000,
+    pedido: {
+      tipo: "criar_conta",
+      natureza: "receivable",
+      descricao: "Receita",
+      valor_centavos: 12345,
+      vencimento: "2026-12-10",
+    },
+  };
+  await actions.applyAssistantAction(db, create, access.CHATGPT_OWNER_ID, now);
+  assert.equal(operations.find((o) => o[0] === "insert")[1].id, cycleId);
+  assert.equal(operations.find((o) => o[0] === "insert")[1].settled_on, null);
+  response = { data: null, error: { code: "23505" } };
+  await assert.rejects(
+    () => actions.applyAssistantAction(db, create, access.CHATGPT_OWNER_ID, now),
+    /já foi salva/,
+  );
+});
+test("cálculo compartilhado abate sucata e ignora movimentação sem confirmação", () => {
+  const result = model.buildBillingFlowEntries({
+    cycles: [baseCycle],
+    clients: [],
+    companies: [],
+    branches: [],
+    catalog: [],
+    residues: [{ id: "scrap", name: "Sucata", jacoby_pays_client: true }],
+    services: [],
+    commissions: [],
+    placements: [],
+    movements: [
+      { cycle_id: cycleId, confirmed: true, weight_kg: 100, treatment_rate: 2 },
+      {
+        cycle_id: cycleId,
+        confirmed: true,
+        weight_kg: 10,
+        treatment_rate: 3,
+        waste_residue_id: "scrap",
+      },
+      { cycle_id: cycleId, confirmed: false, weight_kg: 9999, treatment_rate: 99 },
+    ],
+    directServices: [],
+    tracking: [],
+    notes: [],
+    links: [],
+  });
+  assert.equal(result.find((e) => e.category === "treatment").baseAmount, 170);
 });

@@ -104,3 +104,20 @@ O plugin ativo é **Jacoby Assistente**, instalado na conta Plus reinan3323. O p
 - Nenhum BM, cliente ou tarefa foi criado, alterado ou excluído pelos testes. Mudanças externas ficaram restritas à publicação, configuração OAuth e consentimentos autorizados.
 
 O atalho para o aplicativo desktop usa o formato documentado; o fluxo de consulta pelo plugin no navegador e o retorno do rascunho foram verificados. A abertura pelo atalho desktop ainda precisa ser conferida no computador da usuária. O piloto não oferece alterações autônomas de registros: a tarefa precisa ser revisada e salva na Jacoby.
+
+## Ampliação local: visão entre módulos e ações revisadas
+
+Esta ampliação ainda não foi publicada nem importada no plugin. O piloto em produção continua com as seis ferramentas iniciais até a atualização da aplicação e da descoberta no ChatGPT.
+
+A versão local adiciona seis ferramentas:
+
+- `mapa_sistema`: catálogo de 20 áreas/fontes e conexões entre cadastros, configuração, BM, Faturamento, recebíveis, contas, processos e ISO. Expõe os filtros aceitos por área.
+- `buscar_registros`: consulta paginada e com seleção explícita de campos para clientes, filiais, terceirizadas, resíduos, equipamentos, serviços, tarefas, modelos, documentos, contas manuais, centros, bancos, cartões, compras, recorrências e configurações de comissão. Ativos por padrão; excluídos ficam fora. Não lê o conteúdo dos arquivos nem dados de autenticação.
+- `consultar_fluxo_bm`: cruza um BM com operação, serviços, notas anexadas, comissões, conferência salva e recebíveis derivados. `buildBillingFlowEntries` foi extraído do hook original e é usado tanto pelas telas quanto pelo servidor; `toReceivable` e `summarizeReceivables` também são compartilhados. Não associa contas manuais a um BM por semelhança de texto. Se há múltiplos BMs, exige escolha por UUID. Se uma fonte falha ou ultrapassa 1.000 registros, informa incompletude e omite os totais. Lê blocos de 500 para detectar a existência do registro 1.001 sem depender de `max_rows` do PostgREST. A leitura não é um snapshot transacional.
+- `consultar_processo`: tarefa, subtarefas paginadas, status, coluna e responsável.
+- `consultar_iso`: usa somente `iso_open_workspace`, uma RPC de leitura com controle próprio de acesso. Lista auditorias e consulta planos, não conformidades, evidências e perguntas da auditoria escolhida.
+- `preparar_acao`: propõe edição de título/prazo/prioridade de tarefa ou criação de conta manual a pagar/receber. Não escreve pelo MCP. A confirmação ocorre na Jacoby, mostrando campos atuais e propostos. Usa sessão e RLS do usuário, validade de 20 minutos, versão `updated_at` na edição e UUID estável na criação para evitar duplicidade da mesma proposta. Não altera descrição, responsável ou conclusão de tarefa, nem executa baixa ou pagamento. Valores monetários da proposta e contas manuais são centavos inteiros; no cruzamento do Faturamento são reais (BRL).
+
+A interface de revisão exige marcar que os dados foram conferidos antes de habilitar “Confirmar e salvar na Jacoby”. Para mudar a proposta, a usuária retorna à conversa. A execução das alterações foi validada com banco simulado; os testes não criaram contas nem modificaram tarefas reais. A inspeção visual local depende de login na aba localhost. Não considerar essa etapa como validada somente pelo build.
+
+A implantação amplia o conjunto de dados que o ChatGPT pode receber, incluindo informações financeiras e ISO. Antes de atualizar as ferramentas no plugin real, apresentar essa ampliação para confirmação. A restrição de conta continua Juliana em produção e Reinan adicional somente no desenvolvimento. Não há chave ou chamada à API de modelos de IA.

@@ -1,3 +1,5 @@
+import { normalizeAssistantAction } from "@/lib/chatgpt-actions";
+import { AssistantActionReview } from "@/components/AssistantActionReview";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,13 +34,14 @@ import { TaskDialog } from "@/components/TaskDialog";
 export const Route = createFileRoute("/_app/integracoes-chatgpt")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { authorization_id?: string; rascunho?: string } => ({
+  ): { authorization_id?: string; rascunho?: string; acao?: string } => ({
     authorization_id:
       typeof search.authorization_id === "string" &&
       /^[a-zA-Z0-9_-]{1,200}$/.test(search.authorization_id)
         ? search.authorization_id
         : undefined,
     rascunho: normalizeChatGptDraftSearch(search.rascunho),
+    acao: normalizeAssistantAction(search.acao),
   }),
   component: ChatGptConnection,
 });
@@ -60,7 +63,7 @@ function ChatGptConnection() {
 }
 function ConnectionDetails() {
   const { user } = useAuth();
-  const { authorization_id, rascunho } = Route.useSearch();
+  const { authorization_id, rascunho, acao } = Route.useSearch();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -173,7 +176,7 @@ function ConnectionDetails() {
           <p className="text-sm text-primary">Assistente da Juliana</p>
           <h1 className="text-2xl font-semibold">Pergunte ao assistente de IA</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Consulte o sistema, entenda os fluxos e prepare tarefas pela conversa.
+            Cruze informações entre as áreas, entenda os fluxos e prepare ações para confirmar aqui.
           </p>
         </div>
       </header>
@@ -437,6 +440,7 @@ function ConnectionDetails() {
           ))}
         </Card>
       )}
+      {acao && <AssistantActionReview key={acao} value={acao} />}
       {rascunho && (
         <Card className="space-y-3 p-5">
           <h2 className="font-semibold">Revisar tarefa preparada</h2>
