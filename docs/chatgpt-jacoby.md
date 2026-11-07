@@ -89,3 +89,7 @@ Referência do atalho https://learn.chatgpt.com/docs/reference/commands#start-a-
 OAuth Server foi ativado no projeto Jacoby, com registro dinâmico desativado. O Site URL agora usa o domínio atual, preservando o endereço legado em retornos permitidos. O cliente dedicado do piloto foi criado com PKCE e método `none`. A conta ChatGPT do teste foi alterada pelo usuário para `reinan3323`; a autorização na Jacoby permanece exclusivamente vinculada à Juliana. Houve consentimento real confirmado no banco.
 
 A primeira tentativa de conversa revelou uma lista vazia de ferramentas. A integração não deve ser considerada concluída somente pelo consentimento ou pelo build. O teste de consulta, a atualização da descoberta no ChatGPT e a revogação real precisam ser confirmados antes da entrega operacional. O servidor usa o bearer explícito para consultar grants, pois a API de grants do SDK exige sessão persistida, ausente em endpoints stateless.
+
+### Validação real do piloto
+
+O plugin ativo é **Jacoby Assistente**, instalado na conta Plus reinan3323. O plugin inicial ficou identificado como **Jacoby — teste anterior** e não deve ser usado. O identificador do plugin ativo foi configurado na Vercel. A descoberta estática mostrou as seis ferramentas e a execução via conversa identificou `jacoby@master.com` e encontrou o BM 211, sem alterações de cadastro. A busca usa primeira página 1; aceita 0 como compatibilidade. A tela de consentimento foi movida para o início para que o botão de retorno fique visível.

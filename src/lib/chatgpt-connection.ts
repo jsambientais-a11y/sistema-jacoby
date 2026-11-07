@@ -64,3 +64,12 @@ export function buildJacobyAssistantLink(pluginId: string | undefined, prompt: s
   if (!message || message.length > 2000) return null;
   return `codex://new?prompt=${encodeURIComponent(`[@Jacoby](plugin://${pluginId}) ${message}`)}`;
 }
+
+// TanStack decodes JSON-valued query parameters before validateSearch runs.
+export function normalizeChatGptDraftSearch(value: unknown): string | undefined {
+  if (typeof value === "string") return parseChatGptDraft(value) ? value : undefined;
+  const parsed = chatGptTaskDraftSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const encoded = JSON.stringify(parsed.data);
+  return encoded.length <= 2500 ? encoded : undefined;
+}

@@ -22,6 +22,7 @@ import {
   canManageChatGpt,
   isChatGptCallback,
   parseChatGptDraft,
+  normalizeChatGptDraftSearch,
 } from "@/lib/chatgpt-connection";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,10 +38,7 @@ export const Route = createFileRoute("/_app/integracoes-chatgpt")({
       /^[a-zA-Z0-9_-]{1,200}$/.test(search.authorization_id)
         ? search.authorization_id
         : undefined,
-    rascunho:
-      typeof search.rascunho === "string" && search.rascunho.length <= 2500
-        ? search.rascunho
-        : undefined,
+    rascunho: normalizeChatGptDraftSearch(search.rascunho),
   }),
   component: ChatGptConnection,
 });

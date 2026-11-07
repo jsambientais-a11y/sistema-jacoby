@@ -354,3 +354,14 @@ test("primeira página começa em 1 e não ignora o primeiro BM", async () => {
     );
   }
 });
+
+test("rascunho sobrevive ao parser JSON de busca do TanStack", () => {
+  const draft = { title: "Teste de revisão", dueDate: "2026-11-10", priority: "medium" };
+  assert.equal(access.normalizeChatGptDraftSearch(draft), JSON.stringify(draft));
+  assert.equal(access.normalizeChatGptDraftSearch(JSON.stringify(draft)), JSON.stringify(draft));
+  assert.equal(
+    access.normalizeChatGptDraftSearch({ title: "Teste", assigneeId: "other" }),
+    undefined,
+  );
+  assert.equal(access.normalizeChatGptDraftSearch(undefined), undefined);
+});
