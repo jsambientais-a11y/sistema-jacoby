@@ -2,6 +2,8 @@
  * Moldura compartilhada das telas internas: menu, identidade Jacoby, tema e notificações.
  * Não contém regras de uma tela específica; novas áreas devem ser adicionadas em `allNav`.
  */
+import { canManageChatGpt } from "@/lib/chatgpt-connection";
+import { Bot } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { usePayableAlerts } from "@/hooks/use-payable-alerts";
 import { seesPayableAlerts } from "@/lib/finance-access";
@@ -63,6 +65,7 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
   permission?: string;
+  chatGptOnly?: boolean;
   tab?: "faturamento2" | "configuracoes";
 };
 const allNav: readonly NavItem[] = [
@@ -90,6 +93,7 @@ const allNav: readonly NavItem[] = [
   },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
   { to: "/trash", label: "Lixeira", icon: Trash2, permission: "trash" },
+  { to: "/integracoes-chatgpt", label: "Assistente IA", icon: Bot, chatGptOnly: true },
   { to: "/settings", label: "Personalizar", icon: Settings, permission: "settings" },
 ] as const;
 
@@ -99,6 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const visibleItems = allNav.filter(
       (item) =>
         (!item.adminOnly || isAdmin) &&
+        (!item.chatGptOnly || canManageChatGpt(user?.id, isAdmin, isClient, import.meta.env.DEV)) &&
         (item.to === "/portal"
           ? isClient || hasPermission("portal_units") || hasPermission("portal_reports")
           : !item.permission || hasPermission(item.permission)),

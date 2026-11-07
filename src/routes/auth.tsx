@@ -13,11 +13,15 @@ import jacobyLogoTransparent from "@/assets/jacoby-logo.svg";
 import jacobyLogoDark from "@/assets/jacoby-logo-dark.svg";
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: (search: Record<string, unknown>): { autorizacao?: string } => ({
+    autorizacao: typeof search.autorizacao === "string" && /^[a-zA-Z0-9_-]{1,200}$/.test(search.autorizacao) ? search.autorizacao : undefined,
+  }),
   component: AuthPage,
 });
 
 function AuthPage() {
   const navigate = useNavigate();
+  const { autorizacao } = Route.useSearch();
   const { user } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">(() => isStaticPreview && !hasLocalPreviewAccounts() ? "signup" : "signin");
   const [email, setEmail] = useState("");
@@ -29,8 +33,11 @@ function AuthPage() {
   const authRedirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
 
   useEffect(() => {
-    if (user) navigate({ to: "/dashboard", replace: true });
-  }, [user, navigate]);
+    if (user) {
+      if (autorizacao) void navigate({ to: "/integracoes-chatgpt", search: { authorization_id: autorizacao }, replace: true });
+      else void navigate({ to: "/dashboard", replace: true });
+    }
+  }, [user, navigate, autorizacao]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_app")({
 
 function AppLayout() {
   const { user, loading, isClient, hasPermission } = useAuth();
-  const search = useRouterState({ select: (state) => state.location.search }) as { aba?: string };
+  const search = useRouterState({ select: (state) => state.location.search }) as { aba?: string; authorization_id?: string };
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isIso = pathname === "/iso" || pathname.startsWith("/iso/");
   // A prévia ISO usa apenas dados deste navegador. Deixe-a acessível no Vite
@@ -30,7 +30,7 @@ function AppLayout() {
       </div>
     );
   }
-  if (!user) return <Navigate to="/auth" />;
+  if (!user) return <Navigate to="/auth" search={{ autorizacao: pathname === "/integracoes-chatgpt" ? search.authorization_id : undefined }} />;
   // O cliente começa pela consulta operacional e navega somente nas áreas do portal.
   if (isClient && !pathname.startsWith("/portal/"))
     return <Navigate to="/portal/movimentacoes" replace />;

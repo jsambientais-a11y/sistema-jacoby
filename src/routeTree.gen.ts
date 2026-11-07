@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known.oauth-protected-resource'
 import { Route as AppBancosRouteImport } from './routes/_app/bancos'
 import { Route as AppCalendarioRouteImport } from './routes/_app/calendario'
 import { Route as AppCartoesRouteImport } from './routes/_app/cartoes'
@@ -23,6 +24,7 @@ import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppDespesasRecorrentesRouteImport } from './routes/_app/despesas-recorrentes'
 import { Route as AppFinanceiroRouteImport } from './routes/_app/financeiro'
 import { Route as AppImportAtaRouteImport } from './routes/_app/import-ata'
+import { Route as AppIntegracoesChatgptRouteImport } from './routes/_app/integracoes-chatgpt'
 import { Route as AppIsoRouteImport } from './routes/_app/iso'
 import { Route as AppNotesRouteImport } from './routes/_app/notes'
 import { Route as AppRelatoriosFinanceirosRouteImport } from './routes/_app/relatorios-financeiros'
@@ -33,6 +35,7 @@ import { Route as AppTasksRouteImport } from './routes/_app/tasks'
 import { Route as AppTerceirizadosRouteImport } from './routes/_app/terceirizados'
 import { Route as AppTrashRouteImport } from './routes/_app/trash'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
+import { Route as DotwellKnownOauthProtectedResourceSplatRouteImport } from './routes/[.]well-known.oauth-protected-resource.$'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
 import { Route as AppClientsIndexRouteImport } from './routes/_app/clients.index'
 import { Route as AppClientsNewRouteImport } from './routes/_app/clients.new'
@@ -60,6 +63,7 @@ import { Route as AppTasksIndexRouteImport } from './routes/_app/tasks.index'
 import { Route as AppTasksCalendarRouteImport } from './routes/_app/tasks.calendar'
 import { Route as AppTasksKanbanRouteImport } from './routes/_app/tasks.kanban'
 import { Route as AppTasksListRouteImport } from './routes/_app/tasks.list'
+import { Route as ApiChatgptSplatRouteImport } from './routes/api.chatgpt.$'
 import { Route as AppClientsClientIdEditRouteImport } from './routes/_app/clients.$clientId.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -76,6 +80,12 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownOauthProtectedResourceRoute =
+  DotwellKnownOauthProtectedResourceRouteImport.update({
+    id: '/.well-known/oauth-protected-resource',
+    path: '/.well-known/oauth-protected-resource',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AppBancosRoute = AppBancosRouteImport.update({
   id: '/bancos',
   path: '/bancos',
@@ -131,6 +141,11 @@ const AppImportAtaRoute = AppImportAtaRouteImport.update({
   path: '/import-ata',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIntegracoesChatgptRoute = AppIntegracoesChatgptRouteImport.update({
+  id: '/integracoes-chatgpt',
+  path: '/integracoes-chatgpt',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppIsoRoute = AppIsoRouteImport.update({
   id: '/iso',
   path: '/iso',
@@ -182,6 +197,12 @@ const AppUsersRoute = AppUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AppRoute,
 } as any)
+const DotwellKnownOauthProtectedResourceSplatRoute =
+  DotwellKnownOauthProtectedResourceSplatRouteImport.update({
+    id: '/$',
+    path: '/$',
+    getParentRoute: () => DotwellKnownOauthProtectedResourceRoute,
+  } as any)
 const AppClientReportClientIdRoute = AppClientReportClientIdRouteImport.update({
   id: '/client-report/$clientId',
   path: '/client-report/$clientId',
@@ -317,6 +338,11 @@ const AppTasksListRoute = AppTasksListRouteImport.update({
   path: '/list',
   getParentRoute: () => AppTasksRoute,
 } as any)
+const ApiChatgptSplatRoute = ApiChatgptSplatRouteImport.update({
+  id: '/api/chatgpt/$',
+  path: '/api/chatgpt/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppClientsClientIdEditRoute = AppClientsClientIdEditRouteImport.update({
   id: '/$clientId/edit',
   path: '/$clientId/edit',
@@ -326,6 +352,7 @@ const AppClientsClientIdEditRoute = AppClientsClientIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/bancos': typeof AppBancosRoute
   '/calendario': typeof AppCalendarioRoute
   '/cartoes': typeof AppCartoesRoute
@@ -337,6 +364,7 @@ export interface FileRoutesByFullPath {
   '/despesas-recorrentes': typeof AppDespesasRecorrentesRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/import-ata': typeof AppImportAtaRoute
+  '/integracoes-chatgpt': typeof AppIntegracoesChatgptRoute
   '/iso': typeof AppIsoRouteWithChildren
   '/notes': typeof AppNotesRoute
   '/relatorios-financeiros': typeof AppRelatoriosFinanceirosRoute
@@ -347,6 +375,7 @@ export interface FileRoutesByFullPath {
   '/terceirizados': typeof AppTerceirizadosRoute
   '/trash': typeof AppTrashRoute
   '/users': typeof AppUsersRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
   '/iso/biblioteca': typeof AppIsoBibliotecaRoute
@@ -372,6 +401,7 @@ export interface FileRoutesByFullPath {
   '/tasks/calendar': typeof AppTasksCalendarRoute
   '/tasks/kanban': typeof AppTasksKanbanRoute
   '/tasks/list': typeof AppTasksListRoute
+  '/api/chatgpt/$': typeof ApiChatgptSplatRoute
   '/clients/': typeof AppClientsIndexRoute
   '/tasks/': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
@@ -379,6 +409,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/bancos': typeof AppBancosRoute
   '/calendario': typeof AppCalendarioRoute
   '/cartoes': typeof AppCartoesRoute
@@ -389,6 +420,7 @@ export interface FileRoutesByTo {
   '/despesas-recorrentes': typeof AppDespesasRecorrentesRoute
   '/financeiro': typeof AppFinanceiroRoute
   '/import-ata': typeof AppImportAtaRoute
+  '/integracoes-chatgpt': typeof AppIntegracoesChatgptRoute
   '/iso': typeof AppIsoRouteWithChildren
   '/notes': typeof AppNotesRoute
   '/relatorios-financeiros': typeof AppRelatoriosFinanceirosRoute
@@ -398,6 +430,7 @@ export interface FileRoutesByTo {
   '/terceirizados': typeof AppTerceirizadosRoute
   '/trash': typeof AppTrashRoute
   '/users': typeof AppUsersRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
   '/iso/biblioteca': typeof AppIsoBibliotecaRoute
@@ -423,6 +456,7 @@ export interface FileRoutesByTo {
   '/tasks/calendar': typeof AppTasksCalendarRoute
   '/tasks/kanban': typeof AppTasksKanbanRoute
   '/tasks/list': typeof AppTasksListRoute
+  '/api/chatgpt/$': typeof ApiChatgptSplatRoute
   '/clients': typeof AppClientsIndexRoute
   '/tasks': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
@@ -432,6 +466,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
   '/_app/bancos': typeof AppBancosRoute
   '/_app/calendario': typeof AppCalendarioRoute
   '/_app/cartoes': typeof AppCartoesRoute
@@ -443,6 +478,7 @@ export interface FileRoutesById {
   '/_app/despesas-recorrentes': typeof AppDespesasRecorrentesRoute
   '/_app/financeiro': typeof AppFinanceiroRoute
   '/_app/import-ata': typeof AppImportAtaRoute
+  '/_app/integracoes-chatgpt': typeof AppIntegracoesChatgptRoute
   '/_app/iso': typeof AppIsoRouteWithChildren
   '/_app/notes': typeof AppNotesRoute
   '/_app/relatorios-financeiros': typeof AppRelatoriosFinanceirosRoute
@@ -453,6 +489,7 @@ export interface FileRoutesById {
   '/_app/terceirizados': typeof AppTerceirizadosRoute
   '/_app/trash': typeof AppTrashRoute
   '/_app/users': typeof AppUsersRoute
+  '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/_app/clients/new': typeof AppClientsNewRoute
   '/_app/iso/biblioteca': typeof AppIsoBibliotecaRoute
@@ -478,6 +515,7 @@ export interface FileRoutesById {
   '/_app/tasks/calendar': typeof AppTasksCalendarRoute
   '/_app/tasks/kanban': typeof AppTasksKanbanRoute
   '/_app/tasks/list': typeof AppTasksListRoute
+  '/api/chatgpt/$': typeof ApiChatgptSplatRoute
   '/_app/clients/': typeof AppClientsIndexRoute
   '/_app/tasks/': typeof AppTasksIndexRoute
   '/_app/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
@@ -487,6 +525,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/.well-known/oauth-protected-resource'
     | '/bancos'
     | '/calendario'
     | '/cartoes'
@@ -498,6 +537,7 @@ export interface FileRouteTypes {
     | '/despesas-recorrentes'
     | '/financeiro'
     | '/import-ata'
+    | '/integracoes-chatgpt'
     | '/iso'
     | '/notes'
     | '/relatorios-financeiros'
@@ -508,6 +548,7 @@ export interface FileRouteTypes {
     | '/terceirizados'
     | '/trash'
     | '/users'
+    | '/.well-known/oauth-protected-resource/$'
     | '/client-report/$clientId'
     | '/clients/new'
     | '/iso/biblioteca'
@@ -533,6 +574,7 @@ export interface FileRouteTypes {
     | '/tasks/calendar'
     | '/tasks/kanban'
     | '/tasks/list'
+    | '/api/chatgpt/$'
     | '/clients/'
     | '/tasks/'
     | '/clients/$clientId/edit'
@@ -540,6 +582,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/.well-known/oauth-protected-resource'
     | '/bancos'
     | '/calendario'
     | '/cartoes'
@@ -550,6 +593,7 @@ export interface FileRouteTypes {
     | '/despesas-recorrentes'
     | '/financeiro'
     | '/import-ata'
+    | '/integracoes-chatgpt'
     | '/iso'
     | '/notes'
     | '/relatorios-financeiros'
@@ -559,6 +603,7 @@ export interface FileRouteTypes {
     | '/terceirizados'
     | '/trash'
     | '/users'
+    | '/.well-known/oauth-protected-resource/$'
     | '/client-report/$clientId'
     | '/clients/new'
     | '/iso/biblioteca'
@@ -584,6 +629,7 @@ export interface FileRouteTypes {
     | '/tasks/calendar'
     | '/tasks/kanban'
     | '/tasks/list'
+    | '/api/chatgpt/$'
     | '/clients'
     | '/tasks'
     | '/clients/$clientId/edit'
@@ -592,6 +638,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/auth'
+    | '/.well-known/oauth-protected-resource'
     | '/_app/bancos'
     | '/_app/calendario'
     | '/_app/cartoes'
@@ -603,6 +650,7 @@ export interface FileRouteTypes {
     | '/_app/despesas-recorrentes'
     | '/_app/financeiro'
     | '/_app/import-ata'
+    | '/_app/integracoes-chatgpt'
     | '/_app/iso'
     | '/_app/notes'
     | '/_app/relatorios-financeiros'
@@ -613,6 +661,7 @@ export interface FileRouteTypes {
     | '/_app/terceirizados'
     | '/_app/trash'
     | '/_app/users'
+    | '/.well-known/oauth-protected-resource/$'
     | '/_app/client-report/$clientId'
     | '/_app/clients/new'
     | '/_app/iso/biblioteca'
@@ -638,6 +687,7 @@ export interface FileRouteTypes {
     | '/_app/tasks/calendar'
     | '/_app/tasks/kanban'
     | '/_app/tasks/list'
+    | '/api/chatgpt/$'
     | '/_app/clients/'
     | '/_app/tasks/'
     | '/_app/clients/$clientId/edit'
@@ -647,6 +697,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
+  DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  ApiChatgptSplatRoute: typeof ApiChatgptSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -670,6 +722,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-protected-resource': {
+      id: '/.well-known/oauth-protected-resource'
+      path: '/.well-known/oauth-protected-resource'
+      fullPath: '/.well-known/oauth-protected-resource'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/bancos': {
@@ -749,6 +808,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppImportAtaRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/integracoes-chatgpt': {
+      id: '/_app/integracoes-chatgpt'
+      path: '/integracoes-chatgpt'
+      fullPath: '/integracoes-chatgpt'
+      preLoaderRoute: typeof AppIntegracoesChatgptRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/iso': {
       id: '/_app/iso'
       path: '/iso'
@@ -818,6 +884,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/users'
       preLoaderRoute: typeof AppUsersRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/.well-known/oauth-protected-resource/$': {
+      id: '/.well-known/oauth-protected-resource/$'
+      path: '/$'
+      fullPath: '/.well-known/oauth-protected-resource/$'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceSplatRouteImport
+      parentRoute: typeof DotwellKnownOauthProtectedResourceRoute
     }
     '/_app/client-report/$clientId': {
       id: '/_app/client-report/$clientId'
@@ -1008,6 +1081,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTasksListRouteImport
       parentRoute: typeof AppTasksRoute
     }
+    '/api/chatgpt/$': {
+      id: '/api/chatgpt/$'
+      path: '/api/chatgpt/$'
+      fullPath: '/api/chatgpt/$'
+      preLoaderRoute: typeof ApiChatgptSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/clients/$clientId/edit': {
       id: '/_app/clients/$clientId/edit'
       path: '/$clientId/edit'
@@ -1095,6 +1175,7 @@ interface AppRouteChildren {
   AppDespesasRecorrentesRoute: typeof AppDespesasRecorrentesRoute
   AppFinanceiroRoute: typeof AppFinanceiroRoute
   AppImportAtaRoute: typeof AppImportAtaRoute
+  AppIntegracoesChatgptRoute: typeof AppIntegracoesChatgptRoute
   AppIsoRoute: typeof AppIsoRouteWithChildren
   AppNotesRoute: typeof AppNotesRoute
   AppRelatoriosFinanceirosRoute: typeof AppRelatoriosFinanceirosRoute
@@ -1129,6 +1210,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDespesasRecorrentesRoute: AppDespesasRecorrentesRoute,
   AppFinanceiroRoute: AppFinanceiroRoute,
   AppImportAtaRoute: AppImportAtaRoute,
+  AppIntegracoesChatgptRoute: AppIntegracoesChatgptRoute,
   AppIsoRoute: AppIsoRouteWithChildren,
   AppNotesRoute: AppNotesRoute,
   AppRelatoriosFinanceirosRoute: AppRelatoriosFinanceirosRoute,
@@ -1153,10 +1235,28 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface DotwellKnownOauthProtectedResourceRouteChildren {
+  DotwellKnownOauthProtectedResourceSplatRoute: typeof DotwellKnownOauthProtectedResourceSplatRoute
+}
+
+const DotwellKnownOauthProtectedResourceRouteChildren: DotwellKnownOauthProtectedResourceRouteChildren =
+  {
+    DotwellKnownOauthProtectedResourceSplatRoute:
+      DotwellKnownOauthProtectedResourceSplatRoute,
+  }
+
+const DotwellKnownOauthProtectedResourceRouteWithChildren =
+  DotwellKnownOauthProtectedResourceRoute._addFileChildren(
+    DotwellKnownOauthProtectedResourceRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
+  DotwellKnownOauthProtectedResourceRoute:
+    DotwellKnownOauthProtectedResourceRouteWithChildren,
+  ApiChatgptSplatRoute: ApiChatgptSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

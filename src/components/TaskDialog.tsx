@@ -26,11 +26,14 @@ import { SaveProcessTemplate } from "@/components/SaveProcessTemplate";
 import { useProcessTemplates } from "@/hooks/use-process-templates";
 import { instantiateProcessSteps, type ProcessTemplate } from "@/lib/task-process-templates";
 
+import type { ChatGptTaskDraft } from "@/lib/chatgpt-connection";
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   task?: Task | null;
   initialTemplate?: ProcessTemplate | null;
+  initialDraft?: ChatGptTaskDraft | null;
   defaultColumnId?: string | null;
 }
 
@@ -46,7 +49,7 @@ const normalizeDueTime = (time: string | null) => time?.slice(0, 5) ?? "";
 interface Attachment { id: string; file_name: string; storage_path: string; mime_type: string | null; size_bytes: number | null; }
 const LINK_MIME = "text/uri-list";
 
-export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialTemplate }: Props) {
+export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialTemplate, initialDraft }: Props) {
   const qc = useQueryClient();
   const { user, isAdmin } = useAuth();
   const { data: cols } = useColumns();
@@ -148,8 +151,14 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
       setRecurrenceOffsets({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 });
     }
     if (!task && initialTemplate) applyTemplate(initialTemplate);
+    if (!task && !initialTemplate && initialDraft) {
+      setTitle(initialDraft.title);
+      setClientId(initialDraft.clientId ?? "");
+      setDueDate(initialDraft.dueDate ?? "");
+      setPriority(initialDraft.priority);
+    }
 
-  }, [open, task, defaultColumnId, initialTemplate]);
+  }, [open, task, defaultColumnId, initialTemplate, initialDraft]);
 
   const loadRelated = async (taskId: string) => {
     const [s, c, a] = await Promise.all([

@@ -1,1 +1,11 @@
 project_id = "ikdmfungulmgwvknramd"
+
+[auth]
+site_url = "https://gestao.jacobysolucoesambientais.com.br"
+additional_redirect_urls = ["https://ragcodebr.github.io/sistema-jacoby/"]
+
+# Conector privado da Jacoby. Autorizações passam pela tela da Juliana.
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/integracoes-chatgpt"
+allow_dynamic_registration = false
