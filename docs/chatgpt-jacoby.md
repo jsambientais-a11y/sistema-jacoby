@@ -2,7 +2,7 @@
 
 ## Estado desta implementação
 
-Código local, desligado por padrão. A conta Plus do Reinan exibiu o formulário de conexão MCP com OAuth no navegador em 07/11/2026. O endpoint de descoberta do Supabase Jacoby retornou `feature_disabled` (OAuth Server desativado). Não há conexão real ativa enquanto os passos de ativação abaixo não forem concluídos. Não foram usados créditos nem chaves da API de IA.
+Implementação desligada por padrão até configuração explícita. A conta Plus do Reinan exibiu o formulário de conexão MCP com OAuth no navegador em 07/11/2026. O endpoint de descoberta do Supabase Jacoby retornou `feature_disabled` (OAuth Server desativado). Não há conexão real ativa enquanto os passos de ativação abaixo não forem concluídos. Não foram usados créditos nem chaves da API de IA.
 
 ## Funcionamento
 
@@ -15,7 +15,7 @@ A tela `/integracoes-chatgpt` gerencia a conexão e também recebe `authorizatio
 - Publicação: somente Juliana, UUID `b2f6e43d-ce24-4de2-a770-0548793cc180`, admin ativo e sem papel cliente.
 - Desenvolvimento: o mesmo acesso, mais o UUID do Reinan `9f04a62f-dba4-4cbb-918d-96e848ab0c16` para teste. O build de produção não inclui esse bypass.
 - A regra vale na navegação, na tela e no endpoint MCP. Outro administrador também é recusado.
-- O endpoint verifica o usuário com Supabase Auth, papel atual, conta ativa, emissor, expiração, `client_id` dedicado e grant ainda existente. Não aceita tokens de sessão comuns no MCP.
+- A execução das ferramentas verifica o usuário com Supabase Auth, papel atual, conta ativa, emissor, expiração, `client_id` dedicado e grant ainda existente. A inicialização MCP e a lista estática de ferramentas são públicas para a descoberta do plugin; não acessam tabelas nem retornam dados de clientes. Não aceita tokens de sessão comuns no MCP.
 - As consultas usam a chave publicável e o token do próprio usuário, preservando RLS. Nenhuma service role nem ferramenta de SQL livre.
 - A UI lista e revoga somente grants dos client IDs dedicados ao conector, preservando outros aplicativos.
 
@@ -83,3 +83,9 @@ Depois de criar o plugin, configurar seu identificador real no servidor como `CH
 Esse atalho requer o aplicativo compatível no computador da usuária. Para uso exclusivamente no navegador, o fluxo suportado nesta implementação é abrir Plugins, selecionar Jacoby e iniciar a conversa por lá. Um atalho web direto com plugin pré-selecionado ainda precisa de validação no plugin real, sem inventar parâmetros de URL não documentados.
 
 Referência do atalho https://learn.chatgpt.com/docs/reference/commands#start-a-chat-with-a-plugin
+
+## Piloto publicado em 07/11/2026
+
+OAuth Server foi ativado no projeto Jacoby, com registro dinâmico desativado. O Site URL agora usa o domínio atual, preservando o endereço legado em retornos permitidos. O cliente dedicado do piloto foi criado com PKCE e método `none`. A conta ChatGPT do teste foi alterada pelo usuário para `reinan3323`; a autorização na Jacoby permanece exclusivamente vinculada à Juliana. Houve consentimento real confirmado no banco.
+
+A primeira tentativa de conversa revelou uma lista vazia de ferramentas. A integração não deve ser considerada concluída somente pelo consentimento ou pelo build. O teste de consulta, a atualização da descoberta no ChatGPT e a revogação real precisam ser confirmados antes da entrega operacional. O servidor usa o bearer explícito para consultar grants, pois a API de grants do SDK exige sessão persistida, ausente em endpoints stateless.

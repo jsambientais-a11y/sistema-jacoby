@@ -115,7 +115,12 @@ function fixture({
   };
 }
 function req(
-  body = { jsonrpc: "2.0", id: 1, method: "tools/list" },
+  body = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: "identificar_acesso", arguments: {} },
+  },
   { path = "mcp", token = jwt(), headers = {}, method = "POST", raw } = {},
 ) {
   return new Request(`${cfg.origin}/api/chatgpt/${path}`, {
@@ -178,7 +183,7 @@ test("descoberta informa recurso fixo, sem confiar em Host do pedido", async () 
 });
 test("sem token ou sessão verificada não consulta nenhuma tabela", async () => {
   let f = fixture();
-  let res = await f.handle(req(null, { token: null }));
+  let res = await f.handle(req(undefined, { token: null }));
   assert.equal(res.status, 401);
   assert.match(res.headers.get("www-authenticate"), /resource_metadata/);
   assert.equal(f.calls.length, 0);
@@ -239,7 +244,7 @@ test("negocia MCP e lista apenas ferramentas sem gravação ou exclusão", async
   const f = fixture();
   let response = await f.handle(req({ jsonrpc: "2.0", id: 1, method: "initialize" }));
   assert.equal((await response.json()).result.protocolVersion, "2025-03-26");
-  response = await f.handle(req());
+  response = await f.handle(req({ jsonrpc: "2.0", id: 2, method: "tools/list" }));
   const tools = (await response.json()).result.tools;
   assert.equal(tools.length, 6);
   assert.ok(tools.every((t) => t.annotations.readOnlyHint));
@@ -311,4 +316,17 @@ test("atalho abre nova conversa com o plugin explícito, sem enviar automaticame
     assert.equal(access.buildJacobyAssistantLink(plugin, "Olá"), null);
   assert.equal(access.buildJacobyAssistantLink("jacoby", ""), null);
   assert.equal(access.buildJacobyAssistantLink("jacoby", "x".repeat(2001)), null);
+});
+
+test("descoberta pública anuncia somente schemas, sem acessar tabelas; execução segue bloqueada", async () => {
+  const f = fixture();
+  const response = await f.handle(
+    req({ jsonrpc: "2.0", id: 1, method: "tools/list" }, { token: null }),
+  );
+  assert.equal(response.status, 200);
+  const tools = (await response.json()).result.tools;
+  assert.equal(tools.length, 6);
+  assert.equal(f.calls.length, 0);
+  assert.ok(tools.every((t) => t.securitySchemes[0].type === "oauth2"));
+  assert.equal((await f.handle(req(undefined, { token: null }))).status, 401);
 });
