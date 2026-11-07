@@ -2,7 +2,7 @@
 
 ## Estado desta implementação
 
-Implementação desligada por padrão até configuração explícita. A conta Plus do Reinan exibiu o formulário de conexão MCP com OAuth no navegador em 07/11/2026. O endpoint de descoberta do Supabase Jacoby retornou `feature_disabled` (OAuth Server desativado). Não há conexão real ativa enquanto os passos de ativação abaixo não forem concluídos. Não foram usados créditos nem chaves da API de IA.
+Piloto publicado e validado em 07/11/2026 na conta Plus reinan3323. OAuth Server e o cliente dedicado estão ativos no Supabase Jacoby. O acesso autorizado no sistema é o da Juliana. A configuração permanece desligada por padrão em ambientes sem ativação explícita. Não foram usados créditos nem chaves da API de IA.
 
 ## Funcionamento
 
@@ -65,7 +65,7 @@ npm run dev -- --host 127.0.0.1 --port 8080
 - `/api/chatgpt/mcp`: sem bearer retorna 401 com descoberta; desligado retorna 503 após autenticação.
 - `/integracoes-chatgpt`: estado real de ativação/grants. Nunca simula conexão bem-sucedida.
 
-Testes unitários usam identidades e dados fictícios. Build e mocks não substituem consentimento real, teste de consulta no ChatGPT e teste de revogação. A ativação OAuth e o piloto externo ainda precisam ser executados antes de considerar a integração operacional.
+Testes unitários usam identidades e dados fictícios. Build e mocks não substituem consentimento real, teste de consulta no ChatGPT e teste de revogação. O piloto externo desta publicação foi verificado conforme os resultados ao final deste documento.
 
 ## Referências
 
@@ -88,8 +88,19 @@ Referência do atalho https://learn.chatgpt.com/docs/reference/commands#start-a-
 
 OAuth Server foi ativado no projeto Jacoby, com registro dinâmico desativado. O Site URL agora usa o domínio atual, preservando o endereço legado em retornos permitidos. O cliente dedicado do piloto foi criado com PKCE e método `none`. A conta ChatGPT do teste foi alterada pelo usuário para `reinan3323`; a autorização na Jacoby permanece exclusivamente vinculada à Juliana. Houve consentimento real confirmado no banco.
 
-A primeira tentativa de conversa revelou uma lista vazia de ferramentas. A integração não deve ser considerada concluída somente pelo consentimento ou pelo build. O teste de consulta, a atualização da descoberta no ChatGPT e a revogação real precisam ser confirmados antes da entrega operacional. O servidor usa o bearer explícito para consultar grants, pois a API de grants do SDK exige sessão persistida, ausente em endpoints stateless.
+A primeira tentativa de conversa revelou uma lista vazia de ferramentas; isso foi corrigido permitindo descoberta estática pública, mantendo a execução autenticada. Consentimento ou build isolados não comprovam funcionamento. Os testes reais estão registrados abaixo. O servidor usa o bearer explícito para consultar grants, pois a API de grants do SDK exige sessão persistida, ausente em endpoints stateless.
 
 ### Validação real do piloto
 
 O plugin ativo é **Jacoby Assistente**, instalado na conta Plus reinan3323. O plugin inicial ficou identificado como **Jacoby — teste anterior** e não deve ser usado. O identificador do plugin ativo foi configurado na Vercel. A descoberta estática mostrou as seis ferramentas e a execução via conversa identificou `jacoby@master.com` e encontrou o BM 211, sem alterações de cadastro. A busca usa primeira página 1; aceita 0 como compatibilidade. A tela de consentimento foi movida para o início para que o botão de retorno fique visível.
+
+
+### Resultado final da verificação
+
+- Após reinstalação do plugin, chamadas reais de `identificar_acesso` e `buscar_boletins` com número 211 e página 1 retornaram a conta da Juliana e o BM finalizado, respectivamente. O resultado bruto da ferramenta foi conferido no ChatGPT.
+- `preparar_tarefa` gerou um link de revisão sem gravar dados. O formulário abriu com título “Teste do assistente — revisar BM 211”, prazo 10/11/2026, prioridade Média, responsável Juliana e descrição vazia. Foi fechado sem salvar.
+- A revogação na Jacoby removeu o consentimento ativo e bloqueou uma nova execução. O ChatGPT apresentou erro MCP genérico, sem instrução amigável de reconexão. A tentativa de conectar outra conta não substituiu a credencial revogada; desinstalar e reinstalar somente o plugin restabeleceu o acesso, confirmado por consulta real. Esse é o procedimento de recuperação validado neste piloto.
+- A correção de query considera a desserialização JSON feita pelo TanStack para preservar o rascunho após a normalização da URL.
+- Nenhum BM, cliente ou tarefa foi criado, alterado ou excluído pelos testes. Mudanças externas ficaram restritas à publicação, configuração OAuth e consentimentos autorizados.
+
+O atalho para o aplicativo desktop usa o formato documentado; o fluxo de consulta pelo plugin no navegador e o retorno do rascunho foram verificados. A abertura pelo atalho desktop ainda precisa ser conferida no computador da usuária. O piloto não oferece alterações autônomas de registros: a tarefa precisa ser revisada e salva na Jacoby.
