@@ -235,8 +235,14 @@ export function createChatGptHandler(options?: {
         !cfg.allowedClients.includes(claims.client_id)
       )
         return json({ error: "oauth_token_required" }, 401, challenge);
-      const grants = await db.auth.oauth.listGrants();
-      if (grants.error || !grants.data?.some((g) => g.client.id === claims.client_id))
+      // This stateless server has no persisted Auth session. Send the verified
+      // bearer explicitly; auth.oauth.listGrants() requires an in-memory session.
+      const grantsResponse = await fetcher(`${cfg.url}/auth/v1/user/oauth/grants`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: cfg.key },
+        signal: AbortSignal.timeout(8000),
+      });
+      const grants = grantsResponse.ok ? await grantsResponse.json() : null;
+      if (!Array.isArray(grants) || !grants.some((g) => g.client?.id === claims.client_id))
         return json({ error: "connection_revoked" }, 401, challenge);
       if (request.method === "GET")
         return new Response(null, { status: 405, headers: { Allow: "POST" } });

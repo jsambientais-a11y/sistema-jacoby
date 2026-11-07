@@ -62,10 +62,9 @@ function fixture({
         error: authError ? new Error("secret error") : null,
       }),
       oauth: {
-        listGrants: async () => ({
-          data: grant ? [{ client: { id: "dedicated-chatgpt" } }] : [],
-          error: null,
-        }),
+        listGrants: async () => {
+          throw Error("Stateless server must pass the bearer explicitly");
+        },
       },
     },
     from(table) {
@@ -104,7 +103,14 @@ function fixture({
       config,
       development,
       createClient: () => client,
-      fetch: async () => new Response("{}", { status: 404 }),
+      fetch: async (url, options) => {
+        if (url.endsWith("/user/oauth/grants")) {
+          assert.match(options.headers.Authorization, /^Bearer /);
+          assert.equal(options.headers.apikey, cfg.key);
+          return Response.json(grant ? [{ client: { id: "dedicated-chatgpt" } }] : []);
+        }
+        return new Response("{}", { status: 404 });
+      },
     }),
   };
 }
