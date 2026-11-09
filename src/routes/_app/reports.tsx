@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useTasks, useProfiles, useClients, useTaskStatuses } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,7 +40,7 @@ function ReportsPage() {
   const { data: profiles = [] } = useProfiles();
   const { data: clients = [] } = useClients();
   useTaskStatuses();
-  const { data: interruptions = [] } = useQuery({
+  const { data: interruptions = [] } = useQuery<Pick<Tables<"task_interruptions">, "id" | "task_id" | "user_id" | "reason" | "created_at">[]>({
     queryKey: ["task_interruptions_all"],
     queryFn: async () => {
       const { data, error } = await supabase.from("task_interruptions").select("id, task_id, user_id, reason, created_at");
@@ -55,7 +56,7 @@ function ReportsPage() {
       return data ?? [];
     },
   });
-  const { data: roles = [] } = useQuery({
+  const { data: roles = [] } = useQuery<Pick<Tables<"user_roles">, "user_id" | "role">[]>({
     queryKey: ["roles"],
     queryFn: async () => (await supabase.from("user_roles").select("user_id, role")).data ?? [],
   });

@@ -6,7 +6,8 @@ import releaseNotes from "@/lib/release-notes.json";
 import { useAuth } from "@/hooks/use-auth";
 import jacobySymbol from "@/assets/jacoby-symbol.svg";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { RefreshCw, CheckCircle2, Sparkles, Check } from "lucide-react";
+import { RefreshCw, CheckCircle2, Sparkles, Check, PlayCircle } from "lucide-react";
+import { ReleaseTutorialVideo } from "@/components/ReleaseTutorialVideo";
 import { parseAppVersion, updateReloadUrl, updateStatus, type AppVersion, type ReleaseNotes } from "@/lib/app-update";
 
 declare const __JACOBY_BUILD_ID__: string;
@@ -182,6 +183,11 @@ export function AppUpdateBanner() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
+          {detailsOpen && notes.video && <section className="mb-8 space-y-3" aria-label="Vídeo das novidades">
+            <div className="flex items-center gap-2"><PlayCircle className="h-5 w-5 text-primary" /><h3 className="font-semibold">Assista às novidades</h3></div>
+            <p className="text-sm text-muted-foreground">Tutorial narrado com legendas e exemplos ilustrativos. Use os controles para pausar, avançar ou ampliar.</p>
+            <ReleaseTutorialVideo key={notes.video.src} video={notes.video} base={base} />
+          </section>}
           {sections.length ? <div className="space-y-10">
             {sections.map((section, index) => <section key={section.title} id={`novidade-${index}`} className="scroll-mt-4 animate-in fade-in slide-in-from-bottom-2 duration-500" style={{ animationDelay: `${index * 60}ms`, animationFillMode: "both" }}>
               <div className="flex items-baseline gap-3">

@@ -37,7 +37,7 @@ function ClientDeliveriesPage() {
 
   useEffect(() => {
     if (!selectedTask) { setRequestFiles([]); return; }
-    void supabase.from("attachments").select("id,file_name,storage_path").eq("task_id", selectedTask.id).order("created_at").then(({ data, error }) => {
+    void supabase.from("attachments").select("id,file_name,storage_path").eq("task_id", selectedTask.id).order("created_at").then(({ data, error }: { data: { id: string; file_name: string; storage_path: string }[] | null; error: { message: string } | null }) => {
       if (error) return toast.error(error.message);
       setRequestFiles((data ?? []) as { id: string; file_name: string; storage_path: string }[]);
     });

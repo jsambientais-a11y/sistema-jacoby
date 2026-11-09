@@ -14,7 +14,7 @@ type Branch = {
   id: string; client_id: string; name: string; legal_name: string | null; cnpj: string | null;
   address: string | null; responsible: string | null; phone: string | null; email: string | null; is_active: boolean;
 };
-type BranchForm = Omit<Branch, "id" | "client_id">;
+type BranchForm = { [Key in keyof Omit<Branch, "id" | "client_id">]: NonNullable<Branch[Key]> };
 const blank = (): BranchForm => ({ name: "", legal_name: "", cnpj: "", address: "", responsible: "", phone: "", email: "", is_active: true });
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

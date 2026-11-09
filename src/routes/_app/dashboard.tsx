@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useClients } from "@/hooks/use-data";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { useBillingFlowData } from "@/hooks/use-billing-flow";
+import { isBillingInvoicePending } from "@/lib/billing-flow-navigation";
 
 export const Route = createFileRoute("/_app/dashboard")({ component: Dashboard });
 type Doc = { id: string; client_id: string; branch_id: string | null; title: string; file_name: string; expires_at: string | null; notify_days_before: number; active: boolean };
@@ -215,6 +217,7 @@ function Dashboard() {
         <Stat label="Movimentações sem confirmação" hint="Em boletins abertos" value={data.pending.length} icon={Truck} color="#d97706" onClick={() => openPanel("movements")} />
       </div>
     </section>}
+    {hasPermission("finance") && <DashboardMissingInvoices />}
     <Dialog open={!!current} onOpenChange={(open) => !open && setPanel(null)}>
       <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3">
         <DialogHeader><DialogTitle>{current?.title} ({current?.items.length ?? 0})</DialogTitle><DialogDescription>{current?.description} Clique em um item para abrir.</DialogDescription></DialogHeader>
@@ -232,4 +235,27 @@ function Dashboard() {
       </DialogContent>
     </Dialog>
   </div>;
+}
+
+// Mounted only for users who can access Faturamento; uses the same cached data and rule.
+function DashboardMissingInvoices() {
+  const navigate = useNavigate();
+  const flow = useBillingFlowData();
+  const queries = [flow.servicesQuery, flow.movementCommissionsQuery, flow.billingTrackingQuery,
+    flow.cyclesQuery, flow.directBillingDataQuery, flow.companiesQuery, flow.servicesCatalogQuery,
+    flow.branchesQuery, flow.residuesQuery, flow.cycleNotesQuery, flow.invoiceLinksQuery];
+  const loading = queries.some((query) => query.isLoading);
+  const failed = queries.some((query) => query.isError);
+  const issuedIds = new Set(flow.issuedBulletins.map((bulletin) => bulletin.id));
+  const missing = flow.billingFlowEntries.filter((entry) => issuedIds.has(entry.cycleId) && isBillingInvoicePending(entry));
+  const count = new Set(missing.map((entry) => entry.cycleId)).size;
+  return <section className="space-y-2">
+    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Faturamento · visão geral de todos os clientes</h2>
+    {loading || failed ? <Card className="p-4 text-sm text-muted-foreground" role="status">
+      {failed ? "Não foi possível conferir os BMs sem NF. Consulte o Faturamento." : "Conferindo BMs sem NF informada…"}
+    </Card> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Stat label="BMs sem NF informada" hint={`${missing.length} lançamento(s) para conferir`} value={count}
+        icon={FileText} color="#d97706" onClick={() => navigate({to: "/financeiro", search: {nf: "missing"}})} />
+    </div>}
+  </section>;
 }

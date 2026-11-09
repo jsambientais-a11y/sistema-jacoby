@@ -57,7 +57,12 @@ export type Cycle = {
   period_end: string;
   finalized_at: string | null;
 };
-export type BillingPlacement = { cycle_id: string; quantity: number; monthly_rental_rate: number };
+export type BillingPlacement = {
+  cycle_id: string;
+  quantity: number;
+  monthly_rental_rate: number;
+  started_on?: string | null;
+};
 export type BillingMovement = {
   cycle_id: string;
   confirmed: boolean;
@@ -73,6 +78,7 @@ export type BillingServiceAmount = {
   cycle_id: string;
   amount: number;
   waste_service_id?: string | null;
+  execution_date?: string | null;
 };
 export type MovementCommission = {
   id: string;
@@ -147,13 +153,13 @@ export function useBillingFlowData() {
     queryFn: async () => {
       const [placements, movements, services] = await Promise.all([
         (supabase.from("billing_v2_placements" as any) as any).select(
-          "cycle_id,quantity,monthly_rental_rate",
+          "cycle_id,quantity,monthly_rental_rate,started_on",
         ),
         (supabase.from("billing_v2_movements" as any) as any).select(
           "cycle_id,confirmed,removed_quantity,weight_kg,exchange_rate,treatment_rate,waste_residue_id,occurred_on,service_order",
         ),
         (supabase.from("billing_v2_cycle_services" as any) as any).select(
-          "cycle_id,amount,waste_service_id",
+          "cycle_id,amount,waste_service_id,execution_date",
         ),
       ]);
       if (placements.error) throw placements.error;
@@ -362,18 +368,18 @@ export function useBillingFlowData() {
       invoiceLinksQuery.data,
     ],
   );
-  const upsertTracking = async (input: BillingFlowSaveInput) => {
+  const trackingPayload = (input: BillingFlowSaveInput) => {
     const { entry, ...values } = input;
+    return {
+      cycle_id: entry.cycleId, category: entry.category,
+      outsourced_company_id: entry.companyId, source_key: entry.companyId || "jacoby",
+      base_amount_snapshot: Number(entry.baseAmount.toFixed(2)), ...values,
+    };
+  };
+  const upsertTracking = async (input: BillingFlowSaveInput) => {
     const { data, error } = await (supabase.from("billing_receivable_tracking" as any) as any)
       .upsert(
-        {
-          cycle_id: entry.cycleId,
-          category: entry.category,
-          outsourced_company_id: entry.companyId,
-          source_key: entry.companyId || "jacoby",
-          base_amount_snapshot: Number(entry.baseAmount.toFixed(2)),
-          ...values,
-        },
+        trackingPayload(input),
         { onConflict: "cycle_id,category,source_key" },
       )
       .select("*")
@@ -391,6 +397,20 @@ export function useBillingFlowData() {
       refreshTracking();
       toast.success("Conferência de faturamento salva.");
     },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const saveBillingBulletinTracking = useMutation({
+    mutationFn: async (inputs: BillingFlowSaveInput[]) => {
+      if (!inputs.length) return;
+      const first = inputs[0].entry;
+      if (inputs.some(({ entry }) => entry.cycleId !== first.cycleId || entry.companyId !== first.companyId))
+        throw new Error("Confira um BM e um emissor por vez.");
+      // A single Postgres statement: validation failure rolls back every selected category.
+      const { error } = await (supabase.from("billing_receivable_tracking" as any) as any)
+        .upsert(inputs.map(trackingPayload), { onConflict: "cycle_id,category,source_key" });
+      if (error) throw error;
+    },
+    onSuccess: () => { refreshTracking(); toast.success("Conferência do BM salva."); },
     onError: (error: Error) => toast.error(error.message),
   });
   // Baixa feita pela aba Financeiro: mesmo registro de conferência, só muda o recebimento.
@@ -426,6 +446,7 @@ export function useBillingFlowData() {
     issuedBulletins,
     billingFlowEntries,
     saveBillingTracking,
+    saveBillingBulletinTracking,
     settleReceivable,
   };
 }

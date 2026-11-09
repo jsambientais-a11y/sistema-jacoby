@@ -23,7 +23,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/_app/clients/$clientId/edit")({
   component: EditClientPage,
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { aba?: "documentos" | "portal" } => ({
     aba: search.aba === "documentos" ? ("documentos" as const) : search.aba === "portal" ? ("portal" as const) : undefined,
   }),
 });
@@ -173,6 +173,10 @@ function EditClientPage() {
   useEffect(() => () => stopEmployeeDialogDragRef.current?.(), []);
 
   const save = async () => {
+    if (!client) {
+      toast.error("Aguarde o cadastro do cliente carregar antes de salvar.");
+      return;
+    }
     const name = tradeName.trim() || legalName.trim() || client?.name;
     if (!name) {
       toast.error("Preencha o Nome fantasia ou a Razão social.");
@@ -770,10 +774,10 @@ function parseSalary(value: string) {
   return Number.isFinite(salary) ? salary : null;
 }
 
-function formatSalary(value: string | number) {
+function formatSalary(value: string | number): string {
   const salary = typeof value === "number" ? value : parseSalary(value);
   return salary === null
-    ? value
+    ? String(value)
     : new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(salary);
 }
 

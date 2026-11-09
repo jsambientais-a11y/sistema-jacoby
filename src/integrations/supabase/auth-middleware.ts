@@ -6,16 +6,6 @@ import type { Database } from './types'
 
 
 
-function createFallbackSupabaseAuthClient() {
-  const error = new Error('Supabase is not configured. Authentication will be unavailable until credentials are provided.');
-
-  return {
-    auth: {
-      getClaims: () => Promise.resolve({ data: { claims: null }, error }),
-    },
-  } as any;
-}
-
 export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server(
   async ({ next }) => {
     
@@ -23,14 +13,7 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
     const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
 
     if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-      console.warn('[Supabase] Missing credentials. Bypassing auth middleware for local development.');
-      return next({
-        context: {
-          supabase: createFallbackSupabaseAuthClient(),
-          userId: null,
-          claims: null,
-        },
-      });
+      throw new Error('Supabase não configurado no servidor. Não foi possível autenticar a solicitação.');
     }
     
     const request = getRequest();

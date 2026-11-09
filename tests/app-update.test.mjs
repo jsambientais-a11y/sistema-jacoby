@@ -18,3 +18,15 @@ test('notas com seções validam imagem e itens; seção inválida é descartada
   assert.equal(bad.releaseNotes.title,'T');
   assert.equal(bad.releaseNotes.sections,undefined);
 });
+test('tutorial local é opcional e caminhos de mídia externos ou inválidos são descartados',()=>{
+ const base={title:'T',summary:'S',changes:['a'],image:'updates/capa.jpg',imageAlt:'capa'};
+ const video={src:'updates/tutorial.mp4',poster:'updates/tutorial.jpg',captions:'updates/tutorial.vtt',title:'Tutorial narrado'};
+ const parse=(v)=>parseAppVersion({id:'v3',builtAt:'2026-11-08T12:00:00Z',releaseNotes:{...base,video:v}});
+ assert.deepEqual(parse(video).releaseNotes.video,video);
+ assert.equal(parse({...video,webm:'updates/tutorial.webm'}).releaseNotes.video.webm,'updates/tutorial.webm');
+ assert.equal(parse({...video,webm:'https://external.example/tutorial.webm'}).releaseNotes.video,undefined);
+ for(const bad of [{...video,src:'https://external.example/tutorial.mp4'},{...video,src:'updates/../tutorial.mp4'},{...video,captions:'javascript:alert(1)'},{...video,poster:'data:image/png;base64,abc'},null]){
+  const result=parse(bad);assert.equal(result.releaseNotes.video,undefined);assert.equal(result.releaseNotes.title,'T');
+ }
+ assert.equal(parse(undefined).releaseNotes.video,undefined);
+});

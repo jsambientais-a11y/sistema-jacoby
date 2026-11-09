@@ -10,6 +10,8 @@
     "deploy:pages": "npm run build:pages && node scripts/deploy-gh-pages.mjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
     "docs:codigo": "node scripts/generate-code-explanations.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."

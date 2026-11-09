@@ -181,7 +181,38 @@ export function buildBillingFlowEntries(input: Inputs): BillingFlowEntry[] {
         ? company?.trade_name || company?.legal_name || "Terceirizada"
         : "Jacoby (faturamento direto)";
     },
-  );
+  ).map((entry) => {
+    const sameCycle = <T extends { cycle_id: string }>(items: T[]) =>
+      items.filter((item) => item.cycle_id === entry.cycleId);
+    let dates: (string | null | undefined)[] = [];
+    if (entry.category === "service" && !entry.companyId)
+      dates = sameCycle(input.directServices).map((item) => item.execution_date);
+    else if (entry.category === "service")
+      dates = sameCycle(input.services)
+        .filter((item) => item.outsourced_company_id === entry.companyId)
+        .map((item) => item.execution_date);
+    else if (entry.companyId)
+      dates = sameCycle(input.commissions)
+        .filter(
+          (item) =>
+            item.outsourced_company_id === entry.companyId && item.source_type === entry.category,
+        )
+        .map((item) => item.execution_date);
+    else if (entry.category === "rental")
+      dates = sameCycle(input.placements).map((item) => item.started_on);
+    else
+      dates = sameCycle(input.movements)
+        .filter(
+          (item) =>
+            item.confirmed &&
+            (entry.category !== "exchange" || Number(item.removed_quantity || 0) > 0),
+        )
+        .map((item) => item.occurred_on);
+    return {
+      ...entry,
+      operationDates: [...new Set(dates.filter((date): date is string => Boolean(date)))].sort(),
+    };
+  });
 }
 
 export function calculateDirectBillingRows(

@@ -1,58 +1,61 @@
 {
-  "version": "2026.10.31.2",
-  "title": "Financeiro empresarial e relatórios mensais",
-  "summary": "Contas a pagar e a receber, centros de custo, bancos e saldos iniciais. Acompanhe o resultado do mês e a previsão de quanto deve sobrar, com os recebíveis do Faturamento integrados.",
+  "version": "2026.11.08.1",
+  "title": "Faturamento mais simples, do BM ao recebimento",
+  "summary": "Conferência em linhas, dados comuns da nota, filtro de BMs sem NF, total por boletim e PDF com datas. Veja o tutorial para conhecer o novo fluxo.",
   "changes": [
-    "Financeiro com Faturado, Contas a pagar e Contas a receber; cadastro, edição, baixa e exclusão com restauração.",
-    "Centros de custo de receitas e despesas, com destaque nos lançamentos e vínculo opcional nos recebimentos já registrados.",
-    "Bancos e contas com saldo inicial e data de referência; informe em qual conta o valor entrou ou saiu.",
-    "Relatórios mensais por banco e centro de custo: recebido, pago, valores em aberto e saldo final projetado, sem somar o Faturamento duas vezes.",
-    "Alerta de contas a pagar vencidas ao abrir o sistema, exclusivo da Juliana.",
-    "Financeiro, Faturamento e Configurações de movimentação exclusivos de Juliana e Reinan. O acesso operacional aos boletins foi mantido."
+    "Locação, Troca, Tratamento e Serviços têm seus próprios valores e regras.",
+    "Campos comuns diferentes são indicados para conferência; não são unificados automaticamente.",
+    "Escolha, quando for o acordo, 15 dias após a emissão ou após o vencimento da NF.",
+    "Em Faturado, veja uma linha por BM com o total a receber pela Jacoby."
   ],
-  "image": "updates/2026-10-31-financeiro-empresarial.svg",
-  "imageAlt": "Visão ilustrada do novo Financeiro com contas a pagar, contas a receber, bancos, centros de custo e relatório mensal.",
+  "image": "updates/jacoby-novidades-2026-11-08.jpg",
+  "imageAlt": "Tutorial ilustrado das novidades do faturamento Jacoby, com dados fictícios.",
+  "video": {
+    "src": "updates/jacoby-novidades-2026-11-08-neural-v3.mp4",
+    "poster": "updates/jacoby-novidades-2026-11-08.jpg",
+    "captions": "updates/jacoby-novidades-2026-11-08-neural-v3.vtt",
+    "title": "Novidades do faturamento Jacoby — voz neural em português, 1,5×",
+    "webm": "updates/jacoby-novidades-2026-11-08-neural-v3.webm"
+  },
   "sections": [
     {
-      "title": "Financeiro empresarial",
-      "description": "As três áreas ficam na Visão financeira, dentro do menu Financeiro.",
-      "image": "updates/2026-10-31-financeiro-empresarial.svg",
-      "imageAlt": "Visão ilustrada do novo Financeiro com contas a pagar, contas a receber, bancos, centros de custo e relatório mensal.",
+      "title": "Confira o BM em linhas",
+      "description": "Abra pela linha do boletim e confira as categorias no mesmo lugar.",
       "items": [
-        "Faturado continua como primeira aba, preservando os lançamentos e vínculos existentes.",
-        "Cadastre despesas e receitas adicionais, informe o vencimento e registre ou desfaça a baixa.",
-        "Contas excluídas podem ser restauradas. A baixa é um registro de controle e não executa pagamentos bancários.",
-        "Os recebíveis do Faturamento aparecem automaticamente. Não é necessário cadastrá-los de novo."
+        "Locação, Troca, Tratamento e Serviços têm seus próprios valores e regras.",
+        "Para percentual, informe manualmente o líquido correspondente a cada categoria.",
+        "Preencha os dados comuns da nota uma vez para as linhas marcadas do mesmo emissor.",
+        "A visão por lançamento continua disponível para ajustes individuais e anexos."
       ]
     },
     {
-      "title": "Centros de custo e bancos",
-      "description": "Identifique para onde vão os gastos e onde entram os recebimentos.",
+      "title": "Notas sem repetição e histórico preservado",
+      "description": "Os dados já salvos continuam por categoria até você decidir alterá-los.",
       "items": [
-        "Expanda Financeiro no menu para acessar Centros de custo e Bancos e contas.",
-        "Cadastre centros para Receitas, Despesas ou ambos. Desativar mantém os vínculos históricos.",
-        "Use Centro / banco nos lançamentos para vincular um centro e uma conta bancária, inclusive após o recebimento.",
-        "Defina o saldo inicial da conta e sua data de referência: o saldo deve corresponder ao início desse dia. Zero é diferente de saldo ainda não definido.",
-        "Filtre as contas por banco ou centro de custo; o centro vinculado aparece em uma etiqueta compacta."
+        "Campos comuns diferentes são indicados para conferência; não são unificados automaticamente.",
+        "Categorias zeradas sem cobrança não exigem preenchimento nem geram pendência de NF.",
+        "Clique no aviso de NF no Faturamento ou no Dashboard para abrir a lista filtrada.",
+        "Um mesmo BM pode conter vários lançamentos a conferir; o aviso distingue essas quantidades."
       ]
     },
     {
-      "title": "Relatórios mensais",
-      "description": "Uma visão do resultado da empresa e da previsão de caixa do mês.",
+      "title": "Previsão e recebimento",
+      "description": "Novas opções para os acordos, mantendo as previsões antigas.",
       "items": [
-        "Acesse Financeiro → Relatórios, abaixo de Bancos e contas, e escolha o mês.",
-        "Confira recebido, pago, a receber, a pagar e os resultados realizado e previsto por centro de custo.",
-        "O saldo projetado considera o saldo inicial, as baixas e as contas previstas até o fim do mês, incluindo atrasos em aberto.",
-        "Sem banco, saldo inicial ou data de previsão, a tela sinaliza pendências e projeção parcial. O saldo calculado depende dos registros do sistema; não consulta o extrato bancário."
+        "Escolha, quando for o acordo, 15 dias após a emissão ou após o vencimento da NF.",
+        "Para exceções, use Data definida manualmente.",
+        "As regras de 15 dias são opcionais; não há recálculo em massa dos lançamentos antigos.",
+        "Informar uma previsão não registra recebimento. Preencha a data somente quando receber."
       ]
     },
     {
-      "title": "Alertas e acesso",
-      "description": "Aviso de atrasos para a Juliana e áreas financeiras reservadas.",
+      "title": "Total do BM e PDF com datas",
+      "description": "Uma visão do total com acesso à composição.",
       "items": [
-        "A Juliana verá um aviso ao abrir ou recarregar o sistema quando houver contas a pagar vencidas, com quantidade, total e atalho para conferir todas.",
-        "Financeiro, Faturamento e Configurações de movimentação ficam disponíveis somente para Juliana e Reinan.",
-        "As permissões operacionais de Boletim de Medição foram preservadas."
+        "Em Faturado, veja uma linha por BM com o total a receber pela Jacoby.",
+        "Expanda para conferir os lançamentos, projetos vinculados e baixas individuais.",
+        "O PDF inclui as datas de locação, movimentação e execução dos serviços quando registradas.",
+        "Os valores existentes são mantidos; o total da NF não é multiplicado entre as categorias."
       ]
     }
   ]

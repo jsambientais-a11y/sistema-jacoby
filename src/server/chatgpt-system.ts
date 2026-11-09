@@ -569,7 +569,7 @@ async function loadBulletinFlow(args: any, db: any, origin: string) {
   const requests = {
     placements: scope(
       "billing_v2_placements",
-      "id,cycle_id,quantity,monthly_rental_rate,equipment_id",
+      "id,cycle_id,quantity,monthly_rental_rate,equipment_id,started_on",
     ),
     movements: scope(
       "billing_v2_movements",
@@ -725,6 +725,7 @@ async function loadBulletinFlow(args: any, db: any, origin: string) {
       categoria: e.category,
       empresa: e.company,
       descricao: e.description,
+      datasOperacionais: e.operationDates || [],
       baseBM: e.baseAmount,
       conferencia: e.tracking || null,
       notaInformada: Boolean(e.tracking?.invoice_number || e.legacyInvoiceNumber),

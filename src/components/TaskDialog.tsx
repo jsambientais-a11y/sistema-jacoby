@@ -366,7 +366,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
           await syncCollaborators(taskId);
         } catch(error) {
           const rollback=await authenticated.client.from("tasks").delete().eq("id",taskId).eq("created_by",authenticated.user.id).select("id");
-          if(rollback.error || !rollback.data?.some(row=>row.id===taskId)) {
+          if(rollback.error || !rollback.data?.some((row: { id: string })=>row.id===taskId)) {
             currentTaskIdRef.current=taskId;setCurrentTaskId(taskId);
             throw new Error("O processo foi criado, mas algumas etapas falharam. Não crie novamente: confira a tarefa já criada.");
           }

@@ -2,49 +2,172 @@ import { uniqueResidueNames } from "@/lib/residue-names";
 import { sortBillingBulletins, type BillingBulletin } from "@/lib/billing-bulletins";
 import { Button } from "@/components/ui/button";
 import type { BillingFlowEntry } from "@/components/BillingFlowPreview";
+import { isBillingInvoicePending } from "@/lib/billing-flow-navigation";
 
-const labels = { rental: "Locação", exchange: "Troca", treatment: "Tratamento", service: "Serviços" };
+const labels = {
+  rental: "Locação",
+  exchange: "Troca",
+  treatment: "Tratamento",
+  service: "Serviços",
+};
 const emissionDate = new Intl.DateTimeFormat("pt-BR", {
-  day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
   timeZone: "America/Sao_Paulo",
 });
 
-export function BillingBulletinOverview({ bulletins, entries, search, onOpen }: {
+export function BillingBulletinOverview({
+  bulletins,
+  entries,
+  search,
+  onOpen,
+  onOpenBulletin,
+}: {
   bulletins: BillingBulletin[];
   entries: BillingFlowEntry[];
   search: string;
   onOpen: (entry: BillingFlowEntry) => void;
+  onOpenBulletin: (bulletin: BillingBulletin) => void;
 }) {
   const byCycle = new Map<string, BillingFlowEntry[]>();
-  for (const entry of entries) byCycle.set(entry.cycleId, [...(byCycle.get(entry.cycleId) || []), entry]);
+  for (const entry of entries)
+    byCycle.set(entry.cycleId, [...(byCycle.get(entry.cycleId) || []), entry]);
   const query = search.trim().toLocaleLowerCase("pt-BR");
-  const shown = sortBillingBulletins(bulletins).filter((bulletin) => !query ||
-    [`#${String(bulletin.number).padStart(3, "0")}`, bulletin.client, bulletin.branch, bulletin.company, ...(bulletin.residues || []).map((item) => item.name),
-      ...(byCycle.get(bulletin.id) || []).map((entry) => entry.description)]
-      .join(" ").toLocaleLowerCase("pt-BR").includes(query));
+  const shown = sortBillingBulletins(bulletins).filter(
+    (bulletin) =>
+      !query ||
+      [
+        `#${String(bulletin.number).padStart(3, "0")}`,
+        bulletin.client,
+        bulletin.branch,
+        bulletin.company,
+        ...(bulletin.residues || []).map((item) => item.name),
+        ...(byCycle.get(bulletin.id) || []).map((entry) => entry.description),
+      ]
+        .join(" ")
+        .toLocaleLowerCase("pt-BR")
+        .includes(query),
+  );
 
-  return <section className="border-t" aria-label="Todos os BMs emitidos">
-    <div className="space-y-1 border-b p-4 sm:p-5">
-      <h3 className="font-semibold">Todos os BMs emitidos ({shown.length})</h3>
-      <p className="text-sm text-muted-foreground">Um registro por BM, do mais recente ao mais antigo pela data de emissão. Selecione uma categoria para conferir o faturamento.</p>
-    </div>
-    {!shown.length ? <p className="p-8 text-center text-sm text-muted-foreground">{query ? "Nenhum BM corresponde à busca." : "Nenhum BM emitido disponível."}</p> :
-      <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm">
-        <thead><tr className="border-b bg-muted/30 text-left text-muted-foreground">
-          <th scope="col" className="p-3">Emissão ↓</th><th scope="col" className="p-3">BM</th>
-          <th scope="col" className="p-3">Cliente / unidade</th><th scope="col" className="p-3">Emissor</th>
-          <th scope="col" className="p-3">Conferir faturamento</th>
-        </tr></thead>
-        <tbody>{shown.map((bulletin) => <tr key={bulletin.id} className="border-b last:border-0">
-          <td className="whitespace-nowrap p-3">{bulletin.emittedAt && Number.isFinite(Date.parse(bulletin.emittedAt)) ? emissionDate.format(new Date(bulletin.emittedAt)) : "Data não informada"}</td>
-          <td className="p-3 font-semibold">#{String(bulletin.number).padStart(3, "0")}</td>
-          <td className="p-3"><p className="font-medium">{bulletin.client}</p><p className="text-xs text-muted-foreground">{bulletin.branch}</p><div className="mt-2 flex flex-wrap gap-1" aria-label="Resíduos do BM">{uniqueResidueNames(bulletin.residues || []).map((item) => <span key={item.id} className="rounded bg-primary/10 px-2 py-1 text-xs text-primary">{item.name}</span>)}</div></td>
-          <td className="p-3">{bulletin.company}</td>
-          <td className="p-3"><div className="flex flex-wrap gap-2">{(byCycle.get(bulletin.id) || []).map((entry) =>
-            <Button key={entry.id} type="button" variant="outline" size="sm" onClick={() => onOpen(entry)} aria-label={`Conferir ${labels[entry.category]} do BM #${String(bulletin.number).padStart(3, "0")}`}>
-              {labels[entry.category]}
-            </Button>)}{!byCycle.has(bulletin.id) && <span className="text-xs text-muted-foreground">Sem lançamentos de faturamento</span>}</div></td>
-        </tr>)}</tbody>
-      </table></div>}
-  </section>;
+  return (
+    <section className="border-t" aria-label="Todos os BMs emitidos">
+      <div className="space-y-1 border-b p-4 sm:p-5">
+        <h3 className="font-semibold">Todos os BMs emitidos ({shown.length})</h3>
+        <p className="text-sm text-muted-foreground">
+          Um registro por BM, do mais recente ao mais antigo pela data de emissão. Clique na linha
+          para abrir o boletim e conferir seus lançamentos.
+        </p>
+      </div>
+      {!shown.length ? (
+        <p className="p-8 text-center text-sm text-muted-foreground">
+          {query ? "Nenhum BM corresponde à busca." : "Nenhum BM emitido disponível."}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-sm">
+            <thead>
+              <tr className="border-b bg-muted/30 text-left text-muted-foreground">
+                <th scope="col" className="p-3">
+                  Emissão ↓
+                </th>
+                <th scope="col" className="p-3">
+                  BM
+                </th>
+                <th scope="col" className="p-3">
+                  Cliente / unidade
+                </th>
+                <th scope="col" className="p-3">
+                  Emissor
+                </th>
+                <th scope="col" className="p-3">
+                  Conferir faturamento
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((bulletin) => (
+                <tr
+                  key={bulletin.id}
+                  className="group cursor-pointer border-b transition-[transform,box-shadow,background-color] duration-150 hover:relative hover:z-10 hover:bg-primary/5 hover:shadow-md focus-within:bg-primary/5 focus-within:shadow-md motion-safe:hover:-translate-y-0.5 motion-safe:focus-within:-translate-y-0.5 motion-reduce:transition-none last:border-0"
+                  onClick={(event) => {
+                    // Category shortcuts and the keyboard-accessible BM button handle their own clicks.
+                    if ((event.target as HTMLElement).closest("button, a, input, select, textarea"))
+                      return;
+                    onOpenBulletin(bulletin);
+                  }}
+                >
+                  <td className="whitespace-nowrap p-3">
+                    {bulletin.emittedAt && Number.isFinite(Date.parse(bulletin.emittedAt))
+                      ? emissionDate.format(new Date(bulletin.emittedAt))
+                      : "Data não informada"}
+                  </td>
+                  <td className="p-3 font-semibold">
+                    <button
+                      type="button"
+                      className="rounded text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      onClick={() => onOpenBulletin(bulletin)}
+                      aria-label={`Abrir lançamentos do BM #${String(bulletin.number).padStart(3, "0")}`}
+                    >
+                      #{String(bulletin.number).padStart(3, "0")}
+                    </button>
+                    {(byCycle.get(bulletin.id) || []).some((entry) =>
+                      isBillingInvoicePending(entry),
+                    ) && (
+                      <p className="mt-1 text-xs font-normal text-amber-700 dark:text-amber-300">
+                        {
+                          (byCycle.get(bulletin.id) || []).filter((entry) =>
+                            isBillingInvoicePending(entry),
+                          ).length
+                        }{" "}
+                        sem NF
+                      </p>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <p className="font-medium">{bulletin.client}</p>
+                    <p className="text-xs text-muted-foreground">{bulletin.branch}</p>
+                    <div className="mt-2 flex flex-wrap gap-1" aria-label="Resíduos do BM">
+                      {uniqueResidueNames(bulletin.residues || []).map((item) => (
+                        <span
+                          key={item.id}
+                          className="rounded bg-primary/10 px-2 py-1 text-xs text-primary"
+                        >
+                          {item.name}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="p-3">{bulletin.company}</td>
+                  <td className="p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(byCycle.get(bulletin.id) || []).map((entry) => (
+                        <Button
+                          key={entry.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onOpen(entry)}
+                          aria-label={`Conferir ${labels[entry.category]} do BM #${String(bulletin.number).padStart(3, "0")}`}
+                        >
+                          {labels[entry.category]}
+                        </Button>
+                      ))}
+                      {!byCycle.has(bulletin.id) && (
+                        <span className="text-xs text-muted-foreground">
+                          Sem lançamentos de faturamento
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }

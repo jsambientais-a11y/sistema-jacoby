@@ -1,3 +1,4 @@
+import type { BillingExpectedBasis } from "./billing-dates";
 /**
  * Contas a receber da aba Financeiro, derivadas dos lançamentos do Faturamento
  * (BM × categoria × empresa). A baixa grava em billing_receivable_tracking, o mesmo
@@ -11,7 +12,7 @@ type Tracking = {
   invoice_number: string | null;
   invoice_issued_on: string | null;
   invoice_due_on: string | null;
-  expected_basis: "issue" | "due" | "manual";
+  expected_basis: BillingExpectedBasis;
   expected_on: string | null;
   received_on: string | null;
   notes: string | null;
@@ -59,51 +60,72 @@ const addDays = (date: string, days: number) => {
 };
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-export function toReceivable<E extends ReceivableEntry>(entry: E, today: string, requiresAgreement: boolean): Receivable<E> {
+export function toReceivable<E extends ReceivableEntry>(
+  entry: E,
+  today: string,
+  requiresAgreement: boolean,
+): Receivable<E> {
   const saved = entry.tracking;
-  const receivedOn = saved ? saved.received_on : entry.legacyPaidOn ?? null;
-  const expectedOn = saved ? saved.expected_on : entry.legacyExpectedOn ?? null;
+  const receivedOn = saved ? saved.received_on : (entry.legacyPaidOn ?? null);
+  const expectedOn = saved ? saved.expected_on : (entry.legacyExpectedOn ?? null);
   const received = Boolean(receivedOn && receivedOn <= today);
-  const status: ReceivableStatus = received ? "received"
-    : !expectedOn ? "no_date"
-    : expectedOn < today ? "overdue"
-    : expectedOn <= addDays(today, 7) ? "due_soon"
-    : "upcoming";
+  const status: ReceivableStatus = received
+    ? "received"
+    : !expectedOn
+      ? "no_date"
+      : expectedOn < today
+        ? "overdue"
+        : expectedOn <= addDays(today, 7)
+          ? "due_soon"
+          : "upcoming";
   return {
     id: entry.id,
     entry,
     amount: Number(saved ? saved.commission_amount : entry.currentCommission) || 0,
     confirmed: Boolean(saved),
     expectedOn,
-    invoiceNumber: saved ? saved.invoice_number : entry.legacyInvoiceNumber ?? null,
-    invoiceDueOn: saved ? saved.invoice_due_on : entry.legacyDueOn ?? null,
+    invoiceNumber: saved ? saved.invoice_number : (entry.legacyInvoiceNumber ?? null),
+    invoiceDueOn: saved ? saved.invoice_due_on : (entry.legacyDueOn ?? null),
     receivedOn: received ? receivedOn : null,
     status,
     canSettle: Boolean(saved) || (!entry.pendingService && !requiresAgreement),
   };
 }
 
-const STATUS_RANK: Record<ReceivableStatus, number> = { overdue: 0, due_soon: 1, upcoming: 2, no_date: 3, received: 4 };
+const STATUS_RANK: Record<ReceivableStatus, number> = {
+  overdue: 0,
+  due_soon: 1,
+  upcoming: 2,
+  no_date: 3,
+  received: 4,
+};
 
 /** Vencidos no topo; depois por previsão; sem previsão; recebidos por último (mais recentes primeiro). */
 export function sortReceivables<R extends Receivable>(list: R[]): R[] {
-  return [...list].sort((a, b) =>
-    STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
-    (a.status === "received"
-      ? String(b.receivedOn).localeCompare(String(a.receivedOn))
-      : String(a.expectedOn || "").localeCompare(String(b.expectedOn || ""))) ||
-    b.amount - a.amount);
+  return [...list].sort(
+    (a, b) =>
+      STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+      (a.status === "received"
+        ? String(b.receivedOn).localeCompare(String(a.receivedOn))
+        : String(a.expectedOn || "").localeCompare(String(b.expectedOn || ""))) ||
+      b.amount - a.amount,
+  );
 }
 
 export function summarizeReceivables(list: Receivable[], today: string) {
-  const sum = (items: Receivable[]) => round2(items.reduce((total, item) => total + item.amount, 0));
+  const sum = (items: Receivable[]) =>
+    round2(items.reduce((total, item) => total + item.amount, 0));
   const open = list.filter((item) => item.status !== "received");
   const month = today.slice(0, 7);
   return {
     open: sum(open),
     overdue: sum(open.filter((item) => item.status === "overdue")),
     nextSevenDays: sum(open.filter((item) => item.status === "due_soon")),
-    receivedThisMonth: sum(list.filter((item) => item.status === "received" && String(item.receivedOn).slice(0, 7) === month)),
+    receivedThisMonth: sum(
+      list.filter(
+        (item) => item.status === "received" && String(item.receivedOn).slice(0, 7) === month,
+      ),
+    ),
     withoutDate: open.filter((item) => item.status === "no_date").length,
   };
 }
@@ -112,7 +134,11 @@ export function summarizeReceivables(list: Receivable[], today: string) {
  * Campos para gravar a baixa (ou desfazê-la com receivedOn = null) no registro de conferência.
  * Retorna null quando o repasse ainda precisa ser conferido no Faturamento.
  */
-export function settlementInput(entry: ReceivableEntry, receivedOn: string | null, requiresAgreement: boolean) {
+export function settlementInput(
+  entry: ReceivableEntry,
+  receivedOn: string | null,
+  requiresAgreement: boolean,
+) {
   const saved = entry.tracking;
   if (saved) {
     return {
@@ -145,50 +171,106 @@ export function settlementInput(entry: ReceivableEntry, receivedOn: string | nul
 
 export type ReceivableDetail = { label: string; formula: string; value: number };
 export type ReceivableSources = {
-  movementCommissions: { cycle_id: string; outsourced_company_id: string; source_type: string; waste_residue_id: string | null; execution_date: string | null; base_amount: number; commission_rate: number; gross_commission_amount: number; tax_withheld_amount: number; net_commission_amount: number }[];
-  services: { cycle_id: string; outsourced_company_id: string | null; waste_service_id: string | null; amount: number; net_invoice_amount: number | null; commission_rate: number; invoice_number: string | null; execution_date: string | null; description: string | null }[];
+  movementCommissions: {
+    cycle_id: string;
+    outsourced_company_id: string;
+    source_type: string;
+    waste_residue_id: string | null;
+    execution_date: string | null;
+    base_amount: number;
+    commission_rate: number;
+    gross_commission_amount: number;
+    tax_withheld_amount: number;
+    net_commission_amount: number;
+  }[];
+  services: {
+    cycle_id: string;
+    outsourced_company_id: string | null;
+    waste_service_id: string | null;
+    amount: number;
+    net_invoice_amount: number | null;
+    commission_rate: number;
+    invoice_number: string | null;
+    execution_date: string | null;
+    description: string | null;
+  }[];
   placements: { cycle_id: string; quantity: number; monthly_rental_rate: number }[];
-  movements: { cycle_id: string; confirmed: boolean; removed_quantity: number; weight_kg: number; exchange_rate: number; treatment_rate: number; waste_residue_id: string | null; occurred_on?: string | null; service_order?: string | null }[];
+  movements: {
+    cycle_id: string;
+    confirmed: boolean;
+    removed_quantity: number;
+    weight_kg: number;
+    exchange_rate: number;
+    treatment_rate: number;
+    waste_residue_id: string | null;
+    occurred_on?: string | null;
+    service_order?: string | null;
+  }[];
   directServices: { cycle_id: string; amount: number; waste_service_id?: string | null }[];
   residues: { id: string; name?: string; jacoby_pays_client?: boolean }[];
   catalog: { id: string; name?: string }[];
 };
 
-const brl = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
-const brlUnit = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value || 0);
-const qty = (value: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0);
-const dateBr = (value?: string | null) => (value ? `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)} · ` : "");
+const brl = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
+const brlUnit = (value: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(value || 0);
+const qty = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0);
+const dateBr = (value?: string | null) =>
+  value ? `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)} · ` : "";
 
 /** Explica, item a item, de onde vem o valor de um lançamento do Financeiro. */
-export function receivableDetails(entry: ReceivableEntry, sources: ReceivableSources): ReceivableDetail[] {
+export function receivableDetails(
+  entry: ReceivableEntry,
+  sources: ReceivableSources,
+): ReceivableDetail[] {
   const residue = (id: string | null) => sources.residues.find((item) => item.id === id);
-  const serviceName = (id?: string | null) => sources.catalog.find((item) => item.id === id)?.name || "Serviço";
-  const sameCycle = <T extends { cycle_id: string }>(list: T[]) => list.filter((item) => item.cycle_id === entry.cycleId);
+  const serviceName = (id?: string | null) =>
+    sources.catalog.find((item) => item.id === id)?.name || "Serviço";
+  const sameCycle = <T extends { cycle_id: string }>(list: T[]) =>
+    list.filter((item) => item.cycle_id === entry.cycleId);
 
   if (entry.companyId && entry.category === "service") {
-    return sameCycle(sources.services).filter((item) => item.outsourced_company_id === entry.companyId).map((item) => {
-      const base = Number(item.net_invoice_amount ?? item.amount ?? 0);
-      const rate = Number(item.commission_rate || 0);
-      return {
-        label: `${dateBr(item.execution_date)}${serviceName(item.waste_service_id)}${item.invoice_number ? ` · NF ${item.invoice_number}` : ""}`,
-        formula: `${brl(base)} (${item.net_invoice_amount != null ? "líquido da NF" : "valor do serviço"}) × ${qty(rate)}%`,
-        value: round2(base * rate / 100),
-      };
-    });
+    return sameCycle(sources.services)
+      .filter((item) => item.outsourced_company_id === entry.companyId)
+      .map((item) => {
+        const base = Number(item.net_invoice_amount ?? item.amount ?? 0);
+        const rate = Number(item.commission_rate || 0);
+        return {
+          label: `${dateBr(item.execution_date)}${serviceName(item.waste_service_id)}${item.invoice_number ? ` · NF ${item.invoice_number}` : ""}`,
+          formula: `${brl(base)} (${item.net_invoice_amount != null ? "líquido da NF" : "valor do serviço"}) × ${qty(rate)}%`,
+          value: round2((base * rate) / 100),
+        };
+      });
   }
   if (entry.companyId) {
     return sameCycle(sources.movementCommissions)
-      .filter((item) => item.outsourced_company_id === entry.companyId && item.source_type === entry.category)
+      .filter(
+        (item) =>
+          item.outsourced_company_id === entry.companyId && item.source_type === entry.category,
+      )
       .sort((a, b) => String(a.execution_date).localeCompare(String(b.execution_date)))
       .map((item) => {
-        const what = item.source_type === "treatment" ? `Tratamento de ${residue(item.waste_residue_id)?.name || "resíduo"}` : item.source_type === "exchange" ? "Troca de equipamento" : "Locação de equipamento";
+        const what =
+          item.source_type === "treatment"
+            ? `Tratamento de ${residue(item.waste_residue_id)?.name || "resíduo"}`
+            : item.source_type === "exchange"
+              ? "Troca de equipamento"
+              : "Locação de equipamento";
         const tax = Number(item.tax_withheld_amount || 0);
         const gross = Number(item.gross_commission_amount || 0);
         const rate = Number(item.commission_rate || 0);
         // No tratamento a comissão é R$/kg: o peso vem da própria comissão (bruto ÷ taxa).
-        const base = item.source_type === "treatment"
-          ? `${rate ? `${qty(gross / rate)} kg × ` : ""}${brlUnit(rate)}/kg = ${brl(gross)} (tratamento no BM: ${brl(Number(item.base_amount))})`
-          : `${brl(Number(item.base_amount))} × ${qty(rate)}% = ${brl(gross)}`;
+        const base =
+          item.source_type === "treatment"
+            ? `${rate ? `${qty(gross / rate)} kg × ` : ""}${brlUnit(rate)}/kg = ${brl(gross)} (tratamento no BM: ${brl(Number(item.base_amount))})`
+            : `${brl(Number(item.base_amount))} × ${qty(rate)}% = ${brl(gross)}`;
         return {
           label: `${dateBr(item.execution_date)}${what}`,
           formula: `${base}${tax ? ` − retenção ${brl(tax)}` : ""}`,
@@ -207,21 +289,38 @@ export function receivableDetails(entry: ReceivableEntry, sources: ReceivableSou
     }));
   }
   if (entry.category === "exchange") {
-    return confirmed.filter((item) => Number(item.removed_quantity || 0) > 0 && Number(item.exchange_rate || 0) > 0).map((item) => ({
-      label: movementLabel(item, "Troca de equipamento"),
-      formula: `${qty(Number(item.removed_quantity))} troca(s) × ${brlUnit(Number(item.exchange_rate))}`,
-      value: round2(Number(item.removed_quantity || 0) * Number(item.exchange_rate || 0)),
-    }));
+    return confirmed
+      .filter(
+        (item) => Number(item.removed_quantity || 0) > 0 && Number(item.exchange_rate || 0) > 0,
+      )
+      .map((item) => ({
+        label: movementLabel(item, "Troca de equipamento"),
+        formula: `${qty(Number(item.removed_quantity))} troca(s) × ${brlUnit(Number(item.exchange_rate))}`,
+        value: round2(Number(item.removed_quantity || 0) * Number(item.exchange_rate || 0)),
+      }));
   }
   if (entry.category === "treatment") {
-    return confirmed.filter((item) => Number(item.weight_kg || 0) > 0 && Number(item.treatment_rate || 0) > 0).map((item) => {
-      const info = residue(item.waste_residue_id);
-      const value = round2(Number(item.weight_kg || 0) * Number(item.treatment_rate || 0));
-      // Sucata comprada do cliente é paga pela Jacoby: entra abatendo o total.
-      return info?.jacoby_pays_client
-        ? { label: movementLabel(item, `Sucata comprada do cliente (${info.name || "sucata"}) · abatida`), formula: `${qty(Number(item.weight_kg))} kg × ${brlUnit(Number(item.treatment_rate))}/kg`, value: -value }
-        : { label: movementLabel(item, `Tratamento de ${info?.name || "resíduo"}`), formula: `${qty(Number(item.weight_kg))} kg × ${brlUnit(Number(item.treatment_rate))}/kg`, value };
-    });
+    return confirmed
+      .filter((item) => Number(item.weight_kg || 0) > 0 && Number(item.treatment_rate || 0) > 0)
+      .map((item) => {
+        const info = residue(item.waste_residue_id);
+        const value = round2(Number(item.weight_kg || 0) * Number(item.treatment_rate || 0));
+        // Sucata comprada do cliente é paga pela Jacoby: entra abatendo o total.
+        return info?.jacoby_pays_client
+          ? {
+              label: movementLabel(
+                item,
+                `Sucata comprada do cliente (${info.name || "sucata"}) · abatida`,
+              ),
+              formula: `${qty(Number(item.weight_kg))} kg × ${brlUnit(Number(item.treatment_rate))}/kg`,
+              value: -value,
+            }
+          : {
+              label: movementLabel(item, `Tratamento de ${info?.name || "resíduo"}`),
+              formula: `${qty(Number(item.weight_kg))} kg × ${brlUnit(Number(item.treatment_rate))}/kg`,
+              value,
+            };
+      });
   }
   return sameCycle(sources.directServices).map((item) => ({
     label: serviceName(item.waste_service_id),
@@ -231,7 +330,8 @@ export function receivableDetails(entry: ReceivableEntry, sources: ReceivableSou
 }
 
 /** Filtro de datas do Financeiro e do Faturamento. */
-export type Period = { kind: "all" } | { kind: "month"; month: string } | { kind: "range"; from: string; to: string };
+export type Period =
+  { kind: "all" } | { kind: "month"; month: string } | { kind: "range"; from: string; to: string };
 
 export function shiftMonth(month: string, delta: number) {
   const [year, value] = month.split("-").map(Number);
@@ -255,7 +355,15 @@ export const referenceDate = (item: Receivable) => item.receivedOn ?? item.expec
 export function monthlyTotals(list: Receivable[], months: string[]) {
   return months.map((month) => ({
     month,
-    expected: round2(list.filter((item) => item.status !== "received" && item.expectedOn?.slice(0, 7) === month).reduce((total, item) => total + item.amount, 0)),
-    received: round2(list.filter((item) => item.status === "received" && item.receivedOn?.slice(0, 7) === month).reduce((total, item) => total + item.amount, 0)),
+    expected: round2(
+      list
+        .filter((item) => item.status !== "received" && item.expectedOn?.slice(0, 7) === month)
+        .reduce((total, item) => total + item.amount, 0),
+    ),
+    received: round2(
+      list
+        .filter((item) => item.status === "received" && item.receivedOn?.slice(0, 7) === month)
+        .reduce((total, item) => total + item.amount, 0),
+    ),
   }));
 }

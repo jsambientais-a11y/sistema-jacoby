@@ -1,0 +1,56 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:06.394
+Veja as novidades do faturamento da Jacoby. Agora, você pode conferir as categorias do boletim no mesmo lugar, com menos repetição.
+
+00:00:06.647 --> 00:00:10.733
+Este tutorial usa exemplos ilustrativos. Nenhum dado real de cliente é mostrado.
+
+00:00:11.361 --> 00:00:15.633
+Em Faturamento, na visão Lançamentos, clique na linha do boletim para abrir a conferência.
+
+00:00:15.886 --> 00:00:20.329
+A linha ganha um destaque ao passar o mouse. Ao voltar para a lista, a busca continua preenchida.
+
+00:00:20.972 --> 00:00:27.093
+Na visão Em linhas, confira Locação, Troca, Tratamento e Serviços. Cada categoria mantém seu tipo de cálculo e seu valor.
+
+00:00:27.347 --> 00:00:33.721
+Quando a comissão for percentual, informe manualmente o líquido de cada categoria. Não repita o valor total da nota em todas as linhas.
+
+00:00:34.361 --> 00:00:41.304
+Abaixo das categorias, preencha o número da nota, a emissão, o vencimento, a previsão e o recebimento uma única vez para as linhas marcadas.
+
+00:00:41.557 --> 00:00:47.720
+Emissores diferentes ficam separados. Se já houver dados antigos diferentes, eles serão mantidos até você editar o campo comum.
+
+00:00:48.361 --> 00:00:53.958
+As regras de quinze dias são opcionais. Você pode escolher quinze dias após a emissão ou após o vencimento da nota.
+
+00:00:54.211 --> 00:01:00.959
+Para uma exceção, escolha Data definida manualmente. As previsões já salvas permanecem se você não mudar a regra ou sua data de referência.
+
+00:01:01.583 --> 00:01:07.783
+Se um boletim tiver cobrança somente de Locação, as categorias zeradas não exigem preenchimento nem geram aviso de nota pendente.
+
+00:01:08.037 --> 00:01:12.727
+Uma categoria que tiver cobrança e estiver sem emissão de nota continua disponível para conferência.
+
+00:01:13.361 --> 00:01:19.303
+Clique no aviso Sem emissão de NF informada, no Faturamento, ou no indicador BMs sem NF informada, no Dashboard.
+
+00:01:19.556 --> 00:01:25.454
+A lista abre filtrada. O aviso diferencia a quantidade de boletins da quantidade de lançamentos que precisam de conferência.
+
+00:01:26.083 --> 00:01:32.761
+Na visão Faturado, cada linha reúne o total a receber pela Jacoby naquele boletim. Expanda o BM para conferir a composição e as baixas.
+
+00:01:33.015 --> 00:01:38.687
+O PDF do boletim também mostra a data de cada locação, movimentação ou serviço, quando a data estiver registrada.
+
+00:01:39.333 --> 00:01:45.888
+Marque somente as linhas que deseja gravar e clique em Salvar conferência do BM. O recebimento só é registrado quando você informa a data.
+
+00:01:46.141 --> 00:01:53.371
+Os dados antigos são preservados. Salve antes de trocar entre a visão em linhas e a visão por lançamento. Você pode rever este vídeo nas Novidades.
+

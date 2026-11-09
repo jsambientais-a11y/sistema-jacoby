@@ -130,7 +130,7 @@ export interface ClientInvoice {
 }
 
 export function useClientInvoices() {
-  return useQuery({
+  return useQuery<ClientInvoice[]>({
     queryKey: ["client_invoices"],
     queryFn: async () => {
       // The generated Supabase types are refreshed separately; this cast keeps the
@@ -138,8 +138,7 @@ export function useClientInvoices() {
       const { data, error } = await (supabase.from("client_invoices") as any)
         .select("*")
         .order("due_date", { ascending: true });
-      // Older Jacoby databases may not have this optional per-user layout table yet.
-      if (error) return [] as UserColumnOrder[];
+      if (error) throw error;
       return (data ?? []) as ClientInvoice[];
     },
   });
@@ -147,7 +146,7 @@ export function useClientInvoices() {
 
 
 export function useTasks() {
-  return useQuery({
+  return useQuery<Task[]>({
     queryKey: ["tasks"],
     queryFn: async () => {
       // Soft-delete strategy: deleted tasks stay in the database, but normal screens hide them.
@@ -157,8 +156,7 @@ export function useTasks() {
         .is("deleted_at", null)
         .order("position", { ascending: true })
         .order("created_at", { ascending: false });
-      // Task position still falls back to tasks.position when the optional table is absent.
-      if (error) return [] as UserTaskOrder[];
+      if (error) throw error;
       return (data ?? []) as Task[];
     },
   });

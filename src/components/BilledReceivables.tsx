@@ -1,3 +1,8 @@
+import { BILLING_DATE_RULES } from "@/lib/billing-dates";
+import {
+  groupReceivablesByBulletin,
+  type BulletinReceivables,
+} from "@/lib/billing-receivable-groups";
 /**
  * Financeiro: tudo que a Jacoby tem a receber, de todos os meses, a partir dos lançamentos
  * do Faturamento. BM próprio entra com o valor cheio do cliente; BM de terceirizada entra
@@ -129,6 +134,7 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
   const summary = summarizeReceivables(periodRows, today);
   const months = Array.from({ length: 6 }, (_, index) => shiftMonth(today.slice(0, 7), index - 1));
   const monthTotals = monthlyTotals(rows, months);
+  const [expandedBulletin, setExpandedBulletin] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const sources = useMemo<ReceivableSources>(
     () => ({
@@ -181,7 +187,13 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
           .includes(query)),
   );
   const shown = filtered.filter((row) => inView(row, view));
-  const shownTotal = shown.reduce((total, row) => total + row.amount, 0);
+  // Filters locate matching BMs; each selected BM always shows its complete total.
+  const shownCycleIds = new Set(shown.map((row) => row.entry.cycleId));
+  const bulletins = groupReceivablesByBulletin(rows).filter((group) =>
+    shownCycleIds.has(group.cycleId),
+  );
+  const shownTotal =
+    bulletins.reduce((total, group) => total + Math.round(group.total * 100), 0) / 100;
   const isLoading = [
     flow.servicesQuery,
     flow.movementCommissionsQuery,
@@ -394,7 +406,9 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
         <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
           <div className="flex flex-wrap gap-1">
             {VIEWS.map((item) => {
-              const count = filtered.filter((row) => inView(row, item.id)).length;
+              const count = new Set(
+                filtered.filter((row) => inView(row, item.id)).map((row) => row.entry.cycleId),
+              ).size;
               return (
                 <button
                   key={item.id}
@@ -408,11 +422,15 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
             })}
           </div>
           <p className="text-sm text-muted-foreground">
-            Total exibido:{" "}
+            Total dos BMs exibidos:{" "}
             <strong className="tabular-nums text-foreground">{money.format(shownTotal)}</strong>
           </p>
         </div>
 
+        <p className="border-b px-3 py-2 text-xs text-muted-foreground">
+          Uma linha por BM, com o total a receber pela Jacoby. Os filtros localizam boletins; o
+          total inclui todas as suas origens. Expanda para conferir valores, projetos e baixas.
+        </p>
         {loadError ? (
           <p className="p-8 text-center text-sm text-destructive">
             Não foi possível carregar os recebíveis: {loadError.message}
@@ -437,8 +455,8 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
                   <th className="px-3 py-2.5">Previsão</th>
                   <th className="px-3 py-2.5">Quem fatura</th>
                   <th className="px-3 py-2.5">Cliente / pátio</th>
-                  <th className="px-3 py-2.5">BM e origem</th>
-                  <th className="px-3 py-2.5 text-right">Valor</th>
+                  <th className="px-3 py-2.5">Boletim</th>
+                  <th className="px-3 py-2.5 text-right">Total do BM</th>
                   <th className="px-3 py-2.5">Situação</th>
                   <th className="px-3 py-2.5">Projeto</th>
                   <th className="px-3 py-2.5 text-right">
@@ -447,19 +465,80 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
                 </tr>
               </thead>
               <tbody>
-                {shown.map((row) => (
-                  <ReceivableRow
-                    key={row.id}
-                    row={row}
-                    today={today}
-                    tasks={tasks}
-                    links={links}
-                    sources={sources}
-                    open={expanded === row.id}
-                    onToggle={() => setExpanded((current) => (current === row.id ? null : row.id))}
-                    saving={flow.settleReceivable.isPending}
-                    onSettle={(receivedOn) => settle(row, receivedOn)}
-                  />
+                {bulletins.map((group) => (
+                  <Fragment key={group.cycleId}>
+                    <BulletinRow
+                      group={group}
+                      links={links}
+                      tasks={tasks}
+                      open={expandedBulletin === group.cycleId}
+                      onToggle={() =>
+                        setExpandedBulletin((current) =>
+                          current === group.cycleId ? null : group.cycleId,
+                        )
+                      }
+                    />
+                    {expandedBulletin === group.cycleId && (
+                      <tr className="border-t bg-muted/20">
+                        <td colSpan={9} className="p-3 sm:p-4">
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                            <p className="font-medium">
+                              Composição do BM {group.bulletin} · {group.rows.length} lançamento(s)
+                            </p>
+                            <p className="text-muted-foreground">
+                              Recebido:{" "}
+                              <strong className="text-primary">
+                                {money.format(group.received)}
+                              </strong>{" "}
+                              · Falta receber:{" "}
+                              <strong className="text-foreground">
+                                {money.format(group.remaining)}
+                              </strong>
+                            </p>
+                          </div>
+                          <div className="overflow-x-auto rounded-lg border bg-card">
+                            <table className="w-full min-w-[1100px] text-sm">
+                              <thead className="border-b bg-muted/40 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <tr>
+                                  <th className="w-8 px-2 py-2">
+                                    <span className="sr-only">Detalhes do lançamento</span>
+                                  </th>
+                                  <th className="px-3 py-2">Previsão</th>
+                                  <th className="px-3 py-2">Quem fatura</th>
+                                  <th className="px-3 py-2">Cliente / pátio</th>
+                                  <th className="px-3 py-2">Origem / nota</th>
+                                  <th className="px-3 py-2 text-right">Valor</th>
+                                  <th className="px-3 py-2">Situação</th>
+                                  <th className="px-3 py-2">Projeto</th>
+                                  <th className="px-3 py-2">
+                                    <span className="sr-only">Ações do lançamento</span>
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.rows.map((row) => (
+                                  <ReceivableRow
+                                    key={row.id}
+                                    row={row}
+                                    today={today}
+                                    tasks={tasks}
+                                    links={links}
+                                    sources={sources}
+                                    open={expanded === row.id}
+                                    onToggle={() =>
+                                      setExpanded((current) => (current === row.id ? null : row.id))
+                                    }
+                                    saving={flow.settleReceivable.isPending}
+                                    onSettle={(receivedOn) => settle(row, receivedOn)}
+                                  />
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -467,6 +546,136 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
         )}
       </Card>
     </aside>
+  );
+}
+
+function BulletinRow({
+  group,
+  links,
+  tasks,
+  open,
+  onToggle,
+}: {
+  group: BulletinReceivables<Row>;
+  links: ReturnType<typeof useReceivableTaskLinks>;
+  tasks: { id: string; title: string | null }[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const status = STATUS[group.status];
+  const companies = [
+    ...new Set(group.rows.map((row) => (row.entry.companyId ? row.entry.company : "Jacoby"))),
+  ];
+  const taskIds = [...new Set(group.rows.map((row) => links.linkFor(row.id)).filter(Boolean))];
+  const singleTask = taskIds.length === 1 ? tasks.find((task) => task.id === taskIds[0]) : null;
+  const expected = group.expectedDates[0];
+  const receivedOn = group.receivedDates.at(-1);
+  return (
+    <tr
+      onClick={onToggle}
+      className={`group cursor-pointer border-t transition-colors hover:bg-accent/30 ${open ? "bg-accent/40" : ""}`}
+    >
+      <td className="px-2 py-3">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
+          aria-expanded={open}
+          aria-label={`${open ? "Recolher" : "Detalhar"} BM ${group.bulletin}`}
+          className="rounded p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180 text-primary" : ""}`}
+          />
+        </button>
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 tabular-nums">
+        <p
+          className={group.status === "overdue" ? "font-semibold text-destructive" : "font-medium"}
+        >
+          {group.status === "received" ? formatDate(receivedOn) : formatDate(expected)}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {group.status === "received"
+            ? "Último recebimento"
+            : group.expectedDates.length > 1
+              ? `${group.expectedDates.length} previsões · ver detalhes`
+              : "Previsão de recebimento"}
+        </p>
+      </td>
+      <td className="max-w-52 px-3 py-3">
+        <p className="truncate text-xs font-medium text-primary" title={companies.join(" · ")}>
+          {companies.length === 1 ? companies[0] : `${companies.length} empresas`}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {group.rows.every((row) => !row.entry.companyId)
+            ? "Faturamento direto"
+            : group.rows.every((row) => row.entry.companyId)
+              ? "Comissão da Jacoby"
+              : "Direto e comissões"}
+        </p>
+      </td>
+      <td className="px-3 py-3">
+        <p className="font-medium">{group.client}</p>
+        <p className="text-xs text-muted-foreground">{group.branch}</p>
+      </td>
+      <td className="px-3 py-3">
+        <p className="font-semibold text-primary">BM {group.bulletin}</p>
+        <p className="text-xs text-muted-foreground">
+          {group.rows.length} lançamento(s) agrupado(s)
+        </p>
+      </td>
+      <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
+        <p className="text-base font-semibold">{money.format(group.total)}</p>
+        {group.partiallyReceived && (
+          <p className="text-xs text-muted-foreground">Falta {money.format(group.remaining)}</p>
+        )}
+        {!group.confirmed && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">Inclui valor provisório</p>
+        )}
+      </td>
+      <td className="px-3 py-3">
+        <span
+          className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
+        >
+          {group.partiallyReceived ? "Recebido parcialmente" : status.label}
+        </span>
+        {group.partiallyReceived && group.status === "overdue" && (
+          <p className="mt-1 text-xs text-destructive">Com valor vencido</p>
+        )}
+      </td>
+      <td className="px-3 py-3" onClick={(event) => event.stopPropagation()}>
+        {singleTask ? (
+          <Link
+            to="/tasks/list"
+            search={{ task: singleTask.id, mine: undefined }}
+            className="inline-block max-w-40 truncate text-xs text-primary hover:underline"
+            title={singleTask.title || "Tarefa"}
+          >
+            {singleTask.title || "Tarefa"}
+          </Link>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {taskIds.length ? `${taskIds.length} projetos nos detalhes` : "—"}
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-3 text-right">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
+          aria-expanded={open}
+        >
+          {open ? "Recolher" : "Detalhar BM"}
+        </Button>
+      </td>
+    </tr>
   );
 }
 
@@ -600,11 +809,7 @@ function ReceivableRow({
   );
 }
 
-const RULE_BASIS: Record<string, string> = {
-  issue: "dia 10 do mês seguinte à emissão da NF",
-  due: "dia 10 do mês seguinte ao vencimento da NF",
-  manual: "data definida manualmente",
-};
+const RULE_BASIS = BILLING_DATE_RULES;
 
 function ReceivableBreakdown({
   row,

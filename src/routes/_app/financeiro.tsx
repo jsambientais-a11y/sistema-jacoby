@@ -35,8 +35,9 @@ import { useBillingFlowData, type FinancialService, type MovementCommission } fr
 
 export const Route = createFileRoute("/_app/financeiro")({
   component: FinancialControlPage,
-  validateSearch: (search: Record<string, unknown>): { aba?: "faturado" } => ({
+  validateSearch: (search: Record<string, unknown>): { aba?: "faturado"; nf?: "missing" } => ({
     aba: search.aba === "faturado" ? "faturado" : undefined,
+    nf: search.nf === "missing" ? "missing" : undefined,
   }),
 });
 
@@ -87,7 +88,7 @@ function FinancialControlPage() {
     companiesQuery, servicesCatalogQuery, branchesQuery, cycleNotesQuery, invoiceLinksQuery,
     cycles, companies, catalog, branches, residues,
     serviceRows, movementCommissionRows: allMovementCommissionRows, directBillingRows,
-    issuedBulletins, billingFlowEntries, saveBillingTracking,
+    issuedBulletins, billingFlowEntries, saveBillingTracking, saveBillingBulletinTracking,
   } = flow;
   // Filtros da tela anterior (arquivada); o fluxo atual usa todos os lançamentos.
   const rows = useMemo(
@@ -230,8 +231,9 @@ function FinancialControlPage() {
               bulletins={issuedBulletins}
               isLoading={servicesQuery.isLoading || movementCommissionsQuery.isLoading || cyclesQuery.isLoading || directBillingDataQuery.isLoading || billingTrackingQuery.isLoading || cycleNotesQuery.isLoading || invoiceLinksQuery.isLoading}
               loadError={[servicesQuery, movementCommissionsQuery, cyclesQuery, directBillingDataQuery, billingTrackingQuery, companiesQuery, branchesQuery, servicesCatalogQuery, cycleNotesQuery, invoiceLinksQuery].map((query) => query.error).find((error) => error instanceof Error)?.message || null}
-              isSaving={saveBillingTracking.isPending}
+              isSaving={saveBillingTracking.isPending || saveBillingBulletinTracking.isPending}
               onSave={(input) => saveBillingTracking.mutateAsync(input).then(() => undefined)}
+              onSaveBatch={(inputs) => saveBillingBulletinTracking.mutateAsync(inputs).then(() => undefined)}
             />
           </TabsContent>
           <TabsContent value="faturado" forceMount className="min-w-0 data-[state=inactive]:hidden">
