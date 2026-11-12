@@ -1144,6 +1144,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      jacoby_portal_bulletin_residues: { Args: { p_client_id: string }; Returns: Json }
       seed_user_kanban_defaults: {
         Args: { _user_id: string }
         Returns: undefined
