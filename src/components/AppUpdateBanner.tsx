@@ -25,7 +25,11 @@ const writeStorage = (storage: "local" | "session", key: string, value: string) 
 };
 
 export function AppUpdateBanner() {
-  const { user, isClient } = useAuth();
+  const { user, isClient, loading } = useAuth();
+  return user && !isClient && !loading ? <InternalAppUpdateBanner key={user.id} /> : null;
+}
+
+function InternalAppUpdateBanner() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [headerTarget, setHeaderTarget] = useState<HTMLElement | null>(null);
   const [checked, setChecked] = useState(false);
@@ -115,7 +119,7 @@ export function AppUpdateBanner() {
   // Notificação ativa de nova versão: aparece mesmo sem a pessoa olhar o topo da tela
   // e volta a lembrar 10 minutos depois de fechada, até que o sistema seja atualizado.
   useEffect(() => {
-    if (!available || !user) { toast.dismiss(UPDATE_TOAST_ID); return; }
+    if (!available) { toast.dismiss(UPDATE_TOAST_ID); return; }
     const snoozedUntil = Number(readStorage("session", `${SNOOZE_KEY}:${available.id}`) || 0);
     if (snoozedUntil > Date.now()) return;
     toast("Nova versão do sistema disponível", {
@@ -127,7 +131,8 @@ export function AppUpdateBanner() {
       cancel: { label: "Ver novidades", onClick: () => setDetailsOpen(true) },
       onDismiss: () => writeStorage("session", `${SNOOZE_KEY}:${available.id}`, String(Date.now() + REMIND_AFTER_MS)),
     });
-  }, [available, user, notes.title, reload, remindTick]);
+  }, [available, notes.title, reload, remindTick]);
+  useEffect(() => () => { toast.dismiss(UPDATE_TOAST_ID); }, []);
 
   // Título da aba sinaliza a nova versão, para quem está em outra aba ou janela.
   useEffect(() => {
@@ -142,11 +147,11 @@ export function AppUpdateBanner() {
 
   // Depois de atualizar, a equipe vê as novidades uma vez por versão.
   useEffect(() => {
-    if (!user || isClient || readStorage("local", SEEN_KEY) === releaseNotes.version) return;
+    if (readStorage("local", SEEN_KEY) === releaseNotes.version) return;
     writeStorage("local", SEEN_KEY, releaseNotes.version);
     const timer = window.setTimeout(() => setDetailsOpen(true), 1200);
     return () => window.clearTimeout(timer);
-  }, [user, isClient]);
+  }, []);
 
   const sections = notes.sections || [];
   const base = import.meta.env.BASE_URL || "/";
