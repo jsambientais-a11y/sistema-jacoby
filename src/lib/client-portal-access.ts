@@ -14,17 +14,40 @@ export type PortalLogin = {
 
 export const portalAccessKey = (clientId: string) => ["client_portal_access", clientId];
 
+const expiredAdminSession =
+  "Sua sessão na Jacoby expirou. Entre novamente com sua conta de administrador e tente de novo.";
+
 export async function invokeAdminUserAccess(
   action: "create" | "update" | "impersonate_client",
   data: Record<string, unknown>,
 ) {
-  const { data: result, error } = await supabase.functions.invoke("admin-user-access", {
+  const { data: initial, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !initial.session) throw new Error(expiredAdminSession);
+
+  const invoke = (accessToken: string) => supabase.functions.invoke("admin-user-access", {
+    headers: { Authorization: `Bearer ${accessToken}` },
     body: { action, data },
   });
+  const isUnauthorized = (error: unknown) =>
+    (error as { context?: Response } | null)?.context?.status === 401;
+
+  let response = await invoke(initial.session.access_token);
+  // Both the gateway and the function reject a 401 before executing the action.
+  if (isUnauthorized(response.error)) {
+    const { data: refreshed, error } = await supabase.auth.refreshSession();
+    if (error || !refreshed.session || refreshed.session.user.id !== initial.session.user.id)
+      throw new Error(expiredAdminSession);
+    response = await invoke(refreshed.session.access_token);
+    if (isUnauthorized(response.error)) {
+      throw new Error("A Jacoby não conseguiu validar sua sessão de administrador. Saia da conta, entre novamente e tente de novo.");
+    }
+  }
+
+  const { data: result, error } = response;
   if (error) {
-    const response = (error as any).context;
-    if (response && typeof response.json === "function") {
-      const payload = await response.json().catch(() => null);
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      const payload = await context.json().catch(() => null);
       if (payload?.error) throw new Error(payload.error);
     }
     throw error;

@@ -29,10 +29,15 @@ export async function startClientImpersonation(userId: string) {
   const { data } = await supabase.auth.getSession();
   if (!data.session) throw new Error("Sessão de administrador não encontrada.");
   const { tokenHash } = await invokeAdminUserAccess("impersonate_client", { userId });
+  // A tentativa pode ter renovado a sessão e rotacionado o refresh token.
+  const { data: current, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !current.session || current.session.user.id !== data.session.user.id) {
+    throw new Error("A sessão de administrador mudou. Atualize a página e tente novamente.");
+  }
 
   const backup: AdminSessionBackup = {
-    access_token: data.session.access_token,
-    refresh_token: data.session.refresh_token,
+    access_token: current.session.access_token,
+    refresh_token: current.session.refresh_token,
   };
   localStorage.setItem(backupKey, JSON.stringify(backup));
   const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
