@@ -39,6 +39,7 @@ import { inPeriod, type Period } from "@/lib/receivables";
 
 export type BillingFlowCategory = "rental" | "exchange" | "treatment" | "service";
 export type BillingFlowTracking = {
+  recurring_forecast?: boolean;
   id: string;
   cycle_id: string;
   category: BillingFlowCategory;

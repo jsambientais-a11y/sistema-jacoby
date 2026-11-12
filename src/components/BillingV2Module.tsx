@@ -1,3 +1,5 @@
+import { RecurringBulletinsPanel } from "@/components/RecurringBulletinsPanel";
+import { RecurringBulletinsDialog, type RecurringBulletinSource } from "@/components/RecurringBulletinsDialog";
 import { matchesBulletinNumber, sortBillingBulletins } from "@/lib/billing-bulletins";
 import { CYCLE_INVOICE_BUCKET, listCycleInvoices, validateCycleInvoice, invoiceServiceFields, type CycleInvoice } from "@/lib/cycle-invoices";
 import { CycleInvoiceAttachments } from "@/components/CycleInvoiceAttachments";
@@ -5,7 +7,7 @@ import { residueNameKey, uniqueResidueNames } from "@/lib/residue-names";
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Container, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Pencil, RotateCcw, Send, Trash2, Truck, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Container, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Pencil, Repeat2, RotateCcw, Send, Trash2, Truck, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useClients } from "@/hooks/use-data";
@@ -231,7 +233,9 @@ function Field({ label, children, className = "" }: { label: string; children: R
 
 export function BillingV2Module() {
   const qc = useQueryClient();
-  const { permissions } = useAuth();
+  const { permissions, hasPermission } = useAuth();
+  const canManageRecurrences = hasPermission("finance");
+  const [recurrenceDialog, setRecurrenceDialog] = useState<RecurringBulletinSource | null>(null);
   const lockFinalized = permissions.includes("billing_lock_finalized");
   const isLocked = (item?: Pick<Cycle, "status"> | null) => lockFinalized && item?.status === "closed";
   const { data: clients = [] } = useClients();
@@ -244,7 +248,7 @@ export function BillingV2Module() {
   const attachmentChanging = useIsMutating({ mutationKey: ["billing-v2-cycle-attachment-write", cycleId] }) > 0;
   const [pendingResidueId, setPendingResidueId] = useState("all");
   const [listResidue, setListResidue] = useState(() => storedBillingView().listResidue || "all");
-  const [homeTab, setHomeTab] = useState<"boletins" | "pendentes">("boletins");
+  const [homeTab, setHomeTab] = useState<"boletins" | "pendentes" | "recorrentes">("boletins");
   const [tab, setTab] = useState(() => storedBillingView().tab || "locacoes");
   const [residueFilterId, setResidueFilterId] = useState(() => storedBillingView().residueFilterId || "all");
   const [billingViewRestored, setBillingViewRestored] = useState(false);
@@ -902,6 +906,7 @@ export function BillingV2Module() {
     onError: (error: Error) => toast.error(error.message),
   });
   const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["billing-v2-recurring-sequence"] });
     qc.invalidateQueries({ queryKey: ["billing-v2-placements", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-pending-movements"] });
@@ -1682,6 +1687,7 @@ export function BillingV2Module() {
       limit:allClientsLimit,status:resultStatusFilter,search:bmSearch,listResidue});
   };
   const backToBulletinList = () => {
+    if (homeTab === "recorrentes") void qc.invalidateQueries({ queryKey: ["billing-v2-recurring-sequence"] });
     setCycleId(""); setFocusedMovementId("");
     if (!returnToList || homeTab === "pendentes") return;
     setClientId(returnToList.clientId); setCycleBranchId(returnToList.branchId);
@@ -1690,7 +1696,7 @@ export function BillingV2Module() {
     setListResidue(returnToList.listResidue || "all");
     setSelectedBulkCycleIds([]);
   };
-  const openRecentCycle = (item: Cycle) => {
+  const openRecentCycle = (item: Pick<Cycle, "id" | "client_id" | "branch_id">) => {
     rememberList();
     setFocusedMovementId("");
     setClientId(item.client_id);
@@ -1974,6 +1980,9 @@ export function BillingV2Module() {
     <BillingReadOnlyProvider value={Boolean(isLocked(cycle))}>
     <div className="jacoby-billing mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6">
       {pdfPreviewDialog}
+      {canManageRecurrences && recurrenceDialog && <RecurringBulletinsDialog
+        source={recurrenceDialog} onClose={() => setRecurrenceDialog(null)}
+      />}
       {isLocked(cycle) && <p role="status" className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">BM finalizado · somente consulta. Você pode navegar pelas abas, conferir locações, movimentações, medições e abrir os arquivos. Alterações estão bloqueadas neste BM.</p>}
       {!cycleId && (
         <header>
@@ -1985,15 +1994,23 @@ export function BillingV2Module() {
         </header>
       )}
       {!cycleId && (
-        <Tabs value={homeTab} onValueChange={(value) => setHomeTab(value as "boletins" | "pendentes")}>
+        <Tabs value={homeTab} onValueChange={(value) => setHomeTab(value as "boletins" | "pendentes" | "recorrentes")}>
           <TabsList className="jacoby-billing-tabs h-auto w-full flex-wrap justify-start gap-1 rounded-xl bg-muted/50 p-1">
             <TabsTrigger value="boletins" className="rounded-lg data-[state=active]:shadow-sm"><ClipboardList className="h-4 w-4" />Boletins</TabsTrigger>
             <TabsTrigger value="pendentes" className="rounded-lg data-[state=active]:shadow-sm">
               Movimentações pendentes
               {pendingMovementGroups.length > 0 && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{pendingMovementGroups.length}</span>}
             </TabsTrigger>
+            {canManageRecurrences && <TabsTrigger value="recorrentes" className="rounded-lg data-[state=active]:shadow-sm">
+              <Repeat2 className="h-4 w-4" />Recorrentes
+            </TabsTrigger>}
           </TabsList>
         </Tabs>
+      )}
+      {canManageRecurrences && homeTab === "recorrentes" && (
+        <div hidden={Boolean(cycleId)}>
+          <RecurringBulletinsPanel clients={clients} onOpenCycle={openRecentCycle} />
+        </div>
       )}
       {!cycleId && homeTab === "boletins" && (
       <Card className="p-5">
@@ -2092,7 +2109,7 @@ export function BillingV2Module() {
           {!clientId && !bmSearching && (allClientsCyclesQuery.data?.total || 0) > (allClientsCyclesQuery.data?.cycles.length || 0) && <Button className="mt-4" variant="outline" disabled={allClientsCyclesQuery.isFetching} onClick={() => setAllClientsLimit(value => value+50)}>Carregar mais 50 boletins</Button>}
         </Card>
         </div>
-      ) : (
+      ) : homeTab === "pendentes" ? (
         <Card className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -2173,12 +2190,12 @@ export function BillingV2Module() {
             </table>
           </div>
         </Card>
-      ) : (
+      ) : null : (
         <>
           <Card className="jacoby-billing-header sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 overflow-hidden border-primary/20 p-3 shadow-elegant supports-[backdrop-filter]:bg-card/85 supports-[backdrop-filter]:backdrop-blur">
             <Button allowReadOnly variant="outline" size="sm" className="shrink-0" onClick={backToBulletinList}>
               <ArrowLeft className="mr-2 h-4 w-4" />
-              {homeTab === "pendentes" ? "Voltar às pendências" : "Voltar aos boletins"}
+              {homeTab === "pendentes" ? "Voltar às pendências" : homeTab === "recorrentes" ? "Voltar aos recorrentes" : "Voltar aos boletins"}
             </Button>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className="text-lg font-bold tracking-tight text-primary">{filteredEmissionPreview ? `#${filteredEmissionPreview}` : bulletinNumber(cycle?.bulletin_number)}</span>
@@ -2192,6 +2209,13 @@ export function BillingV2Module() {
                 {" · "}{cycle ? `${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}
               </span>
             </div>
+            {canManageRecurrences && cycle && !isLocked(cycle) && !filteredEmissionPreview && (
+              <Button variant="outline" size="sm" onClick={() => setRecurrenceDialog({
+                id: cycle.id, bulletin_number: cycle.bulletin_number, clientName,
+              })}>
+                <Repeat2 className="mr-2 h-4 w-4" />Programar recorrência
+              </Button>
+            )}
           </Card>
           <Tabs
             value={tab === "historico" ? "locacoes" : tab}

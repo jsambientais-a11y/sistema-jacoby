@@ -150,6 +150,50 @@ export function buildBillingFlowEntries(input: Inputs): BillingFlowEntry[] {
       });
     }
   }
+  // An approved recurring receivable can precede the actual service execution date.
+  for (const item of tracking) {
+    if (!item.recurring_forecast || item.category !== "service") continue;
+    const cycle = cycles.find((candidate) => candidate.id === item.cycle_id);
+    if (
+      !cycle ||
+      cycle.status !== "closed" ||
+      (cycle.outsourced_company_id ?? null) !== item.outsourced_company_id
+    )
+      continue;
+    const id = `${cycle.id}:service:${item.source_key}`;
+    if (grouped.has(id)) continue;
+    const serviceLinks = links.filter(
+      (link) =>
+        link.cycle_id === cycle.id && link.outsourced_company_id === item.outsourced_company_id,
+    );
+    if (
+      !serviceLinks.length &&
+      (item.outsourced_company_id !== null ||
+        !input.directServices.some((service) => service.cycle_id === cycle.id))
+    )
+      continue;
+    const company = companies.find((candidate) => candidate.id === item.outsourced_company_id);
+    grouped.set(id, {
+      id,
+      cycleId: cycle.id,
+      category: "service",
+      companyId: item.outsourced_company_id,
+      bulletin: `#${String(cycle.bulletin_number || 0).padStart(3, "0")}`,
+      client:
+        clients.find((candidate) => candidate.id === cycle.client_id)?.name ||
+        "Cliente não identificado",
+      branch: branches.find((candidate) => candidate.id === cycle.branch_id)?.name || "Matriz",
+      company:
+        company?.trade_name ||
+        company?.legal_name ||
+        (item.outsourced_company_id ? "Terceirizada" : "Jacoby (faturamento direto)"),
+      description: "Serviços recorrentes",
+      baseAmount: Number(item.base_amount_snapshot),
+      currentCommission: Number(item.commission_amount),
+      itemsCount: serviceLinks.length || 1,
+      tracking: item,
+    });
+  }
   return attachServiceInvoiceEntries(
     [...grouped.values()],
     cycles.map((cycle) => {

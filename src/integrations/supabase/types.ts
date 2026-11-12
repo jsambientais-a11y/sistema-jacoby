@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      billing_v2_recurring_bulletin_occurrences: {
+        Row: { schedule_id: string; scheduled_on: string; cycle_id: string | null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      billing_v2_recurring_bulletins: {
+        Row: {
+          id: string
+          source_number: number
+          client_id: string
+          first_on: string
+          next_on: string | null
+          stopped_at: string | null
+          repetitions: number
+          generated_count: number
+          last_cycle_number: number | null
+          last_error: string | null
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       attachments: {
         Row: {
           created_at: string
@@ -1129,6 +1153,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      prepare_recurring_billing_bulletins: { Args: { target_id: string }; Returns: number }
+      copy_previous_recurring_bulletin_values: { Args: { target_cycle_id: string }; Returns: number }
+      finalize_reviewed_recurring_billing_bulletins: {
+        Args: { target_id: string; reviewed_values: Json }
+        Returns: number
+      }
+      finalize_recurring_billing_bulletins: {
+        Args: { target_id: string; through_on: string; expected_amount: number }
+        Returns: number
+      }
+      create_recurring_billing_bulletin: {
+        Args: { source_id: string; first_date: string; occurrence_count: number; copy_services?: boolean }
+        Returns: string
+      }
+      stop_recurring_billing_bulletin: { Args: { target_id: string }; Returns: undefined }
       admin_get_profile_emails: {
         Args: never
         Returns: {
