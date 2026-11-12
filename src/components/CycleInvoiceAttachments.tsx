@@ -1,12 +1,17 @@
-import { useEffect, useRef, useId } from "react";
+import { useEffect, useRef, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clock3, Eye, FileImage, FileSpreadsheet, FileText, Loader2, Upload } from "lucide-react";
+import { CheckCircle2, Clock3, Eye, FileImage, FileSpreadsheet, FileText, Loader2, Replace, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BillingButton as Button, useBillingReadOnly } from "@/components/BillingReadOnly";
+import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { canPreviewInline, usePdfPreview } from "@/components/PdfPreviewDialog";
 import {
   CYCLE_INVOICE_BUCKET,
+  cycleInvoiceFolder,
   cycleInvoicePath,
   listCycleInvoices,
   validateCycleInvoice,
@@ -26,6 +31,8 @@ export function CycleInvoiceAttachments({
   bulletinLabel,
   linkedPaths,
   onLaunch,
+  onChangeAttachment,
+  serviceSaving,
   initialPath,
 }: {
   cycleId: string;
@@ -33,9 +40,14 @@ export function CycleInvoiceAttachments({
   initialPath?: string | null;
   linkedPaths: string[];
   onLaunch: (invoice: CycleInvoice) => void;
+  onChangeAttachment: (oldPath: string, replacement: CycleInvoice | null) => void;
+  serviceSaving: boolean;
 }) {
   const readOnly = useBillingReadOnly();
   const inputId = useId();
+  const replacementInput = useRef<HTMLInputElement>(null);
+  const replacing = useRef<CycleInvoice | null>(null);
+  const [removing, setRemoving] = useState<CycleInvoice | null>(null);
   const { openPdfPreview, pdfPreviewDialog } = usePdfPreview();
   const qc = useQueryClient();
   const queryKey = ["billing-v2-cycle-invoices", cycleId];
@@ -53,32 +65,96 @@ export function CycleInvoiceAttachments({
       onLaunch(invoice);
     }
   }, [attachments.data, initialPath, linkedPaths, onLaunch, readOnly]);
-  const upload = useMutation({
-    mutationFn: async (file: File) => {
+  const save = useMutation({
+    mutationKey: ["billing-v2-cycle-attachment-write", cycleId],
+    mutationFn: async ({ previous, file }: { previous?: CycleInvoice; file?: File }) => {
       if (readOnly) throw new Error("Este BM finalizado permite somente consulta.");
-      // Capture the target BM for the entire upload, even if navigation changes meanwhile.
       const targetCycleId = cycleId;
-      await validateCycleInvoice(file);
+      const bucket = supabase.storage.from(CYCLE_INVOICE_BUCKET);
+      const services = () => supabase.from("billing_v2_cycle_services" as any) as any;
+      if (previous) {
+        const folder = `${cycleInvoiceFolder(targetCycleId)}/`;
+        if (!previous.path.startsWith(folder) || previous.path.slice(folder.length).includes("/"))
+          throw new Error("Selecione um arquivo deste BM.");
+      }
+      if (file) await validateCycleInvoice(file);
+
       const cycle = await (supabase.from("billing_v2_cycles" as any) as any)
         .select("id")
         .eq("id", targetCycleId)
         .maybeSingle();
       if (cycle.error) throw cycle.error;
       if (!cycle.data)
-        throw new Error("Este BM não está mais disponível. Atualize a tela antes de anexar.");
-      const path = cycleInvoicePath(targetCycleId, file.name, crypto.randomUUID());
-      const result = await supabase.storage
-        .from(CYCLE_INVOICE_BUCKET)
-        .upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
-      if (result.error) throw result.error;
-      return targetCycleId;
+        throw new Error("Este BM não está mais disponível. Atualize a tela e tente novamente.");
+
+      const links = previous
+        ? await services().select("id").eq("cycle_id", targetCycleId).eq("invoice_pdf_path", previous.path)
+        : null;
+      if (links?.error) throw links.error;
+
+      let replacement: CycleInvoice | null = null;
+      if (file) {
+        const path = cycleInvoicePath(targetCycleId, file.name, crypto.randomUUID());
+        const result = await bucket.upload(path, file, {
+          contentType: file.type || "application/octet-stream", upsert: false,
+        });
+        if (result.error) throw result.error;
+        replacement = {
+          path, name: path.split("/").pop()!.slice(38),
+          size: file.size, createdAt: new Date().toISOString(),
+        };
+      }
+      if (!previous) return { replacement, cleanupFailed: false };
+
+      if (links?.data?.length) {
+        const updated = await services()
+          .update({ invoice_pdf_path: replacement?.path ?? null, invoice_pdf_name: replacement?.name ?? null })
+          .eq("cycle_id", targetCycleId)
+          .eq("invoice_pdf_path", previous.path)
+          .select("id");
+        if (updated.error || !updated.data?.length) {
+          // Confirm the new file is unreferenced before cleaning up an uncertain write.
+          if (replacement) {
+            const current = await services().select("id").eq("cycle_id", targetCycleId)
+              .eq("invoice_pdf_path", replacement.path).limit(1);
+            if (!current.error && !current.data?.length) await bucket.remove([replacement.path]);
+          }
+          throw new Error(updated.error?.message || "O vínculo do arquivo mudou. Confira os anexos e tente novamente.");
+        }
+      }
+
+      const remaining = await services().select("id").eq("cycle_id", targetCycleId)
+        .eq("invoice_pdf_path", previous.path).limit(1);
+      if (remaining.error || remaining.data?.length) {
+        return { replacement, cleanupFailed: true };
+      }
+      const removed = await bucket.remove([previous.path]);
+      return { replacement, cleanupFailed: Boolean(removed.error || !removed.data?.length) };
     },
-    onSuccess: async (targetCycleId) => {
-      await Promise.all([qc.invalidateQueries({ queryKey: ["billing-v2-cycle-invoices", targetCycleId] }), qc.invalidateQueries({queryKey:["financial-cycle-invoices"]})]);
-      toast.success("Nota salva no BM, aguardando lançamento do serviço e do valor faturado.");
+    onSuccess: ({ replacement, cleanupFailed }, { previous }) => {
+      setRemoving(null);
+      if (cleanupFailed) {
+        if (previous && replacement) onChangeAttachment(previous.path, replacement);
+        toast.warning(replacement
+          ? "O novo arquivo foi salvo. O anterior ainda precisa ser removido."
+          : "Não foi possível remover o arquivo do armazenamento. Confira os anexos e tente novamente.");
+      } else if (previous) {
+        onChangeAttachment(previous.path, replacement);
+        toast.success(replacement ? "Arquivo do BM substituído." : "Arquivo removido do BM.");
+      } else {
+        toast.success("Nota salva no BM, aguardando lançamento do serviço e do valor faturado.");
+      }
     },
-    onError: (error: Error) => toast.error(`Não foi possível salvar a nota: ${error.message}`),
+    onSettled: async () => {
+      await Promise.all([
+        ["billing-v2-cycle-invoices", cycleId], ["billing-v2-cycle-services", cycleId],
+        ["financial-cycle-invoices"], ["financial-service-invoice-links"],
+        ["outsourced-financial-services"], ["jacoby-direct-billing-data"],
+      ].map(queryKey => qc.invalidateQueries({ queryKey })));
+    },
+    onError: (error: Error) => toast.error(`Não foi possível alterar o arquivo: ${error.message}`),
   });
+  const busy = save.isPending || serviceSaving;
   const open = async (file: CycleInvoice) => {
     const result = await supabase.storage
       .from(CYCLE_INVOICE_BUCKET)
@@ -97,6 +173,35 @@ export function CycleInvoiceAttachments({
       aria-label="Notas e arquivos do BM"
     >
       {pdfPreviewDialog}
+      <input
+        ref={replacementInput}
+        type="file"
+        className="hidden"
+        onChange={(event) => {
+          const previous = replacing.current;
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          replacing.current = null;
+          if (previous && file) save.mutate({ previous, file });
+        }}
+      />
+      <AlertDialog open={Boolean(removing)} onOpenChange={(open) => {
+        if (!open && !save.isPending) setRemoving(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogTitle>Remover arquivo do BM?</AlertDialogTitle>
+          <AlertDialogDescription className="break-all">
+            O arquivo “{removing?.name}” será removido deste BM e do Faturamento.
+            {removing && linkedPaths.includes(removing.path) && " O lançamento do serviço será mantido."}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={save.isPending}>Cancelar</AlertDialogCancel>
+            <Button variant="destructive" disabled={busy} onClick={() => {
+              if (removing) save.mutate({ previous: removing });
+            }}>{save.isPending ? "Removendo…" : "Remover arquivo"}</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 font-semibold">
@@ -125,24 +230,24 @@ export function CycleInvoiceAttachments({
             id={inputId}
             className="sr-only"
             type="file"
-            disabled={readOnly || !cycleId || upload.isPending}
+            disabled={readOnly || !cycleId || busy}
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.currentTarget.value = "";
-              if (file) upload.mutate(file);
+              if (file) save.mutate({ file });
             }}
           />
-          <Button asChild disabled={readOnly || !cycleId || upload.isPending}>
+          <Button asChild disabled={readOnly || !cycleId || busy}>
             <label
               htmlFor={inputId}
-              className={upload.isPending ? "pointer-events-none" : "cursor-pointer"}
+              className={busy ? "pointer-events-none" : "cursor-pointer"}
             >
-              {upload.isPending ? (
+              {busy ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Upload className="mr-2 h-4 w-4" />
               )}
-              {upload.isPending ? "Salvando arquivo…" : "Anexar arquivo ao BM"}
+              {busy ? "Salvando arquivo…" : "Anexar arquivo ao BM"}
             </label>
           </Button>
         </div>
@@ -198,7 +303,20 @@ export function CycleInvoiceAttachments({
                 <Eye className="h-4 w-4" />
                 Abrir nota
               </Button>
-              {!linked && <Button size="sm" onClick={() => onLaunch(file)}>Lançar serviço com esta nota</Button>}
+              {!readOnly && <>
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => {
+                  replacing.current = file;
+                  replacementInput.current?.click();
+                }}>
+                  <Replace className="h-4 w-4" />
+                  Substituir arquivo
+                </Button>
+                <Button variant="outline" size="sm" className="text-destructive" disabled={busy} onClick={() => setRemoving(file)}>
+                  <Trash2 className="h-4 w-4" />
+                  Remover
+                </Button>
+              </>}
+              {!linked && <Button size="sm" disabled={busy} onClick={() => onLaunch(file)}>Lançar serviço com esta nota</Button>}
               </div>
             </li>
             );

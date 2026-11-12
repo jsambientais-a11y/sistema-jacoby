@@ -4,7 +4,7 @@ import { CycleInvoiceAttachments } from "@/components/CycleInvoiceAttachments";
 import { residueNameKey, uniqueResidueNames } from "@/lib/residue-names";
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Container, Download, Eye, FilePlus2, FileText, Image as ImageIcon, Mail, Pencil, RotateCcw, Send, Trash2, Truck, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
@@ -241,6 +241,7 @@ export function BillingV2Module() {
   const [periodEnd, setPeriodEnd] = useState(() => storedBillingView().periodEnd || new Date().toISOString().slice(0, 10));
   const [cycleBranchId, setCycleBranchId] = useState(() => storedBillingView().cycleBranchId || "");
   const [cycleId, setCycleId] = useState(() => storedBillingView().cycleId || "");
+  const attachmentChanging = useIsMutating({ mutationKey: ["billing-v2-cycle-attachment-write", cycleId] }) > 0;
   const [pendingResidueId, setPendingResidueId] = useState("all");
   const [listResidue, setListResidue] = useState(() => storedBillingView().listResidue || "all");
   const [homeTab, setHomeTab] = useState<"boletins" | "pendentes">("boletins");
@@ -935,6 +936,8 @@ export function BillingV2Module() {
       let invoiceFields = {};
       if (serviceInvoice) {
         if (serviceInvoice.cycleId !== cycleId) throw Error("Selecione a nota deste BM novamente.");
+        const stored = await supabase.storage.from(CYCLE_INVOICE_BUCKET).exists(serviceInvoice.path);
+        if (!stored.data) throw Error("O arquivo foi removido ou substituído. Selecione novamente a nota deste BM.");
         invoiceFields = invoiceServiceFields({ cycleId, invoice: serviceInvoice,
           amount: serviceAmount, quantity: serviceQuantity, executionDate: serviceExecutionDate,
           issuedOn: serviceInvoiceDate, number: serviceInvoiceNumber });
@@ -2639,6 +2642,12 @@ export function BillingV2Module() {
                 {cycle && <CycleInvoiceAttachments key={cycle.id} cycleId={cycle.id} bulletinLabel={bulletinNumber(cycle.bulletin_number)}
                   initialPath={typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("serviceInvoice")}
                   linkedPaths={cycleServices.flatMap((item) => item.invoice_pdf_path ? [item.invoice_pdf_path] : [])}
+                  serviceSaving={addCycleService.isPending}
+                  onChangeAttachment={(oldPath, replacement) => {
+                    setServiceInvoice((current) => current?.path === oldPath
+                      ? replacement && { ...replacement, cycleId: cycle.id }
+                      : current);
+                  }}
                   onLaunch={(invoice) => {
                     setServiceInvoice({ ...invoice, cycleId: cycle.id }); setServiceAmount("");
                     setSelectedServiceId(""); setServiceQuantity("1"); setServiceObservation("");
@@ -2680,7 +2689,7 @@ export function BillingV2Module() {
                   <Field label="Data de execução">
                     <Input type="date" value={serviceExecutionDate} onChange={(event) => setServiceExecutionDate(event.target.value)} />
                   </Field>
-                  <Button className="self-end" onClick={() => addCycleService.mutate()} disabled={!selectedServiceId || addCycleService.isPending}>{addCycleService.isPending ? "Salvando…" : serviceInvoice ? "Salvar serviço e nota" : "Incluir serviço"}</Button>
+                  <Button className="self-end" onClick={() => addCycleService.mutate()} disabled={!selectedServiceId || addCycleService.isPending || attachmentChanging}>{addCycleService.isPending ? "Salvando…" : serviceInvoice ? "Salvar serviço e nota" : "Incluir serviço"}</Button>
                 </div>
                 <Field label="Observação" className="mt-3">
                   <Input value={serviceObservation} onChange={(event) => setServiceObservation(event.target.value)} placeholder="Opcional: detalhe deste lançamento" />
