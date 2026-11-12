@@ -3,7 +3,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { OverduePayablesAlert } from "@/components/OverduePayablesAlert";
 import { AppShell } from "@/components/AppShell";
 import { ClientImpersonationBanner } from "@/components/ClientImpersonationBanner";
-import { isoRemoteEnabled } from "@/lib/iso-remote";
+import { useQuery } from "@tanstack/react-query";
+import { getClientIsoWorkspaceId, isoRemoteEnabled } from "@/lib/iso-remote";
 import { IsoShell } from "@/components/iso/IsoShell";
 
 export const Route = createFileRoute("/_app")({
@@ -15,9 +16,17 @@ function AppLayout() {
   const search = useRouterState({ select: (state) => state.location.search }) as { aba?: string; authorization_id?: string };
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isIso = pathname === "/iso" || pathname.startsWith("/iso/");
+  const clientIso = useQuery({
+    queryKey: ["client-iso-workspace", user?.id],
+    queryFn: getClientIsoWorkspaceId,
+    enabled: Boolean(user && isClient && !loading),
+    retry: false,
+    staleTime: 30_000,
+  });
+  const clientIsoId = !clientIso.isError ? clientIso.data ?? undefined : undefined;
   // A prévia ISO usa apenas dados deste navegador. Deixe-a acessível no Vite
   // para revisão visual sem alterar a autenticação do sistema publicado.
-  if (import.meta.env.DEV && isIso && !isoRemoteEnabled)
+  if (import.meta.env.DEV && isIso && !isoRemoteEnabled && !user)
     return (
       <IsoShell>
         <Outlet />
@@ -32,7 +41,9 @@ function AppLayout() {
   }
   if (!user) return <Navigate to="/auth" search={{ autorizacao: pathname === "/integracoes-chatgpt" ? search.authorization_id : undefined }} />;
   // O cliente começa pela consulta operacional e navega somente nas áreas do portal.
-  if (isClient && !pathname.startsWith("/portal/"))
+  if (isClient && isIso && clientIso.isPending)
+    return <div className="p-8 text-sm">Verificando acesso ao ISO…</div>;
+  if (isClient && !pathname.startsWith("/portal/") && !(isIso && clientIsoId))
     return <Navigate to="/portal/movimentacoes" replace />;
   if (
     [
@@ -58,13 +69,17 @@ function AppLayout() {
     return (
       <>
         <OverduePayablesAlert />
-        <IsoShell>
+        <IsoShell
+          key={clientIsoId ?? "internal"}
+          clientWorkspaceId={isClient ? clientIsoId : undefined}
+        >
           <Outlet />
         </IsoShell>
+        <ClientImpersonationBanner />
       </>
     );
   return (
-    <AppShell>
+    <AppShell showClientIso={isClient && Boolean(clientIsoId)}>
       <OverduePayablesAlert />
       <Outlet />
       <ClientImpersonationBanner />

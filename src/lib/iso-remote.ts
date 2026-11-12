@@ -33,10 +33,16 @@ export function isoRemoteError(error: unknown): string {
     return "Este e-mail não tem conta cadastrada na Jacoby.";
   return `Não foi possível sincronizar o ISO: ${message}`;
 }
-export async function openIsoRemote(): Promise<IsoRemoteSnapshot> {
+export async function getClientIsoWorkspaceId(): Promise<string | null> {
+  const { data, error } = await rpc.rpc("iso_client_workspace_id");
+  if (error) throw new Error(error.message);
+  return typeof data === "string" ? data : null;
+}
+export async function openIsoRemote(expectedId?: string): Promise<IsoRemoteSnapshot> {
   const { data, error } = await rpc.rpc("iso_open_workspace");
   if (error) throw new Error(error.message);
   const v = data as IsoRemoteSnapshot;
+  if (expectedId && v?.id !== expectedId) throw new Error("ISO_ACCESS_DENIED");
   if (
     !v?.id ||
     !Number.isSafeInteger(v.revision) ||

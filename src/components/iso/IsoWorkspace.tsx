@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { IsoActionPlan, IsoReport } from "@/lib/iso-workflow";
@@ -152,6 +153,7 @@ type IsoContextValue = IsoLocalState & {
   writeFile: (id: string, blob: Blob) => Promise<void>;
   selected: IsoAudit;
   storageKey: string;
+  clientWorkspace: boolean;
   storageError: string;
   loaded: boolean;
   setSelectedId: (id: string) => void;
@@ -174,8 +176,19 @@ type IsoContextValue = IsoLocalState & {
   restoreRecord: (auditId: string, kind: "nc" | "evidence", id: string) => void;
 };
 const Context = createContext<IsoContextValue | null>(null);
-export function IsoWorkspace({ children }: { children: ReactNode }) {
+export function IsoWorkspace({
+  children,
+  clientWorkspaceId,
+}: {
+  children: ReactNode;
+  clientWorkspaceId?: string;
+}) {
   const { user } = useAuth();
+  const remoteEnabled = isoRemoteEnabled || Boolean(clientWorkspaceId);
+  const initialAudit = () => ({
+    ...emptyIsoAudit(),
+    organization: clientWorkspaceId ? "Transpacce" : "",
+  });
   const [tabId] = useState(() => {
     if (typeof window === "undefined") return "ssr";
     const key = "jacoby-iso-tab";
@@ -186,23 +199,24 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
     }
     return id;
   });
-  const storageKey = `jacoby-iso-workspace-${isoRemoteEnabled ? "server-v1" : "v2"}:${user?.id || "preview"}${isoRemoteEnabled ? `:${tabId}` : ""}`;
+  const storageKey = `jacoby-iso-workspace-${clientWorkspaceId ? `client-${clientWorkspaceId}` : remoteEnabled ? "server-v1" : "v2"}:${user?.id || "preview"}${remoteEnabled ? `:${tabId}` : ""}`;
   const [state, setState] = useState(() =>
     initializeIsoState({ ...emptyIsoAudit(), id: "preview" }),
   );
   const [loadedKey, setLoadedKey] = useState("");
   const [storageError, setStorageError] = useState("");
   const server = useIsoServerSync({
-    enabled: isoRemoteEnabled,
+    enabled: remoteEnabled,
+    expectedWorkspaceId: clientWorkspaceId,
     userId: user?.id,
     storageKey,
     setState,
     setError: setStorageError,
     loaded: () => setLoadedKey(storageKey),
-    initial: () => initializeIsoState(emptyIsoAudit()),
+    initial: () => initializeIsoState(initialAudit()),
   });
   useEffect(() => {
-    if (isoRemoteEnabled) return;
+    if (remoteEnabled) return;
     try {
       const raw = localStorage.getItem(storageKey);
       let next: IsoLocalState;
@@ -235,7 +249,7 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
     setLoadedKey(storageKey);
   }, [storageKey, user?.id]);
   useEffect(() => {
-    if (isoRemoteEnabled) return;
+    if (remoteEnabled) return;
     const sync = (event: StorageEvent) => {
       if (event.key !== storageKey || !event.newValue) return;
       try {
@@ -261,7 +275,7 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
     allowRecovery = false,
   ) => {
     if (loadedKey !== storageKey) return false;
-    if (isoRemoteEnabled && action && (!server.canWrite || storageError)) {
+    if (remoteEnabled && action && (!server.canWrite || storageError)) {
       toast.error("Edição bloqueada. Confira a conexão e a permissão do ISO.");
       return false;
     }
@@ -282,8 +296,8 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
       : next;
     try {
       localStorage.setItem(storageKey, JSON.stringify(result));
-      if (isoRemoteEnabled && action && !server.enqueue(result)) return false;
-      if (isoRemoteEnabled && !action)
+      if (remoteEnabled && action && !server.enqueue(result)) return false;
+      if (remoteEnabled && !action)
         localStorage.setItem(`${storageKey}:selection`, result.selectedId);
       setState(result);
       latest.current = { state: result, storageKey };
@@ -437,17 +451,17 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
         auditId,
       );
     },
-    remote: isoRemoteEnabled,
-    syncStatus: isoRemoteEnabled ? server.status : "Salvo neste navegador",
-    access: isoRemoteEnabled ? server.snapshot?.access || "" : "local",
-    canWrite: !isoRemoteEnabled || (server.canWrite && !storageError),
+    remote: remoteEnabled,
+    syncStatus: remoteEnabled ? server.status : "Salvo neste navegador",
+    access: remoteEnabled ? server.snapshot?.access || "" : "local",
+    canWrite: !remoteEnabled || (server.canWrite && !storageError),
     reloadServer: server.reloadServer,
     readFile: (id) =>
-      isoRemoteEnabled && server.snapshot
+      remoteEnabled && server.snapshot
         ? readIsoRemoteBlob(server.snapshot.id, id)
         : readIsoBlob(storageKey, id),
     writeFile: async (id, blob) => {
-      if (isoRemoteEnabled) {
+      if (remoteEnabled) {
         if (!server.snapshot || !server.canWrite || storageError)
           throw new Error("Sem permissão de envio no ISO.");
         await writeIsoRemoteBlob(server.snapshot.id, id, blob);
@@ -455,6 +469,7 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
     },
     selected,
     storageKey,
+    clientWorkspace: Boolean(clientWorkspaceId),
     storageError,
     loaded: loadedKey === storageKey,
     setSelectedId,
@@ -545,7 +560,12 @@ export function IsoWorkspace({ children }: { children: ReactNode }) {
   };
   return (
     <Context.Provider value={value}>
-      {loadedKey !== storageKey ? (
+      {clientWorkspaceId && server.accessDenied ? (
+        <div role="alert" className="space-y-3 p-8 text-sm">
+          <p className="text-destructive">O ambiente ISO da Transpacce está indisponível.</p>
+          <Link to="/portal/movimentacoes" className="font-medium underline">Voltar ao portal</Link>
+        </div>
+      ) : loadedKey !== storageKey ? (
         <div className="p-8 text-sm">Carregando auditorias…</div>
       ) : (
         <>

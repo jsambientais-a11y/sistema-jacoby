@@ -65,7 +65,7 @@ const guides = [
   },
 ] as const;
 function Manual() {
-  const { remote } = useIsoWorkspace();
+  const { remote, clientWorkspace } = useIsoWorkspace();
   const [search, setSearch] = useState("");
   const shown = guides.filter((g) =>
     `${g.title} ${g.body}`.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")),
@@ -103,7 +103,9 @@ function Manual() {
       <aside className="rounded-xl border bg-[#edf6ef] p-5 text-sm">
         <b>Onde os dados ficam?</b>
         <p className="mt-2">
-          {remote
+          {clientWorkspace
+            ? "As auditorias e os anexos ficam no espaço privado da Transpacce. Quem tem acesso ativo ao portal da empresa pode trabalhar nas mesmas auditorias. Confira o aviso Salvo no servidor antes de sair."
+            : remote
             ? "Os dados ficam no Supabase da Jacoby, compartilhados somente com contas autorizadas. Os arquivos ficam em um bucket privado. As alterações de outras sessões são consultadas a cada 10 segundos. Salvo no servidor confirma a gravação; em caso de conflito ou falha a edição é bloqueada e a cópia local é preservada para exportação. A administração concede leitura ou edição na Minha biblioteca."
             : "Na prévia local, os dados e anexos ficam neste navegador. Use o backup completo para transportar o ambiente."}
         </p>

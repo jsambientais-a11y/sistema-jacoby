@@ -56,9 +56,15 @@ const supportLinks = [
 ];
 const stages = ["Planejar", "Auditar", "Registrar", "Tratar", "Entregar"];
 
-export function IsoShell({ children }: { children: ReactNode }) {
+export function IsoShell({
+  children,
+  clientWorkspaceId,
+}: {
+  children: ReactNode;
+  clientWorkspaceId?: string;
+}) {
   return (
-    <IsoWorkspace>
+    <IsoWorkspace clientWorkspaceId={clientWorkspaceId}>
       <Body>{children}</Body>
     </IsoWorkspace>
   );
@@ -77,18 +83,20 @@ function Body({ children }: { children: ReactNode }) {
     access,
     storageError,
     reloadServer,
+    clientWorkspace,
     archivedAuditIds,
     archivedIds,
     processes,
     criteria,
   } = useIsoWorkspace();
+  const title = clientWorkspace ? "Transpacce Gestão ISO" : "Jacoby Gestão ISO";
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [draft, setDraft] = useState<Partial<IsoAudit>>({
     name: "",
-    organization: "",
+    organization: clientWorkspace ? "Transpacce" : "",
     scheduledFor: "",
     type: "Interna",
     standards: [],
@@ -113,7 +121,7 @@ function Body({ children }: { children: ReactNode }) {
     if (!draft.name?.trim()) return;
     if (!createAudit({ ...draft, name: draft.name.trim() })) return;
     setNewOpen(false);
-    setDraft({ name: "", organization: "", scheduledFor: "", type: "Interna", standards: [] });
+    setDraft({ name: "", organization: clientWorkspace ? "Transpacce" : "", scheduledFor: "", type: "Interna", standards: [] });
   };
   const nav = (
     <>
@@ -124,7 +132,7 @@ function Body({ children }: { children: ReactNode }) {
           className="h-10 w-10 rounded-lg bg-white object-contain p-1"
         />
         <div>
-          <b className="block text-sm text-white">Jacoby Gestão ISO</b>
+          <b className="block text-sm text-white">{title}</b>
           <span className="block text-[11px] text-white/60">9001 · 14001 · 45001</span>
         </div>
       </div>
@@ -233,7 +241,7 @@ function Body({ children }: { children: ReactNode }) {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <b className="hidden whitespace-nowrap text-sm lg:block">Jacoby Gestão ISO</b>
+            <b className="hidden whitespace-nowrap text-sm lg:block">{title}</b>
             <span className="hidden text-sm text-[#718275] lg:inline">Auditoria ativa:</span>
             <select
               aria-label="Auditoria ativa"
@@ -273,11 +281,17 @@ function Body({ children }: { children: ReactNode }) {
               {user?.email}
             </span>
             <div id="app-updates-desktop" className="ml-auto" />
-            <EnvironmentSwitch
-              active="iso"
-              onNavigate={() => setMenuOpen(false)}
-              className="ml-auto"
-            />
+            {clientWorkspace ? (
+              <Link to="/portal/movimentacoes" className="ml-auto rounded-lg border px-3 py-2 text-sm font-medium">
+                Voltar ao portal
+              </Link>
+            ) : (
+              <EnvironmentSwitch
+                active="iso"
+                onNavigate={() => setMenuOpen(false)}
+                className="ml-auto"
+              />
+            )}
           </div>
           <div
             className="border-t border-[#e5ece3] px-4 py-2 text-sm [overflow-wrap:anywhere] sm:px-6"
@@ -336,7 +350,9 @@ function Body({ children }: { children: ReactNode }) {
           </div>
         )}
         <div className="border-b border-[#e0eae0] bg-[#f8fbf7] px-6 py-1.5 text-xs text-[#788a7b]">
-          {remote
+          {clientWorkspace
+            ? "Ambiente ISO da Transpacce · auditorias e anexos privados."
+            : remote
             ? "ISO compartilhado · dados e anexos privados no Supabase da Jacoby. Confira o status de salvamento antes de sair."
             : "Prévia local · os dados deste ambiente ISO ficam apenas neste navegador e ainda não são sincronizados entre usuários."}
         </div>

@@ -9,6 +9,7 @@ import { IsoSyncQueue } from "@/lib/iso-sync-queue";
 import { parseIsoState, type IsoLocalState } from "@/lib/iso-local-state";
 export function useIsoServerSync({
   enabled,
+  expectedWorkspaceId,
   userId,
   storageKey,
   setState,
@@ -17,6 +18,7 @@ export function useIsoServerSync({
   initial,
 }: {
   enabled: boolean;
+  expectedWorkspaceId?: string;
   userId: string | undefined;
   storageKey: string;
   setState: (s: IsoLocalState) => void;
@@ -24,6 +26,7 @@ export function useIsoServerSync({
   loaded: () => void;
   initial: () => IsoLocalState;
 }) {
+  const [accessDenied, setAccessDenied] = useState(false);
   const [snapshot, setSnapshot] = useState<IsoRemoteSnapshot | null>(null);
   const [status, setStatus] = useState("Conectando ao servidor…");
   const [reload, setReload] = useState(0);
@@ -36,17 +39,20 @@ export function useIsoServerSync({
     if (!enabled) return;
     let active = true;
     setSnapshot(null);
+    setAccessDenied(false);
     failed.current = false;
     setStatus("Conectando ao servidor…");
     queue.current?.stop();
     queue.current = null;
     const hydrate = async () => {
+      let verified = false;
       try {
         if (!userId || !/^[-a-f0-9]{36}$/i.test(userId))
           throw new Error("Entre com sua conta da Jacoby para acessar o ISO compartilhado.");
-        const remote = await openIsoRemote();
+        const remote = await openIsoRemote(expectedWorkspaceId);
         if (!active) return;
         setSnapshot(remote);
+        verified = true;
         const meta = JSON.parse(localStorage.getItem(`${storageKey}:sync`) || "null") as {
           pending?: boolean;
           revision?: number;
@@ -80,6 +86,8 @@ export function useIsoServerSync({
           (error) => {
             if (!active) return;
             failed.current = true;
+            if (expectedWorkspaceId && /ISO_(ACCESS|WRITE)_DENIED/.test(String(error)))
+              setAccessDenied(true);
             current.current.setError(isoRemoteError(error));
             setStatus("Sincronização interrompida · cópia preservada");
           },
@@ -99,11 +107,12 @@ export function useIsoServerSync({
       } catch (error) {
         if (active) {
           failed.current = true;
+          if (expectedWorkspaceId && !verified) setAccessDenied(true);
           current.current.setError(isoRemoteError(error));
           setStatus("ISO indisponível · edições bloqueadas");
           try {
             const cached = localStorage.getItem(storageKey);
-            if (cached) current.current.setState(parseIsoState(cached));
+            if (cached && (!expectedWorkspaceId || verified)) current.current.setState(parseIsoState(cached));
           } catch {
             /* cópia bruta preservada */
           }
@@ -124,7 +133,7 @@ export function useIsoServerSync({
       if (!active || failed.current || !queue.current || queue.current.busy || busy.current) return;
       busy.current = true;
       try {
-        const remote = await openIsoRemote();
+        const remote = await openIsoRemote(expectedWorkspaceId);
         if (!active || queue.current?.busy) return;
         setSnapshot(remote);
         if (remote.revision !== queue.current.revision) {
@@ -145,6 +154,8 @@ export function useIsoServerSync({
         if (active) {
           failed.current = true;
           queue.current?.stop();
+          if (expectedWorkspaceId && /ISO_(ACCESS|WRITE)_DENIED/.test(String(error)))
+              setAccessDenied(true);
           current.current.setError(isoRemoteError(error));
           setStatus("Conexão interrompida · cópia preservada");
         }
@@ -159,7 +170,7 @@ export function useIsoServerSync({
       queue.current?.stop();
       queue.current = null;
     };
-  }, [enabled, userId, storageKey, reload]);
+  }, [enabled, expectedWorkspaceId, userId, storageKey, reload]);
   const enqueue = (value: IsoLocalState) => {
     const q = queue.current;
     if (!q || failed.current || snapshot?.access === "viewer") return false;
@@ -180,6 +191,7 @@ export function useIsoServerSync({
     setReload((n) => n + 1);
   };
   return {
+    accessDenied,
     snapshot,
     status,
     enqueue,

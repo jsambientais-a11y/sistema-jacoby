@@ -97,7 +97,13 @@ const allNav: readonly NavItem[] = [
   { to: "/settings", label: "Personalizar", icon: Settings, permission: "settings" },
 ] as const;
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  showClientIso = false,
+}: {
+  children: ReactNode;
+  showClientIso?: boolean;
+}) {
   const { profile, user, signOut, isAdmin, isClient, hasPermission } = useAuth();
   const nav = useMemo(() => {
     const visibleItems = allNav.filter(
@@ -199,6 +205,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   expanded={sidebarOpen}
                   active={portalActive}
                   isClient={isClient}
+                  showClientIso={showClientIso}
                   hasPermission={hasPermission}
                 />
               );
@@ -327,6 +334,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       expanded
                       active={portalActive}
                       isClient={isClient}
+                      showClientIso={showClientIso}
                       hasPermission={hasPermission}
                       onNavigate={() => setSidebarOpen(false)}
                     />
@@ -433,12 +441,14 @@ function PortalNavGroup({
   expanded,
   active,
   isClient,
+  showClientIso,
   hasPermission,
   onNavigate,
 }: {
   expanded: boolean;
   active: boolean;
   isClient: boolean;
+  showClientIso: boolean;
   hasPermission: (permission: string) => boolean;
   onNavigate?: () => void;
 }) {
@@ -521,6 +531,12 @@ function PortalNavGroup({
             className={item}
           >
             Relatórios
+          </Link>
+        )}
+        {showClientIso && (
+          <Link to="/iso/dashboard" onClick={onNavigate} className={item}>
+            <ClipboardCheck className="h-4 w-4" />
+            Gestão ISO
           </Link>
         )}
         {isClient && (
