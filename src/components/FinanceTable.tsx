@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   Check,
   CreditCard,
+  Paperclip,
   Pencil,
   ReceiptText,
   Repeat,
@@ -64,6 +65,7 @@ export function FinanceTable({
   onEdit,
   onDelete,
   onRestore,
+  onAttachments,
 }: {
   rows: FinanceRow[];
   kind: FinanceKind;
@@ -82,6 +84,7 @@ export function FinanceTable({
   onEdit: (row: FinanceRow) => void;
   onDelete: (row: FinanceRow) => void;
   onRestore: (row: FinanceRow) => void;
+  onAttachments: (row: FinanceRow) => void;
 }) {
   const payable = kind === "payable";
   const headers = [
@@ -233,6 +236,16 @@ export function FinanceTable({
                 </td>
                 <td className={`${cell} w-32`}>
                   <div className="flex items-center gap-0.5">
+                    {payable && row.manual && !row.manual.credit_card_id && (
+                      <IconAction
+                        label={`Anexos de ${row.description}`}
+                        title="Anexos"
+                        disabled={busy}
+                        onClick={() => onAttachments(source)}
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </IconAction>
+                    )}
                     {showDeleted ? (
                       <Button
                         size="sm"

@@ -61,6 +61,17 @@ export function useFinanceRecurrences() {
     },
     onSuccess: refresh,
   });
+  const deletePayableSeries = useMutation({
+    mutationFn: async (rule: FinanceRecurrence) => {
+      const result = await (supabase.rpc as any)("delete_payable_recurrence", {
+        target_id: rule.id,
+        expected_updated_at: rule.updated_at,
+      });
+      if (result.error) throw new Error(result.error.message);
+      return Number(result.data);
+    },
+    onSettled: refresh,
+  });
   const saveInline = useMutation({
     mutationFn: async ({
       card = false,
@@ -83,8 +94,9 @@ export function useFinanceRecurrences() {
         },
       );
       if (r.error) throw new Error(r.error.message);
+      return r.data as string;
     },
     onSuccess: refresh,
   });
-  return { ...query, save, setActive, saveInline };
+  return { ...query, save, setActive, saveInline, deletePayableSeries };
 }

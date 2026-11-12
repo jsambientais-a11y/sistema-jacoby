@@ -27,6 +27,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PeriodFilter } from "@/components/PeriodFilter";
+import { PayableAttachments } from "@/components/PayableAttachments";
+import { uploadPayableAttachments } from "@/lib/payable-attachments";
 import { FinanceTable } from "@/components/FinanceTable";
 const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -49,6 +51,7 @@ type Draft = {
   notes: string;
   kind: FinanceKind;
   old?: FinanceAccount;
+  files?: File[];
 };
 export function EnterpriseFinance({
   kind,
@@ -86,6 +89,13 @@ export function EnterpriseFinance({
     setStatus(focus || "all");
     setShowDeleted(false);
   }, [focus, kind]);
+  const [uploading, setUploading] = useState(false);
+  const [attachmentTarget, setAttachmentTarget] = useState<{
+    accountId: string;
+    description: string;
+    readOnly: boolean;
+    initialFiles: File[];
+  } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null),
     [confirm, setConfirm] = useState<{
       row: FinanceRow;
@@ -188,6 +198,8 @@ export function EnterpriseFinance({
     flow.billingTrackingQuery,
   ].some((q) => q.isLoading);
   const busy =
+    uploading ||
+    recurring.deletePayableSeries.isPending ||
     accounts.save.isPending ||
     credit.settle.isPending ||
     recurring.saveInline.isPending ||
@@ -222,13 +234,29 @@ export function EnterpriseFinance({
         notes: draft.notes,
         kind: draft.kind,
       };
-      if (draft.kind === "payable")
-        await recurring.saveInline.mutateAsync({
+      if (draft.kind === "payable") {
+        const accountId = await recurring.saveInline.mutateAsync({
           old: draft.old,
           values,
           repeat: draft.repeat || inlineRecurrence(),
         });
-      else
+        if (draft.files?.length) {
+          setUploading(true);
+          const failed = await uploadPayableAttachments(accountId, draft.files);
+          setUploading(false);
+          if (failed.length) {
+            setAttachmentTarget({
+              accountId,
+              description: values.description,
+              readOnly: false,
+              initialFiles: failed.map(({ file }) => file),
+            });
+            toast.error(`Conta salva. ${failed[0].file.name} — ${failed[0].message}`);
+            setDraft(null);
+            return;
+          }
+        }
+      } else
         await accounts.save.mutateAsync({
           old: draft.old,
           values: {
@@ -311,6 +339,24 @@ export function EnterpriseFinance({
       });
     } catch (e) {
       fail(e);
+    }
+  };
+  const seriesToDelete =
+    confirm?.action === "delete" && confirm.row.manual?.recurrence_id
+      ? recurring.data?.find((rule) => rule.id === confirm.row.manual?.recurrence_id)
+      : undefined;
+  const deleteSeries = async () => {
+    if (!seriesToDelete) return;
+    try {
+      const removed = await recurring.deletePayableSeries.mutateAsync(seriesToDelete);
+      setConfirm(null);
+      toast.success(
+        removed === 1
+          ? "Série excluída. Uma conta foi movida para Excluídas."
+          : `Série excluída. ${removed} contas foram movidas para Excluídas.`,
+      );
+    } catch (error) {
+      fail(error);
     }
   };
   const execute = async () => {
@@ -512,6 +558,15 @@ export function EnterpriseFinance({
               notes: row.manual!.notes,
             })
           }
+          onAttachments={(row) => {
+            if (!row.manual) return;
+            setAttachmentTarget({
+              accountId: row.manual.id,
+              description: row.description,
+              readOnly: !!row.manual.deleted_at,
+              initialFiles: [],
+            });
+          }}
           onDelete={(row) => setConfirm({ row, action: "delete" })}
           onRestore={(row) => setConfirm({ row, action: "restore" })}
         />
@@ -781,6 +836,20 @@ export function EnterpriseFinance({
                   onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                 />
               </div>
+              {draft.kind === "payable" && !draft.old && (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="finance-new-attachments">Anexos (até 15 MB por arquivo)</Label>
+                  <Input
+                    id="finance-new-attachments"
+                    type="file"
+                    multiple
+                    disabled={busy}
+                    onChange={(event) =>
+                      setDraft({ ...draft, files: Array.from(event.currentTarget.files || []) })
+                    }
+                  />
+                </div>
+              )}
               <div className="flex justify-end gap-2 sm:col-span-2">
                 <Button
                   type="button"
@@ -819,7 +888,9 @@ export function EnterpriseFinance({
           <DialogDescription>
             {confirm?.row.description} · {confirm && money(confirm.row.amountCents)}.{" "}
             {confirm?.action === "delete"
-              ? "A conta sairá do comparativo e ficará recuperável em Excluídas."
+              ? seriesToDelete
+                ? "Você pode excluir só esta conta ou a série inteira. Excluir a série encerra a geração e move todas as contas em aberto para Excluídas, inclusive as vencidas. Os pagamentos registrados ficam no histórico."
+                : "A conta sairá do comparativo e ficará recuperável em Excluídas."
               : confirm?.row.source === "card"
                 ? confirm.action === "reopen"
                   ? "As baixas desta fatura serão desfeitas e os valores voltarão ao contas a pagar. Nenhum dinheiro será movimentado."
@@ -863,7 +934,7 @@ export function EnterpriseFinance({
               </Link>
             </div>
           )}
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" disabled={busy} onClick={() => setConfirm(null)}>
               Cancelar
             </Button>
@@ -877,11 +948,27 @@ export function EnterpriseFinance({
               }
               onClick={() => void execute()}
             >
-              {busy ? "Salvando…" : "Confirmar"}
+              {busy ? "Salvando…" : seriesToDelete ? "Excluir só esta conta" : "Confirmar"}
             </Button>
+            {seriesToDelete && (
+              <Button
+                variant="destructive"
+                disabled={busy || recurring.isFetching || !!recurring.error}
+                onClick={() => void deleteSeries()}
+              >
+                Excluir série inteira
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
+      {attachmentTarget && (
+        <PayableAttachments
+          key={attachmentTarget.accountId}
+          {...attachmentTarget}
+          onClose={() => setAttachmentTarget(null)}
+        />
+      )}
     </div>
   );
 }
