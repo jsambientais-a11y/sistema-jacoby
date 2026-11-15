@@ -37,7 +37,8 @@ const AuthContext = createContext<AuthCtx | undefined>(undefined);
 // GitHub Pages can be opened before the new Supabase project is configured.
 // In that narrow case, authentication stays only in this browser profile.
 export const isStaticPreview =
-  import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL;
+  import.meta.env.VITE_LOCAL_REVIEW === "true" ||
+  (import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL);
 const previewPermissions = [
   "dashboard",
   "tasks",

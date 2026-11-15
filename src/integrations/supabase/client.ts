@@ -1,3 +1,4 @@
+import { createLocalReviewBucket } from "@/lib/local-review-storage";
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
@@ -36,6 +37,7 @@ function createFallbackQueryBuilder(message: string, isPreview = false, table = 
     limit?: number;
     range?: [number, number];
     single: boolean;
+    conflict?: string[];
   } = { operation: 'select', payload: null, filters: [], orders: [], single: false };
 
   const execute = () => {
@@ -46,14 +48,48 @@ function createFallbackQueryBuilder(message: string, isPreview = false, table = 
     let result: any[];
 
     if (state.operation === 'insert') {
-      const inserted = (Array.isArray(state.payload) ? state.payload : [state.payload]).map((row) => ({
-        ...row,
-        id: row.id ?? crypto.randomUUID(),
-        created_at: row.created_at ?? new Date().toISOString(),
-      }));
-      database[table] = [...rows, ...inserted];
+      const inserted = (Array.isArray(state.payload) ? state.payload : [state.payload]).map(
+        (row) => ({
+          ...(table === "tasks"
+            ? { deleted_at: null, completed_at: null, is_demo: false, position: 0 }
+            : {}),
+          ...(table === "task_process_templates" ? { deleted_at: null } : {}),
+          ...row,
+          ...(table === "billing_receivable_tracking"
+            ? {
+                commission_amount:
+                  Math.round(
+                    Number(
+                      row.rule_type === "percent"
+                        ? (Number(row.net_invoice_amount || 0) * Number(row.rule_value)) / 100
+                        : row.rule_value,
+                    ) * 100,
+                  ) / 100,
+              }
+            : {}),
+          id: row.id ?? crypto.randomUUID(),
+          created_at: row.created_at ?? new Date().toISOString(),
+        }),
+      );
+      const next = [...rows];
+      result = inserted.map((row) => {
+        const index = state.conflict
+          ? next.findIndex((old) => state.conflict!.every((key) => old[key] === row[key]))
+          : -1;
+        if (index < 0) {
+          next.push(row);
+          return row;
+        }
+        next[index] = {
+          ...next[index],
+          ...row,
+          id: next[index].id,
+          created_at: next[index].created_at,
+        };
+        return next[index];
+      });
+      database[table] = next;
       writeLocalData(database);
-      result = inserted;
     } else if (state.operation === 'update') {
       result = rows.filter(matches).map((row) => ({ ...row, ...state.payload, updated_at: new Date().toISOString() }));
       database[table] = rows.map((row) => matches(row) ? { ...row, ...state.payload, updated_at: new Date().toISOString() } : row);
@@ -84,7 +120,13 @@ function createFallbackQueryBuilder(message: string, isPreview = false, table = 
       if (prop === 'catch') return (callback: (reason: unknown) => unknown) => Promise.resolve(execute()).catch(callback);
       if (prop === 'finally') return (callback: () => void) => Promise.resolve(execute()).finally(callback);
       if (prop === 'select') return () => builder;
-      if (prop === 'insert' || prop === 'upsert') return (payload: any) => { state.operation = 'insert'; state.payload = payload; return builder; };
+        if (prop === "insert" || prop === "upsert")
+          return (payload: any, options?: { onConflict?: string }) => {
+            state.operation = "insert";
+            state.payload = payload;
+            state.conflict = prop === "upsert" ? options?.onConflict?.split(",") : undefined;
+            return builder;
+          };
       if (prop === 'update') return (payload: any) => { state.operation = 'update'; state.payload = payload; return builder; };
       if (prop === 'delete') return () => { state.operation = 'delete'; return builder; };
       if (prop === 'eq') return (field: string, value: unknown) => { state.filters.push((row) => row[field] === value); return builder; };
@@ -106,7 +148,8 @@ function createFallbackQueryBuilder(message: string, isPreview = false, table = 
 
 function createFallbackSupabaseClient() {
   const message = 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to enable database features.';
-  const isPreview = import.meta.env.VITE_GITHUB_PAGES === 'true';
+  const isPreview =
+    import.meta.env.VITE_LOCAL_REVIEW === "true" || import.meta.env.VITE_GITHUB_PAGES === "true";
   const error = isPreview ? null : new Error(message);
   const channel = {
     on: () => channel,
@@ -131,12 +174,16 @@ function createFallbackSupabaseClient() {
     rpc: () => Promise.resolve({ data: null, error }),
     channel: () => channel,
     storage: {
-      from: () => ({
-        upload: () => Promise.resolve({ data: null, error }),
-        download: () => Promise.resolve({ data: null, error }),
-        remove: () => Promise.resolve({ data: null, error }),
-        getPublicUrl: () => ({ data: { publicUrl: '' }, error }),
-      }),
+      from: (bucket: string) =>
+        isPreview
+          ? createLocalReviewBucket(bucket)
+          : {
+              list: () => Promise.resolve({ data: [], error }),
+              upload: () => Promise.resolve({ data: null, error }),
+              download: () => Promise.resolve({ data: null, error }),
+              remove: () => Promise.resolve({ data: null, error }),
+              getPublicUrl: () => ({ data: { publicUrl: "" }, error }),
+            },
     },
     functions: {
       invoke: () => Promise.resolve({ data: null, error }),
@@ -146,6 +193,8 @@ function createFallbackSupabaseClient() {
 }
 
 function createSupabaseClient() {
+  // Explicit offline review must override even credentials in .env.local.
+  if (import.meta.env.VITE_LOCAL_REVIEW === "true") return createFallbackSupabaseClient();
   // Client-side static build: values come from GitHub Actions/local .env as VITE_*.
   // Local SSR/dev fallback: values can also come from process.env for compatibility.
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;

@@ -115,6 +115,10 @@ export function NotificationBell() {
   const openNotification = async (n: Notification) => {
     if (!n.is_read) await markRead(n.id);
     setOpen(false);
+    if (n.type === "document_request" && n.task_id) {
+      navigate({ to: "/portal/entregas", search: { request: n.task_id } });
+      return;
+    }
     if (n.type === "document_expiry") {
       navigate({ to: "/portal/documentos" });
       return;

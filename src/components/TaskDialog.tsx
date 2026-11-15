@@ -1,3 +1,8 @@
+import {
+  createTaskUploadLock,
+  uploadTaskAttachment,
+  validateTaskAttachment,
+} from "@/lib/task-attachments";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -101,6 +106,8 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [saving, setSaving] = useState(false);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const attachmentUploadLock = useRef(createTaskUploadLock());
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const canDeleteTask = !!currentTaskId && (!!isAdmin || !task || task.created_by === user?.id);
   const canDeleteSubtask = (subtask: Subtask) =>
@@ -290,6 +297,9 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
     const { error } = await authenticated.client.from("tasks").insert({
       id: taskId,
       ...buildPayload(),
+      // Adding a file/subtask creates an internal draft; only explicit Save publishes a request.
+      client_portal_visible: false,
+      client_document_request: false,
       created_by: authenticated.user.id,
     });
     if (error) { toast.error(error.message); return null; }
@@ -511,21 +521,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
     setSubExpanded(prev => ({ ...prev, [id]: willOpen }));
     if (willOpen && !subAttachments[id]) await loadSubAttachments(id);
   };
-  const uploadSubFile = async (st: Subtask, file: File) => {
-    if (!user) return;
-    const tid = currentTaskId ?? await ensureTask();
-    if (!tid) return;
-    const path = `${tid}/subtasks/${st.id}/${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("task-attachments").upload(path, file);
-    if (upErr) return toast.error(upErr.message);
-    const { data, error } = await (supabase.from("subtask_attachments") as any).insert({
-      subtask_id: st.id, task_id: tid, file_name: file.name, storage_path: path,
-      mime_type: file.type, size_bytes: file.size, uploaded_by: user.id,
-    }).select().single();
-    if (error) return toast.error(error.message);
-    setSubAttachments(prev => ({ ...prev, [st.id]: [ ...(prev[st.id] ?? []), data as SubtaskAttachment ] }));
-    toast.success("Arquivo enviado");
-  };
+  const uploadSubFile = (st: Subtask, file: File) => uploadFile(file, st);
 
   const downloadSubFile = async (att: SubtaskAttachment) => {
     const { data, error } = await supabase.storage.from("task-attachments").download(att.storage_path);
@@ -563,20 +559,39 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
   };
 
   // Attachments
-  const uploadFile = async (file: File) => {
-    if (!user) return;
-    const tid = await ensureTask();
-    if (!tid) return;
-    const path = `${tid}/${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("task-attachments").upload(path, file);
-    if (upErr) return toast.error(upErr.message);
-    const { data, error } = await supabase.from("attachments").insert({
-      task_id: tid, file_name: file.name, storage_path: path,
-      mime_type: file.type, size_bytes: file.size, uploaded_by: user.id,
-    }).select().single();
-    if (error) return toast.error(error.message);
-    setAttachments([...attachments, data as Attachment]);
-    toast.success("Arquivo enviado");
+  const uploadFile = async (file: File, subtask?: Subtask) => {
+    try {
+      await attachmentUploadLock.current(async () => {
+        validateTaskAttachment(file);
+        setAttachmentUploading(true);
+        try {
+          const authenticated = await getAuthenticatedUser();
+          if (!authenticated) return;
+          const tid = await ensureTask();
+          if (!tid) return;
+          const attachment = await uploadTaskAttachment({
+            client: authenticated.client,
+            file,
+            taskId: tid,
+            userId: authenticated.user.id,
+            subtaskId: subtask?.id,
+          });
+          if (currentTaskIdRef.current === tid) {
+            if (subtask)
+              setSubAttachments((prev) => ({
+                ...prev,
+                [subtask.id]: [...(prev[subtask.id] || []), attachment as SubtaskAttachment],
+              }));
+            else setAttachments((prev) => [...prev, attachment as Attachment]);
+          }
+          toast.success("Arquivo enviado");
+        } finally {
+          setAttachmentUploading(false);
+        }
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível anexar o arquivo.");
+    }
   };
 
   const openAttachment = async (att: Attachment) => {
@@ -734,7 +749,17 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
             </div>
             <div className="space-y-2">
               <Label className="text-xs">Cliente{templateDraft ? " *" : ""}</Label>
-              <Select value={clientId || "none"} onValueChange={(v) => setClientId(v === "none" ? "" : v)}>
+              <Select
+                value={clientId || "none"}
+                onValueChange={(v) => {
+                  const next = v === "none" ? "" : v;
+                  if (next !== clientId) {
+                    setClientDocumentRequest(false);
+                    setClientPortalVisible(false);
+                  }
+                  setClientId(next);
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Nenhum" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhum</SelectItem>
@@ -776,7 +801,11 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                 />
                 Exibir a solicitação no portal do cliente
               </label>
-              <p className="text-xs text-muted-foreground">O cliente verá apenas o título, a descrição, o prazo e os arquivos desta solicitação. As demais tarefas continuam internas.</p>
+              <p className="text-xs text-muted-foreground">
+                Ao salvar uma solicitação visível e pendente, os logins ativos vinculados ao cliente
+                recebem um aviso no sino do portal. Não envia e-mail. O cliente verá o título, a
+                descrição, o prazo e os arquivos desta solicitação.
+              </p>
             </div>
           )}
 
@@ -967,7 +996,16 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                             ))}
                             <label className="flex cursor-pointer items-center justify-center gap-2 rounded border border-dashed py-1.5 text-[11px] text-muted-foreground hover:bg-muted/40">
                               <Paperclip className="h-3 w-3" /> Anexar arquivo
-                              <input type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadSubFile(s, f); e.target.value = ""; }} />
+                              <input
+                                type="file"
+                                disabled={attachmentUploading}
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) void uploadSubFile(s, f);
+                                  e.target.value = "";
+                                }}
+                              />
                             </label>
                           </div>
                         </div>
@@ -1061,7 +1099,16 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                 ))}
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed py-3 text-sm text-muted-foreground hover:bg-muted/40">
                   <Paperclip className="h-4 w-4" /> Anexar arquivo
-                  <input type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ""; }} />
+                  <input
+                    type="file"
+                    disabled={attachmentUploading}
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadFile(f);
+                      e.target.value = "";
+                    }}
+                  />
                 </label>
               </TabsContent>
             </Tabs>

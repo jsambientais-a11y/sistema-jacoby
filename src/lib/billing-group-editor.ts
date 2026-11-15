@@ -46,7 +46,7 @@ export function commonBillingFields(entries: BillingFlowEntry[]) {
 export function createBillingRow(entry: BillingFlowEntry): BillingRowDraft {
   const agreement = billingAgreement(entry);
   return {
-    selected: billingEntryHasCharge(entry),
+    selected: !entry.pendingService && billingEntryHasCharge(entry),
     rule: entry.tracking?.rule_type || agreement.defaultRule,
     value: entry.tracking
       ? String(entry.tracking.rule_value)
@@ -75,7 +75,7 @@ export function prepareBillingGroupSave(
     throw new Error("Notas de BMs ou emissores diferentes devem ser conferidas separadamente.");
   return entries.flatMap((entry) => {
     const row = rows[entry.id];
-    if (!row?.selected) return [];
+    if (!row?.selected || entry.pendingService) return [];
     const original = billingSavedFields(entry);
     const merged = { ...original };
     for (const key of changed) merged[key] = fields[key];

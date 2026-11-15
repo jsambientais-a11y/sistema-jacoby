@@ -1,6 +1,8 @@
 import { replaceFinalizedInvoice } from "@/lib/replace-finalized-invoice";
-import { BillingInvoiceFilePicker } from "@/components/BillingInvoiceFilePicker";
 import { hasConfirmedBillingCopy } from "@/lib/billing-email-copy-status";
+import { createBillingWriteLock } from "@/lib/billing-write-lock";
+import { BillingInvoiceFilePicker } from "@/components/BillingInvoiceFilePicker";
+import { mayAppendFinalizedInvoice, mayCreateBulletin } from "@/lib/billing-invoice-access";
 import { BillingEmailRecipientsPreview } from "@/components/BillingEmailRecipientsPreview";
 import { RecurringBulletinsPanel } from "@/components/RecurringBulletinsPanel";
 import { RecurringBulletinsDialog, type RecurringBulletinSource } from "@/components/RecurringBulletinsDialog";
@@ -238,10 +240,12 @@ function Field({ label, children, className = "" }: { label: string; children: R
 export function BillingV2Module() {
   const qc = useQueryClient();
   const { permissions, hasPermission, isClient } = useAuth();
+  const mayCreate = mayCreateBulletin(hasPermission("billing"), isClient);
+  const createCycleLock = useRef(createBillingWriteLock());
   const serviceInvoiceWritePending = useRef(false);
   const mayManageInvoice = !isClient && hasPermission("billing") && permissions.includes("billing_manage_finalized_invoices");
   const mayReplaceInvoice = !isClient && hasPermission("billing") && permissions.includes("billing_replace_finalized_invoice");
-  const mayAppendInvoice = !isClient && hasPermission("billing") && permissions.includes("billing_append_finalized_invoice");
+  const mayAppendInvoice = mayAppendFinalizedInvoice(permissions, hasPermission("billing"), isClient);
   const cycleInvoiceFileInput = useRef<HTMLInputElement>(null);
   const canManageRecurrences = hasPermission("finance");
   const [recurrenceDialog, setRecurrenceDialog] = useState<RecurringBulletinSource | null>(null);
@@ -853,57 +857,78 @@ export function BillingV2Module() {
   }, [lockedBranchId]);
 
   const openCycle = useMutation({
-    mutationFn: async () => {
-      if (!clientId) throw Error("Selecione um cliente.");
-      if (!periodStart || !periodEnd || periodEnd < periodStart)
-        throw Error("Informe um intervalo de datas válido para o boletim.");
-      if (branches.length && !cycleBranchId) throw Error("Selecione a filial ou pátio deste boletim.");
-      const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
-        .insert({ client_id: clientId, branch_id: branchToDb(cycleBranchId), period_start: periodStart, period_end: periodEnd })
-        .select("id")
-        .single();
-      if (error) throw error;
-      if (importPlacementIds.length && previousClosedCycle && cycleBranchId) {
-        const { data: sourcePlacements, error: sourceError } = await (supabase.from("billing_v2_placements" as any) as any)
-          .select("id,equipment_id,waste_residue_id,quantity,observation")
-          .eq("cycle_id", previousClosedCycle.id)
-          .is("ended_on", null);
-        if (sourceError) {
-          await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
-          throw sourceError;
-        }
-        const chosen = (sourcePlacements || []).filter((item: Placement) => importPlacementIds.includes(item.id));
-        if (chosen.length) {
-          const equipmentIds = chosen.map((item: Placement) => item.equipment_id);
-          const { data: currentEquipment, error: equipmentError } = await (supabase.from("waste_equipment" as any) as any)
-            .select("id,monthly_rental_rate")
-            .in("id", equipmentIds);
-          if (equipmentError) {
+    mutationFn: async () =>
+      createCycleLock.current(async () => {
+        if (!mayCreate) throw Error("Seu acesso não permite cadastrar boletins.");
+        if (!clientId) throw Error("Selecione um cliente.");
+        if (!periodStart || !periodEnd || periodEnd < periodStart)
+          throw Error("Informe um intervalo de datas válido para o boletim.");
+        if (branches.length && !cycleBranchId)
+          throw Error("Selecione a filial ou pátio deste boletim.");
+        const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
+          .insert({
+            client_id: clientId,
+            branch_id: branchToDb(cycleBranchId),
+            period_start: periodStart,
+            period_end: periodEnd,
+          })
+          .select("id")
+          .single();
+        if (error) throw error;
+        if (importPlacementIds.length && previousClosedCycle && cycleBranchId) {
+          const { data: sourcePlacements, error: sourceError } = await (
+            supabase.from("billing_v2_placements" as any) as any
+          )
+            .select("id,equipment_id,waste_residue_id,quantity,observation")
+            .eq("cycle_id", previousClosedCycle.id)
+            .is("ended_on", null);
+          if (sourceError) {
             await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
-            throw equipmentError;
+            throw sourceError;
           }
-          const rates = new Map((currentEquipment || []).map((item: { id: string; monthly_rental_rate: number }) => [item.id, item.monthly_rental_rate]));
-          const { error: copyError } = await (supabase.from("billing_v2_placements" as any) as any).insert(
-            chosen.map((item: Placement) => ({
-              cycle_id: data.id,
-              client_id: clientId,
-              branch_id: branchToDb(cycleBranchId),
-              equipment_id: item.equipment_id,
-              waste_residue_id: item.waste_residue_id,
-              started_on: periodStart,
-              quantity: Number(item.quantity || 0),
-              monthly_rental_rate: Number(rates.get(item.equipment_id) || 0),
-              observation: item.observation,
-            })),
+          const chosen = (sourcePlacements || []).filter((item: Placement) =>
+            importPlacementIds.includes(item.id),
           );
-          if (copyError) {
-            await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
-            throw copyError;
+          if (chosen.length) {
+            const equipmentIds = chosen.map((item: Placement) => item.equipment_id);
+            const { data: currentEquipment, error: equipmentError } = await (
+              supabase.from("waste_equipment" as any) as any
+            )
+              .select("id,monthly_rental_rate")
+              .in("id", equipmentIds);
+            if (equipmentError) {
+              await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
+              throw equipmentError;
+            }
+            const rates = new Map(
+              (currentEquipment || []).map((item: { id: string; monthly_rental_rate: number }) => [
+                item.id,
+                item.monthly_rental_rate,
+              ]),
+            );
+            const { error: copyError } = await (
+              supabase.from("billing_v2_placements" as any) as any
+            ).insert(
+              chosen.map((item: Placement) => ({
+                cycle_id: data.id,
+                client_id: clientId,
+                branch_id: branchToDb(cycleBranchId),
+                equipment_id: item.equipment_id,
+                waste_residue_id: item.waste_residue_id,
+                started_on: periodStart,
+                quantity: Number(item.quantity || 0),
+                monthly_rental_rate: Number(rates.get(item.equipment_id) || 0),
+                observation: item.observation,
+              })),
+            );
+            if (copyError) {
+              await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
+              throw copyError;
+            }
           }
         }
-      }
-      return data.id as string;
-    },
+        return data.id as string;
+      }),
     onSuccess: (id) => {
       setCreateOpen(false);
       setCycleId(id);
@@ -911,7 +936,11 @@ export function BillingV2Module() {
       qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       setTab("locacoes");
-      toast.success(importPlacementIds.length && previousClosedCycle && cycleBranchId ? "Novo boletim aberto com os equipamentos selecionados." : "Novo boletim aberto vazio para edição.");
+      toast.success(
+        importPlacementIds.length && previousClosedCycle && cycleBranchId
+          ? "Novo boletim aberto com os equipamentos selecionados."
+          : "Novo boletim aberto vazio para edição.",
+      );
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1759,6 +1788,14 @@ export function BillingV2Module() {
     setListResidue(returnToList.listResidue || "all");
     setSelectedBulkCycleIds([]);
   };
+  const startNewBulletin = () => {
+    if (!mayCreate) return;
+    const targetClient = cycle?.client_id || clientId;
+    const targetBranch = cycle ? branchKey(cycle.branch_id) : cycleBranchId;
+    setCycleId(""); setFocusedMovementId(""); setResidueFilterId("all");
+    setHomeTab("boletins"); setClientId(targetClient); setCycleBranchId(targetBranch);
+    setImportPlacementIds([]); setCreateOpen(true);
+  };
   const openRecentCycle = (item: Pick<Cycle, "id" | "client_id" | "branch_id">) => {
     rememberList();
     setFocusedMovementId("");
@@ -2046,7 +2083,7 @@ export function BillingV2Module() {
       {canManageRecurrences && recurrenceDialog && <RecurringBulletinsDialog
         source={recurrenceDialog} onClose={() => setRecurrenceDialog(null)}
       />}
-      {isLocked(cycle) && <p role="status" className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">BM finalizado · somente consulta. Você pode navegar pelas abas, conferir locações, movimentações, medições e abrir os arquivos. Alterações estão bloqueadas neste BM.</p>}
+      {isLocked(cycle) && <p role="status" className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">BM finalizado · alterações bloqueadas. Você pode consultar as abas e abrir arquivos. {mayAppendInvoice ? "A permissão específica permite adicionar novas notas ao BM, sem substituir arquivos ou alterar serviços." : "Seu acesso não permite anexar notas neste BM finalizado."}</p>}
       {!cycleId && (
         <header>
           <p className="text-sm font-medium text-primary">Portal do Cliente</p>
@@ -2122,7 +2159,7 @@ export function BillingV2Module() {
           <Button
             size="lg"
             className="w-full md:w-auto"
-            disabled={!clientId || (!clientHasNoBranches && !cycleBranchId)}
+            disabled={!mayCreate || !clientId || (!clientHasNoBranches && !cycleBranchId)}
             onClick={() => setCreateOpen(true)}
           >
             <FilePlus2 className="mr-2 h-4 w-4" />
@@ -2260,6 +2297,7 @@ export function BillingV2Module() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               {homeTab === "pendentes" ? "Voltar às pendências" : homeTab === "recorrentes" ? "Voltar aos recorrentes" : "Voltar aos boletins"}
             </Button>
+            {mayCreate && <Button allowReadOnly type="button" variant="outline" size="sm" onClick={startNewBulletin}><FilePlus2 className="h-4 w-4" />Cadastrar novo BM</Button>}
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className="text-lg font-bold tracking-tight text-primary">{filteredEmissionPreview ? `#${filteredEmissionPreview}` : bulletinNumber(cycle?.bulletin_number)}</span>
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${cycle?.status === "closed" ? "bg-primary/12 text-primary ring-1 ring-primary/25" : "bg-amber-100 text-amber-800 ring-1 ring-amber-300/60 dark:bg-amber-400/15 dark:text-amber-200"}`}>
@@ -2781,7 +2819,7 @@ export function BillingV2Module() {
                 <Field label="Observação" className="mt-3">
                   <Input value={serviceObservation} onChange={(event) => setServiceObservation(event.target.value)} placeholder="Opcional: detalhe deste lançamento" />
                 </Field>
-                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor unitário</th><th className="p-2">Total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">Arquivo de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value, Number(item.unit_amount ?? item.amount ?? 0))} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.01" defaultValue={Number(item.unit_amount ?? item.amount ?? 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value, Number(item.quantity || 1))} /></td><td className="p-2 font-medium">{money(Number(item.amount || 0))}</td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button allowReadOnly variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir arquivo"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "Arquivo anexado"}</span></Button>}{isLocked(cycle) ? <div className="space-y-2">{item.invoice_pdf_path && (mayReplaceInvoice || mayManageInvoice) && <BillingInvoiceFilePicker allowReadOnly label="Substituir nota" onFile={file => uploadCycleServiceInvoicePdf(item, file)} />}<Button allowReadOnly={mayAppendInvoice} disabled={!mayAppendInvoice} onClick={() => cycleInvoiceFileInput.current?.click()}>Anexar nova nota ao BM</Button>{mayManageInvoice && item.invoice_pdf_path && <><Button allowReadOnly onClick={() => void renameServiceInvoice(item)}>Renomear nota</Button><Button allowReadOnly onClick={() => void deleteServiceInvoice(item)}>Excluir nota</Button></>}{mayReplaceInvoice && !mayManageInvoice && <p className="text-xs text-muted-foreground">Substitua por arquivo do mesmo formato. Nome e vínculos são mantidos.</p>}</div> : <label className="inline-flex"><input disabled={Boolean(isLocked(cycle))} className="sr-only" type="file" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar arquivo" : "Anexar arquivo"}</span></Button></label>}</div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
+                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor unitário</th><th className="p-2">Total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">Arquivo de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value, Number(item.unit_amount ?? item.amount ?? 0))} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.01" defaultValue={Number(item.unit_amount ?? item.amount ?? 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value, Number(item.quantity || 1))} /></td><td className="p-2 font-medium">{money(Number(item.amount || 0))}</td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button allowReadOnly variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir arquivo"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "Arquivo anexado"}</span></Button>}{isLocked(cycle) ? <div className="space-y-2">{item.invoice_pdf_path && (mayReplaceInvoice || mayManageInvoice) && <BillingInvoiceFilePicker allowReadOnly label="Substituir nota" onFile={file => uploadCycleServiceInvoicePdf(item, file)} />}<Button allowReadOnly={mayAppendInvoice} disabled={!mayAppendInvoice} onClick={() => cycleInvoiceFileInput.current?.click()}>Anexar nova nota ao BM</Button>{mayManageInvoice && item.invoice_pdf_path && <><Button allowReadOnly onClick={() => void renameServiceInvoice(item)}>Renomear nota</Button><Button allowReadOnly onClick={() => void deleteServiceInvoice(item)}>Excluir nota</Button></>}{mayReplaceInvoice && !mayManageInvoice && <p className="text-xs text-muted-foreground">Substitua por arquivo do mesmo formato. Nome e vínculos são mantidos.</p>}</div> : <BillingInvoiceFilePicker label={item.invoice_pdf_path ? "Trocar arquivo de faturamento" : "Anexar arquivo de faturamento"} disabled={!hasPermission("billing") || isClient || attachmentChanging} onFile={file => uploadCycleServiceInvoicePdf(item, file)} />}</div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
               </Card>
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>

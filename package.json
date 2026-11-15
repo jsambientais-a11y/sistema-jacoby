@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
+    "test:dev-items:sql": "bash scripts/test-dev-items-sql.sh",
     "docs:codigo": "node scripts/generate-code-explanations.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."

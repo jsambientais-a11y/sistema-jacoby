@@ -30,7 +30,8 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const googleAuthEnabled = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
   // GitHub Pages serves this app below /sistema-jacoby/.
-  const authRedirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
+  const authRedirectTo =
+    typeof window === "undefined" ? "" : `${window.location.origin}${import.meta.env.BASE_URL}`;
 
   useEffect(() => {
     if (user) {

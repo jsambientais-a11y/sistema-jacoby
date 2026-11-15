@@ -89,3 +89,8 @@ export function groupReceivablesByBulletin<E extends ReceivableEntry, R extends 
         b.total - a.total,
     );
 }
+
+/** Filter by stable issuer ID; homonymous companies remain separate. */
+export function matchesReceivableIssuer(row: Receivable, issuer: string) {
+  return issuer === "all" || (row.entry.companyId || "jacoby") === issuer;
+}

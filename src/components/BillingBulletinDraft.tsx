@@ -183,7 +183,7 @@ function BillingIssuerDraft({
                         <input
                           type="checkbox"
                           checked={row.selected}
-                          disabled={isSaving}
+                          disabled={isSaving || entry.pendingService}
                           aria-label={`Salvar ${label} · ${entry.company}`}
                           onChange={(event) =>
                             updateRow(entry.id, { selected: event.target.checked })
@@ -201,7 +201,7 @@ function BillingIssuerDraft({
                         )}
                         {entry.pendingService && (
                           <p className="mt-1 text-xs text-amber-700">
-                            Nota anexada · valor do serviço a conferir
+                            Nota anexada · cadastre o serviço no BM antes de conferir ou dar baixa
                           </p>
                         )}
                       </td>

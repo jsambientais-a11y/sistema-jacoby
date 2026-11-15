@@ -1,5 +1,6 @@
+import { createTaskUploadLock, uploadTaskAttachment } from "@/lib/task-attachments";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Download, FileText, Paperclip, Upload } from "lucide-react";
@@ -13,9 +14,17 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-export const Route = createFileRoute("/_app/portal/entregas")({ component: ClientDeliveriesPage });
+export const Route = createFileRoute("/_app/portal/entregas")({
+  validateSearch: (search: Record<string, unknown>): { request?: string } => ({
+    request: typeof search.request === "string" ? search.request : undefined,
+  }),
+  component: ClientDeliveriesPage,
+});
 
 function ClientDeliveriesPage() {
+  const { request } = Route.useSearch();
+  const responseUploadLock = useRef(createTaskUploadLock());
+  const activeTaskId = useRef<string | null>(null);
   const { data: clients = [] } = useClients();
   const { isClient, clientId: linkedClientId, user } = useAuth();
   const { data: tasks = [] } = useTasks();
@@ -35,28 +44,43 @@ function ClientDeliveriesPage() {
     if (value) setMonth(new Date(`${value}T12:00:00`));
   };
 
+  activeTaskId.current = selectedTask?.id || null;
   useEffect(() => {
+    let cancelled = false;
     if (!selectedTask) { setRequestFiles([]); return; }
     void supabase.from("attachments").select("id,file_name,storage_path").eq("task_id", selectedTask.id).order("created_at").then(({ data, error }: { data: { id: string; file_name: string; storage_path: string }[] | null; error: { message: string } | null }) => {
+          if (cancelled) return;
       if (error) return toast.error(error.message);
       setRequestFiles((data ?? []) as { id: string; file_name: string; storage_path: string }[]);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedTask]);
 
   const uploadResponse = async (file?: File) => {
     if (!file || !selectedTask || !user) return;
-    setUploading(true);
-    const path = `${selectedTask.id}/cliente-${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage.from("task-attachments").upload(path, file);
-    if (uploadError) { setUploading(false); return toast.error(uploadError.message); }
-    const { data, error } = await supabase.from("attachments").insert({
-      task_id: selectedTask.id, file_name: file.name, storage_path: path,
-      mime_type: file.type || null, size_bytes: file.size, uploaded_by: user.id,
-    }).select("id,file_name,storage_path").single();
-    setUploading(false);
-    if (error) return toast.error(error.message);
-    setRequestFiles((current) => [...current, data as { id: string; file_name: string; storage_path: string }]);
-    toast.success("Documento enviado para a equipe Jacoby.");
+    const taskId = selectedTask.id;
+    try {
+      await responseUploadLock.current(async () => {
+        setUploading(true);
+        try {
+          const attachment = await uploadTaskAttachment({
+            client: supabase,
+            file,
+            taskId,
+            userId: user.id,
+          });
+          if (activeTaskId.current === taskId)
+            setRequestFiles((current) => [...current, attachment]);
+          toast.success("Documento enviado para a equipe Jacoby.");
+        } finally {
+          setUploading(false);
+        }
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o documento.");
+    }
   };
 
   const downloadResponse = async (file: { file_name: string; storage_path: string }) => {
@@ -66,7 +90,26 @@ function ClientDeliveriesPage() {
   };
 
   const client = clients.find((item) => item.id === clientId);
-  const deliveries = useMemo(() => tasks.filter((task) => task.client_id === clientId && task.client_portal_visible && task.client_document_request), [clientId, tasks]);
+  const deliveries = useMemo(
+    () =>
+      tasks.filter(
+        (task) =>
+          task.client_id === clientId &&
+          task.client_portal_visible &&
+          task.client_document_request &&
+          !task.deleted_at &&
+          !task.completed_at &&
+          task.status !== "done",
+      ),
+    [clientId, tasks],
+  );
+  useEffect(() => {
+    if (request) setSelectedTask(deliveries.find((task) => task.id === request) || null);
+  }, [request, deliveries]);
+  useEffect(() => {
+    if (selectedTask && !deliveries.some((task) => task.id === selectedTask.id))
+      setSelectedTask(null);
+  }, [deliveries, selectedTask]);
   const dueState = (dueDate: string | null) => {
     if (!dueDate) return { label: "Sem prazo", cls: "bg-muted text-muted-foreground" };
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -81,7 +124,8 @@ function ClientDeliveriesPage() {
   const deliveriesByDay = useMemo(() => {
     const map = new Map<string, typeof deliveries>();
     deliveries.forEach((task) => {
-      const key = format(new Date(task.due_date!), "yyyy-MM-dd");
+      if (!task.due_date) return;
+      const key = format(new Date(task.due_date), "yyyy-MM-dd");
       map.set(key, [...(map.get(key) ?? []), task]);
     });
     return map;

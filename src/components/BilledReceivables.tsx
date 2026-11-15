@@ -1,6 +1,8 @@
+import { prepareBulletinSettlement } from "@/lib/billing-bulletin-settlement";
 import { BILLING_DATE_RULES } from "@/lib/billing-dates";
 import {
   groupReceivablesByBulletin,
+  matchesReceivableIssuer,
   type BulletinReceivables,
 } from "@/lib/billing-receivable-groups";
 /**
@@ -116,6 +118,7 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
   const [search, setSearch] = useState("");
   const [client, setClient] = useState("all");
   const [issuer, setIssuer] = useState("all");
+  const [issuerPickerOpen, setIssuerPickerOpen] = useState(false);
   const [category, setCategory] = useState("all");
   const [period, setPeriod] = useState<Period>({ kind: "all" });
 
@@ -171,7 +174,7 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
   const filtered = periodRows.filter(
     (row) =>
       (client === "all" || row.entry.client === client) &&
-      (issuer === "all" || (row.entry.companyId || "jacoby") === issuer) &&
+      matchesReceivableIssuer(row, issuer) &&
       (category === "all" || row.entry.category === category) &&
       (!query ||
         [
@@ -337,7 +340,7 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar BM, cliente, NF…"
+              placeholder="Buscar BM, cliente, terceirizada ou NF…"
               className="h-9 pl-8"
               aria-label="Buscar recebível"
             />
@@ -355,19 +358,55 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
               ))}
             </SelectContent>
           </Select>
-          <Select value={issuer} onValueChange={setIssuer}>
-            <SelectTrigger className="h-9 w-52" aria-label="Quem fatura">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Quem fatura: todos</SelectItem>
-              {issuers.map(([id, name]) => (
-                <SelectItem key={id} value={id}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={issuerPickerOpen} onOpenChange={setIssuerPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-label="Quem fatura"
+                aria-expanded={issuerPickerOpen}
+                className="h-9 w-56 justify-between"
+              >
+                <span className="truncate">
+                  {issuer === "all"
+                    ? "Quem fatura: todos"
+                    : issuers.find(([id]) => id === issuer)?.[1] || "Selecionar terceirizada"}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-72 p-0">
+              <Command>
+                <CommandInput placeholder="Pesquisar terceirizada ou Jacoby…" />
+                <CommandList>
+                  <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="Todas as empresas"
+                      onSelect={() => {
+                        setIssuer("all");
+                        setIssuerPickerOpen(false);
+                      }}
+                    >
+                      Quem fatura: todos
+                    </CommandItem>
+                    {issuers.map(([id, name]) => (
+                      <CommandItem
+                        key={id}
+                        value={`${name} ${id}`}
+                        onSelect={() => {
+                          setIssuer(id);
+                          setIssuerPickerOpen(false);
+                        }}
+                      >
+                        {name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="h-9 w-44" aria-label="Origem">
               <SelectValue />
@@ -472,6 +511,13 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
                       links={links}
                       tasks={tasks}
                       open={expandedBulletin === group.cycleId}
+                      today={today}
+                      saving={flow.settleReceivable.isPending || flow.settleBulletin.isPending}
+                      onSettle={(date) =>
+                        flow.settleBulletin.mutateAsync(
+                          prepareBulletinSettlement(group.rows, date, today),
+                        )
+                      }
                       onToggle={() =>
                         setExpandedBulletin((current) =>
                           current === group.cycleId ? null : group.cycleId,
@@ -528,7 +574,10 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
                                     onToggle={() =>
                                       setExpanded((current) => (current === row.id ? null : row.id))
                                     }
-                                    saving={flow.settleReceivable.isPending}
+                                    saving={
+                                      flow.settleReceivable.isPending ||
+                                      flow.settleBulletin.isPending
+                                    }
                                     onSettle={(receivedOn) => settle(row, receivedOn)}
                                   />
                                 ))}
@@ -550,12 +599,18 @@ export function BilledReceivables({ flow }: { flow: ReturnType<typeof useBilling
 }
 
 function BulletinRow({
+  today,
+  saving,
+  onSettle,
   group,
   links,
   tasks,
   open,
   onToggle,
 }: {
+  today: string;
+  saving: boolean;
+  onSettle: (date: string) => Promise<unknown>;
   group: BulletinReceivables<Row>;
   links: ReturnType<typeof useReceivableTaskLinks>;
   tasks: { id: string; title: string | null }[];
@@ -662,7 +717,10 @@ function BulletinRow({
           </span>
         )}
       </td>
-      <td className="px-3 py-3 text-right">
+      <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}>
+        {group.remaining > 0 && (
+          <BulletinSettleButton group={group} today={today} saving={saving} onConfirm={onSettle} />
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -923,6 +981,80 @@ function ReceivableBreakdown({
         </Button>
       </div>
     </div>
+  );
+}
+
+function BulletinSettleButton({
+  group,
+  today,
+  saving,
+  onConfirm,
+}: {
+  group: BulletinReceivables<Row>;
+  today: string;
+  saving: boolean;
+  onConfirm: (date: string) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(today);
+  const [error, setError] = useState("");
+  let blocked = "";
+  try {
+    prepareBulletinSettlement(group.rows, date, today);
+  } catch (err) {
+    blocked = (err as Error).message;
+  }
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        setError("");
+        if (value) setDate(today);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button size="sm" disabled={saving}>
+          Dar baixa no BM
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 space-y-3">
+        <p className="font-medium">Confirmar baixa do BM {group.bulletin}</p>
+        <p className="text-sm">
+          Registrar {money.format(group.remaining)} de {group.client}. Baixas anteriores e seus
+          dados serão preservados.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Inclui todas as empresas e categorias com saldo deste BM, mesmo com filtros ativos. Linhas
+          zeradas e anexos sem serviço permanecem para conferência.
+        </p>
+        <Input
+          type="date"
+          aria-label="Data do recebimento do BM"
+          value={date}
+          max={today}
+          onChange={(e) => setDate(e.target.value)}
+        />
+        {(error || blocked) && (
+          <p role="alert" className="text-sm text-destructive">
+            {error || blocked}
+          </p>
+        )}
+        <Button
+          disabled={saving || !!blocked}
+          onClick={async () => {
+            try {
+              await onConfirm(date);
+              setOpen(false);
+            } catch (err) {
+              setError((err as Error).message);
+            }
+          }}
+        >
+          Confirmar recebimento do BM
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }
 

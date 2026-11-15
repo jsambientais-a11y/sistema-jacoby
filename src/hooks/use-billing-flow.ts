@@ -4,7 +4,8 @@ import { buildBillingFlowEntries, calculateDirectBillingRows } from "@/lib/billi
  * billing_receivable_tracking. Compartilhado pelo Faturamento e pela aba Financeiro,
  * para que as duas telas leiam e gravem exatamente os mesmos registros.
  */
-import { useMemo } from "react";
+import { createBillingWriteLock } from "@/lib/billing-write-lock";
+import { useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
@@ -368,24 +369,32 @@ export function useBillingFlowData() {
       invoiceLinksQuery.data,
     ],
   );
+  const trackingWriteLock = useRef(createBillingWriteLock());
   const trackingPayload = (input: BillingFlowSaveInput) => {
     const { entry, ...values } = input;
+    if (entry.pendingService)
+      throw new Error("Cadastre o serviço no BM antes de conferir ou dar baixa.");
     return {
-      cycle_id: entry.cycleId, category: entry.category,
-      outsourced_company_id: entry.companyId, source_key: entry.companyId || "jacoby",
-      base_amount_snapshot: Number(entry.baseAmount.toFixed(2)), ...values,
+      cycle_id: entry.cycleId,
+      category: entry.category,
+      outsourced_company_id: entry.companyId,
+      source_key: entry.companyId || "jacoby",
+      base_amount_snapshot: Number(entry.baseAmount.toFixed(2)),
+      ...values,
     };
   };
+  const writeTracking = async (inputs: BillingFlowSaveInput[]) => {
+    return trackingWriteLock.current(async () => {
+      const { data, error } = await (supabase.from("billing_receivable_tracking" as any) as any)
+        .upsert(inputs.map(trackingPayload), { onConflict: "cycle_id,category,source_key" })
+        .select("*");
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ["billing-receivable-tracking"] });
+      return data as BillingFlowTracking[];
+    });
+  };
   const upsertTracking = async (input: BillingFlowSaveInput) => {
-    const { data, error } = await (supabase.from("billing_receivable_tracking" as any) as any)
-      .upsert(
-        trackingPayload(input),
-        { onConflict: "cycle_id,category,source_key" },
-      )
-      .select("*")
-      .single();
-    if (error) throw error;
-    return data as BillingFlowTracking;
+    return (await writeTracking([input]))[0];
   };
   const refreshTracking = () => {
     void queryClient.invalidateQueries({ queryKey: ["billing-receivable-tracking"] });
@@ -403,14 +412,32 @@ export function useBillingFlowData() {
     mutationFn: async (inputs: BillingFlowSaveInput[]) => {
       if (!inputs.length) return;
       const first = inputs[0].entry;
-      if (inputs.some(({ entry }) => entry.cycleId !== first.cycleId || entry.companyId !== first.companyId))
+      if (
+        inputs.some(
+          ({ entry }) => entry.cycleId !== first.cycleId || entry.companyId !== first.companyId,
+        )
+      )
         throw new Error("Confira um BM e um emissor por vez.");
       // A single Postgres statement: validation failure rolls back every selected category.
-      const { error } = await (supabase.from("billing_receivable_tracking" as any) as any)
-        .upsert(inputs.map(trackingPayload), { onConflict: "cycle_id,category,source_key" });
-      if (error) throw error;
+      await writeTracking(inputs);
     },
-    onSuccess: () => { refreshTracking(); toast.success("Conferência do BM salva."); },
+    onSuccess: () => {
+      refreshTracking();
+      toast.success("Conferência do BM salva.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const settleBulletin = useMutation({
+    mutationFn: async (inputs: BillingFlowSaveInput[]) => {
+      if (!inputs.length) throw new Error("Nenhum saldo para baixar.");
+      if (inputs.some(({ entry }) => entry.cycleId !== inputs[0].entry.cycleId))
+        throw new Error("Dê baixa em um BM por vez.");
+      await writeTracking(inputs);
+    },
+    onSuccess: () => {
+      refreshTracking();
+      toast.success("Recebimento do BM registrado.");
+    },
     onError: (error: Error) => toast.error(error.message),
   });
   // Baixa feita pela aba Financeiro: mesmo registro de conferência, só muda o recebimento.
@@ -448,5 +475,6 @@ export function useBillingFlowData() {
     saveBillingTracking,
     saveBillingBulletinTracking,
     settleReceivable,
+    settleBulletin,
   };
 }

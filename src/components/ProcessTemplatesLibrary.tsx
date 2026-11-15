@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Layers, Plus, Search, Pencil, Trash2, ArrowUp, ArrowDown, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTasks, type Task } from "@/hooks/use-data";
@@ -18,6 +18,7 @@ export function ProcessTemplatesLibrary() {
     [draft, setDraft] = useState<ProcessTemplate | null>(null),
     [deleting, setDeleting] = useState<ProcessTemplate | null>(null),
     [busy, setBusy] = useState(false);
+  const writePending = useRef(false);
   const templates = useProcessTemplates();
   const tasks = useTasks();
   const matches = (text: string) =>
@@ -26,7 +27,8 @@ export function ProcessTemplatesLibrary() {
     toast.error(e instanceof Error ? e.message : "Não foi possível salvar a alteração.");
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    if (!draft) return;
+    if (!draft || writePending.current) return;
+    writePending.current = true;
     setBusy(true);
     try {
       await templates.edit({
@@ -40,11 +42,13 @@ export function ProcessTemplatesLibrary() {
     } catch (e) {
       error(e);
     } finally {
+      writePending.current = false;
       setBusy(false);
     }
   };
   const remove = async () => {
-    if (!deleting) return;
+    if (!deleting || writePending.current) return;
+    writePending.current = true;
     setBusy(true);
     try {
       await templates.remove(deleting.id);
@@ -53,10 +57,13 @@ export function ProcessTemplatesLibrary() {
     } catch (e) {
       error(e);
     } finally {
+      writePending.current = false;
       setBusy(false);
     }
   };
   const restore = async (id: string) => {
+    if (writePending.current) return;
+    writePending.current = true;
     setBusy(true);
     try {
       await templates.restore(id);
@@ -64,6 +71,7 @@ export function ProcessTemplatesLibrary() {
     } catch (e) {
       error(e);
     } finally {
+      writePending.current = false;
       setBusy(false);
     }
   };
