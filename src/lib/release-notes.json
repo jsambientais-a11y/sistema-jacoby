@@ -1,61 +1,101 @@
 {
-  "version": "2026.11.08.1",
-  "title": "Faturamento mais simples, do BM ao recebimento",
-  "summary": "Conferência em linhas, dados comuns da nota, filtro de BMs sem NF, total por boletim e PDF com datas. Veja o tutorial para conhecer o novo fluxo.",
+  "version": "2026.11.15.1",
+  "title": "Novidades no envio de BMs, recorrências e documentos",
+  "summary": "Confira as mudanças disponíveis no sistema: cópia de e-mail para Juliana, sequência de BMs recorrentes, anexos e filtros para facilitar a conferência.",
   "changes": [
-    "Locação, Troca, Tratamento e Serviços têm seus próprios valores e regras.",
-    "Campos comuns diferentes são indicados para conferência; não são unificados automaticamente.",
-    "Escolha, quando for o acordo, 15 dias após a emissão ou após o vencimento da NF.",
-    "Em Faturado, veja uma linha por BM com o total a receber pela Jacoby."
+    "Antes de enviar o BM, confira os destinatários e o CC para js.ambientais@gmail.com.",
+    "Consulte a sequência dos BMs recorrentes, abra cada mês e revise os valores antes de finalizar.",
+    "Remova ou substitua arquivos anexados ao BM quando seu acesso permitir.",
+    "Em Contas a pagar, anexe documentos à despesa e escolha como excluir uma recorrência.",
+    "No portal, encontre BMs por número e resíduo e consulte as notas fiscais anexadas.",
+    "A Transpacce conta com um ambiente ISO individual.",
+    "Em Faturamento, confira categorias, notas, previsões e o total a receber por BM."
   ],
   "image": "updates/jacoby-novidades-2026-11-08.jpg",
-  "imageAlt": "Tutorial ilustrado das novidades do faturamento Jacoby, com dados fictícios.",
+  "imageAlt": "Ilustração do fluxo de conferência e recebimento no Faturamento, apresentada no tutorial de 8 de novembro.",
   "video": {
     "src": "updates/jacoby-novidades-2026-11-08-neural-v3.mp4",
     "poster": "updates/jacoby-novidades-2026-11-08.jpg",
     "captions": "updates/jacoby-novidades-2026-11-08-neural-v3.vtt",
-    "title": "Novidades do faturamento Jacoby — voz neural em português, 1,5×",
+    "title": "Tutorial de faturamento — conferência e recebimento (08/11)",
     "webm": "updates/jacoby-novidades-2026-11-08-neural-v3.webm"
   },
   "sections": [
     {
-      "title": "Confira o BM em linhas",
-      "description": "Abra pela linha do boletim e confira as categorias no mesmo lugar.",
+      "title": "E-mail com cópia para Juliana",
+      "description": "Veja quem receberá a mensagem antes de confirmar o envio do BM.",
       "items": [
-        "Locação, Troca, Tratamento e Serviços têm seus próprios valores e regras.",
-        "Para percentual, informe manualmente o líquido correspondente a cada categoria.",
-        "Preencha os dados comuns da nota uma vez para as linhas marcadas do mesmo emissor.",
-        "A visão por lançamento continua disponível para ajustes individuais e anexos."
+        "A conferência mostra Para e CC. A cópia é enviada para js.ambientais@gmail.com.",
+        "A tela confirma o CC informado pelo servidor antes de liberar o envio.",
+        "Cada destinatário recebe um e-mail separado; Juliana pode receber mais de uma cópia do mesmo BM.",
+        "Se esse endereço já for o destinatário principal, não há cópia duplicada na mesma mensagem. A regra também vale para reenvios."
       ]
     },
     {
-      "title": "Notas sem repetição e histórico preservado",
-      "description": "Os dados já salvos continuam por categoria até você decidir alterá-los.",
+      "title": "BMs recorrentes por mês",
+      "description": "Acompanhe a sequência e revise cada boletim antes de gerar o financeiro.",
       "items": [
-        "Campos comuns diferentes são indicados para conferência; não são unificados automaticamente.",
-        "Categorias zeradas sem cobrança não exigem preenchimento nem geram pendência de NF.",
-        "Clique no aviso de NF no Faturamento ou no Dashboard para abrir a lista filtrada.",
-        "Um mesmo BM pode conter vários lançamentos a conferir; o aviso distingue essas quantidades."
+        "Crie a recorrência a partir de um BM, escolhendo o primeiro mês e a quantidade de repetições.",
+        "Consulte os meses na área de recorrentes e gere os boletins em edição, inclusive antes das datas programadas.",
+        "Abra cada BM e copie os valores dos serviços do modelo ou do mês anterior, conforme a sequência.",
+        "Revise os valores e as previsões antes de finalizar em série. A finalização gera as previsões financeiras; não registra pagamento recebido."
       ]
     },
     {
-      "title": "Previsão e recebimento",
-      "description": "Novas opções para os acordos, mantendo as previsões antigas.",
+      "title": "Arquivos anexados ao BM",
+      "description": "Corrija um anexo enviado por engano conforme as permissões do seu acesso.",
       "items": [
-        "Escolha, quando for o acordo, 15 dias após a emissão ou após o vencimento da NF.",
-        "Para exceções, use Data definida manualmente.",
-        "As regras de 15 dias são opcionais; não há recálculo em massa dos lançamentos antigos.",
-        "Informar uma previsão não registra recebimento. Preencha a data somente quando receber."
+        "Os arquivos do BM têm ações para remover ou substituir o anexo.",
+        "Na substituição, escolha o arquivo correto e confira o resultado no próprio BM.",
+        "As restrições de BMs finalizados continuam valendo: as ações dependem da permissão do usuário."
       ]
     },
     {
-      "title": "Total do BM e PDF com datas",
-      "description": "Uma visão do total com acesso à composição.",
+      "title": "Despesas e recorrências",
+      "description": "Organize os documentos e as séries em Financeiro › Contas a pagar.",
       "items": [
-        "Em Faturado, veja uma linha por BM com o total a receber pela Jacoby.",
-        "Expanda para conferir os lançamentos, projetos vinculados e baixas individuais.",
-        "O PDF inclui as datas de locação, movimentação e execução dos serviços quando registradas.",
-        "Os valores existentes são mantidos; o total da NF não é multiplicado entre as categorias."
+        "Anexe comprovantes, notas e outros documentos diretamente às despesas.",
+        "Ao excluir uma despesa recorrente, confira as opções de exclusão da ocorrência ou da série.",
+        "Os anexos das contas a pagar ficam restritos aos acessos autorizados ao Financeiro."
+      ]
+    },
+    {
+      "title": "Portal do cliente e acesso",
+      "description": "Mais facilidade para localizar boletins e conferir seus documentos.",
+      "items": [
+        "Em BMs emitidos, filtre pelo número do boletim e pelo resíduo, junto dos filtros de período e filial.",
+        "Consulte as notas fiscais anexadas aos BMs disponibilizados no portal.",
+        "O acesso continua limitado aos dados do cliente vinculado ao login.",
+        "Os avisos de Novidades ficam no ambiente interno. O portal do cliente não mostra essa barra.",
+        "A administração do acesso ao portal tenta renovar a sessão antes de repetir uma operação que falhou por autenticação."
+      ]
+    },
+    {
+      "title": "ISO individual da Transpacce",
+      "description": "Um ambiente próprio para o controle ISO desse cliente.",
+      "items": [
+        "A Transpacce tem acesso ao seu espaço ISO conforme a habilitação do cadastro.",
+        "Os dados e anexos desse espaço ficam separados do ambiente ISO da Jacoby."
+      ]
+    },
+    {
+      "title": "Conferência no Faturamento",
+      "description": "As melhorias anteriores continuam disponíveis para conferir o BM no mesmo lugar.",
+      "items": [
+        "Abra o BM pela linha e confira Locação, Troca, Tratamento e Serviços com seus próprios valores.",
+        "Para comissão percentual, informe manualmente o líquido correspondente a cada categoria.",
+        "Campos comuns só substituem os dados das linhas selecionadas quando forem editados; diferenças antigas são indicadas para conferência.",
+        "Categorias zeradas sem cobrança não geram aviso de NF pendente. Os avisos do Faturamento e do Dashboard abrem a lista filtrada."
+      ]
+    },
+    {
+      "title": "Previsões, total e PDF",
+      "description": "Confira o valor a receber e ajuste exceções quando necessário.",
+      "items": [
+        "As regras incluem 15 dias após a emissão ou após o vencimento da nota, além da data definida manualmente.",
+        "As previsões antigas não são recalculadas em massa. A data de previsão é diferente da data em que o pagamento foi recebido.",
+        "Em Faturado, veja o total por BM e expanda para conferir a composição e as baixas individuais.",
+        "O PDF do BM mostra as datas registradas de locação, movimentação e execução dos serviços."
       ]
     }
   ]

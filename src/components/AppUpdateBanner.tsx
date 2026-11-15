@@ -189,8 +189,8 @@ function InternalAppUpdateBanner() {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
           {detailsOpen && notes.video && <section className="mb-8 space-y-3" aria-label="Vídeo das novidades">
-            <div className="flex items-center gap-2"><PlayCircle className="h-5 w-5 text-primary" /><h3 className="font-semibold">Assista às novidades</h3></div>
-            <p className="text-sm text-muted-foreground">Tutorial narrado com legendas e exemplos ilustrativos. Use os controles para pausar, avançar ou ampliar.</p>
+            <div className="flex items-center gap-2"><PlayCircle className="h-5 w-5 text-primary" /><h3 className="font-semibold">{notes.video.title}</h3></div>
+            <p className="text-sm text-muted-foreground">Tutorial de apoio sobre o fluxo de faturamento, com legendas e exemplos ilustrativos. As demais novidades estão descritas abaixo.</p>
             <ReleaseTutorialVideo key={notes.video.src} video={notes.video} base={base} />
           </section>}
           {sections.length ? <div className="space-y-10">
