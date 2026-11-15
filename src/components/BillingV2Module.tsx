@@ -1,3 +1,5 @@
+import { hasConfirmedBillingCopy } from "@/lib/billing-email-copy-status";
+import { BillingEmailRecipientsPreview } from "@/components/BillingEmailRecipientsPreview";
 import { RecurringBulletinsPanel } from "@/components/RecurringBulletinsPanel";
 import { RecurringBulletinsDialog, type RecurringBulletinSource } from "@/components/RecurringBulletinsDialog";
 import { matchesBulletinNumber, sortBillingBulletins } from "@/lib/billing-bulletins";
@@ -302,6 +304,7 @@ export function BillingV2Module() {
   const { openPdfPreview, pdfPreviewDialog } = usePdfPreview();
   const [emailMessage, setEmailMessage] = useState("");
   const [recipientPreview, setRecipientPreview] = useState<string[]>([]);
+  const [recipientCopiesPreview, setRecipientCopiesPreview] = useState<string[] | null>(null);
   const [outsourcedIssuerPreview, setOutsourcedIssuerPreview] = useState<{ emails: string[]; companyName: string } | null>(null);
   const [recipientPreviewLoading, setRecipientPreviewLoading] = useState(false);
   const [recipientPreviewError, setRecipientPreviewError] = useState("");
@@ -1482,6 +1485,7 @@ export function BillingV2Module() {
     setPublishDialog(target);
     setEmailMessage("");
     setRecipientPreview([]);
+    setRecipientCopiesPreview(null);
     setOutsourcedIssuerPreview(null);
     setRecipientPreviewError("");
     setRecipientPreviewLoading(true);
@@ -1492,12 +1496,17 @@ export function BillingV2Module() {
       setRecipientPreviewError("Não foi possível conferir os e-mails agora. Verifique a integração antes de enviar.");
     } else {
       setRecipientPreview(Array.isArray(data?.recipients) ? data.recipients : []);
+      setRecipientCopiesPreview(Array.isArray(data?.cc) ? data.cc : null);
       setOutsourcedIssuerPreview(data?.outsourcedIssuer?.companyName ? data.outsourcedIssuer : null);
     }
     setRecipientPreviewLoading(false);
   };
   const confirmPublishAndSend = () => {
     if (!publishDialog) return;
+    if (!hasConfirmedBillingCopy(recipientPreview, recipientCopiesPreview)) {
+      toast.error("O servidor ainda não confirmou a cópia para Juliana. Confira a configuração de envio antes de continuar.");
+      return;
+    }
     const customMessage = emailMessage.trim();
     if (publishDialog.residueEmission) {
       setResidueEmissionPortalVisibility.mutate({
@@ -2814,9 +2823,9 @@ export function BillingV2Module() {
               </Button>
 
               <div className="space-y-2">
-                <Label>Será enviado para</Label>
+                <Label>Destinatários e cópias por e-mail</Label>
                 <div className="rounded-lg border p-3 text-sm">
-                  {recipientPreviewLoading ? <p className="text-muted-foreground">Conferindo o e-mail do cadastro do cliente, os logins vinculados e a empresa emissora…</p> : recipientPreviewError ? <p className="text-destructive">{recipientPreviewError}</p> : <div className="space-y-1">{recipientPreview.length ? recipientPreview.map((email) => <div key={email} className="flex flex-wrap items-center gap-2"><Mail className="h-3.5 w-3.5 text-primary" /><span>{email}</span>{outsourcedIssuerPreview?.emails.includes(email) && <span className="text-xs text-muted-foreground">Terceirizada emissora: {outsourcedIssuerPreview.companyName}</span>}</div>) : <p className="text-amber-700">Nenhum e-mail válido foi encontrado no cadastro do cliente, nos logins vinculados ou na terceirizada emissora. Cadastre um destinatário antes de enviar.</p>}{outsourcedIssuerPreview && outsourcedIssuerPreview.emails.length === 0 && <p className="mt-2 text-amber-700">A terceirizada emissora {outsourcedIssuerPreview.companyName} não possui e-mail válido cadastrado e não receberá este envio.</p>}</div>}
+                  {recipientPreviewLoading ? <p className="text-muted-foreground">Conferindo o e-mail do cadastro do cliente, os logins vinculados e a empresa emissora…</p> : recipientPreviewError ? <p className="text-destructive">{recipientPreviewError}</p> : <BillingEmailRecipientsPreview recipients={recipientPreview} copies={recipientCopiesPreview} outsourcedIssuer={outsourcedIssuerPreview} />}
                 </div>
               </div>
 
@@ -2833,7 +2842,7 @@ export function BillingV2Module() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPublishDialog(null)}>Cancelar</Button>
-            <Button disabled={recipientPreviewLoading || recipientPreview.length === 0 || Boolean(recipientPreviewError) || setCyclePortalVisibility.isPending || setResidueEmissionPortalVisibility.isPending} onClick={confirmPublishAndSend}>
+            <Button disabled={recipientPreviewLoading || !hasConfirmedBillingCopy(recipientPreview, recipientCopiesPreview) || recipientPreview.length === 0 || Boolean(recipientPreviewError) || setCyclePortalVisibility.isPending || setResidueEmissionPortalVisibility.isPending} onClick={confirmPublishAndSend}>
               <Send className="mr-2 h-4 w-4" />
               {setCyclePortalVisibility.isPending || setResidueEmissionPortalVisibility.isPending ? "Publicando…" : "Publicar no portal e enviar e-mail"}
             </Button>

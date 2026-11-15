@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { billingEmailRecipients, billingEmailPreviewRecipients } from "./recipients.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -135,7 +136,7 @@ export default {
           };
         }
       }
-      return json({ recipients, outsourcedIssuer });
+      return json({ ...billingEmailPreviewRecipients(recipients), outsourcedIssuer });
     }
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -277,7 +278,7 @@ export default {
           },
           body: JSON.stringify({
             from: sender,
-            to: [delivery.recipient_email],
+            ...billingEmailRecipients(delivery.recipient_email),
             subject,
             html,
             ...(replyTo ? { reply_to: replyTo } : {}),
