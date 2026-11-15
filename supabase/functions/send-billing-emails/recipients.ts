@@ -1,4 +1,4 @@
-export const BILLING_COPY_EMAIL = "js.js.ambientais@gmail.com";
+export const BILLING_COPY_EMAIL = "js.ambientais@gmail.com";
 export function billingEmailRecipients(recipient: string) {
   const to = [recipient.trim().toLowerCase()];
   return { to, cc: to.includes(BILLING_COPY_EMAIL) ? [] : [BILLING_COPY_EMAIL] };
