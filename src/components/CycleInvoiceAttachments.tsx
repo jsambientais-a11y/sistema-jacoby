@@ -1,4 +1,11 @@
-import { useEffect, useRef, useId, useState } from "react";
+import { replaceFinalizedInvoice } from "@/lib/replace-finalized-invoice";
+import { BillingInvoiceFilePicker } from "@/components/BillingInvoiceFilePicker";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  mayAppendFinalizedInvoice,
+  invoiceAttachmentActionAllowed,
+} from "@/lib/billing-invoice-access";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Clock3, Eye, FileImage, FileSpreadsheet, FileText, Loader2, Replace, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -34,8 +41,10 @@ export function CycleInvoiceAttachments({
   onChangeAttachment,
   serviceSaving,
   initialPath,
+  uploadInputRef,
 }: {
   cycleId: string;
+  uploadInputRef?: RefObject<HTMLInputElement | null>;
   bulletinLabel: string;
   initialPath?: string | null;
   linkedPaths: string[];
@@ -44,7 +53,10 @@ export function CycleInvoiceAttachments({
   serviceSaving: boolean;
 }) {
   const readOnly = useBillingReadOnly();
-  const inputId = useId();
+  const { permissions, hasPermission, isClient } = useAuth();
+  const mayAppend = mayAppendFinalizedInvoice(permissions, hasPermission("billing"), isClient);
+  const mayReplace = !isClient && hasPermission("billing") && permissions.includes("billing_replace_finalized_invoice");
+  const canUpload = !isClient && hasPermission("billing") && invoiceAttachmentActionAllowed(readOnly, mayAppend, false);
   const replacementInput = useRef<HTMLInputElement>(null);
   const replacing = useRef<CycleInvoice | null>(null);
   const [removing, setRemoving] = useState<CycleInvoice | null>(null);
@@ -68,7 +80,14 @@ export function CycleInvoiceAttachments({
   const save = useMutation({
     mutationKey: ["billing-v2-cycle-attachment-write", cycleId],
     mutationFn: async ({ previous, file }: { previous?: CycleInvoice; file?: File }) => {
-      if (readOnly) throw new Error("Este BM finalizado permite somente consulta.");
+      if (readOnly && previous && file && mayReplace) {
+        const folder = `${cycleInvoiceFolder(cycleId)}/`;
+        if (!previous.path.startsWith(folder) || previous.path.slice(folder.length).includes("/")) throw new Error("Selecione um arquivo deste BM.");
+        await replaceFinalizedInvoice(supabase.storage.from(CYCLE_INVOICE_BUCKET), previous.path, previous.name, file);
+        return { replacement: { ...previous, size: file.size }, cleanupFailed: false };
+      }
+      if (isClient || !hasPermission("billing") || !invoiceAttachmentActionAllowed(readOnly, mayAppend, Boolean(previous)))
+        throw new Error("Este acesso não permite alterar este arquivo do BM.");
       const targetCycleId = cycleId;
       const bucket = supabase.storage.from(CYCLE_INVOICE_BUCKET);
       const services = () => supabase.from("billing_v2_cycle_services" as any) as any;
@@ -226,32 +245,21 @@ export function CycleInvoiceAttachments({
           </p>
         </div>
         <div>
-          <input
-            id={inputId}
-            className="sr-only"
-            type="file"
-            disabled={readOnly || !cycleId || busy}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.currentTarget.value = "";
-              if (file) save.mutate({ file });
-            }}
+          <BillingInvoiceFilePicker
+            label="Anexar arquivo ao BM"
+            inputRef={uploadInputRef}
+            disabled={!canUpload || !cycleId || busy}
+            allowReadOnly={mayAppend}
+            blockedReason={readOnly && !mayAppend ? "Seu acesso permite somente consulta. Anexar novas notas exige a permissão específica de anexação." : busy ? "Aguarde a gravação em andamento." : undefined}
+            onFile={file => save.mutateAsync({ file })}
           />
-          <Button asChild disabled={readOnly || !cycleId || busy}>
-            <label
-              htmlFor={inputId}
-              className={busy ? "pointer-events-none" : "cursor-pointer"}
-            >
-              {busy ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Upload className="mr-2 h-4 w-4" />
-              )}
-              {busy ? "Salvando arquivo…" : "Anexar arquivo ao BM"}
-            </label>
-          </Button>
         </div>
       </div>
+      {readOnly && mayAppend && (
+        <p className="text-sm text-muted-foreground">
+          {mayReplace ? "Você pode anexar e substituir notas. Na substituição, escolha o mesmo formato; nome e vínculos são mantidos. Remover arquivos e alterar serviços ou valores continua bloqueado." : "Você pode adicionar novas notas. Substituir, remover e alterar serviços ou valores continua bloqueado."}
+        </p>
+      )}
       {attachments.isPending ? (
         <p className="text-sm text-muted-foreground">Consultando notas deste BM…</p>
       ) : attachments.error ? (
@@ -303,18 +311,18 @@ export function CycleInvoiceAttachments({
                 <Eye className="h-4 w-4" />
                 Abrir nota
               </Button>
-              {!readOnly && <>
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => {
+              {(!readOnly || mayReplace) && <>
+                <Button allowReadOnly={mayReplace} variant="outline" size="sm" disabled={busy} onClick={() => {
                   replacing.current = file;
                   replacementInput.current?.click();
                 }}>
                   <Replace className="h-4 w-4" />
                   Substituir arquivo
                 </Button>
-                <Button variant="outline" size="sm" className="text-destructive" disabled={busy} onClick={() => setRemoving(file)}>
+                {!readOnly && <Button variant="outline" size="sm" className="text-destructive" disabled={busy} onClick={() => setRemoving(file)}>
                   <Trash2 className="h-4 w-4" />
                   Remover
-                </Button>
+                </Button>}
               </>}
               {!linked && <Button size="sm" disabled={busy} onClick={() => onLaunch(file)}>Lançar serviço com esta nota</Button>}
               </div>

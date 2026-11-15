@@ -1,10 +1,10 @@
 {
-  "version": "2026.11.15.2",
+  "version": "2026.11.15.3",
   "title": "Atualização da equipe: e-mails, anexos e conferência",
   "summary": "Veja o que já está disponível nesta revisão e o que ainda está em preparação. As novidades anteriores foram retiradas deste painel.",
   "changes": [
     "Disponível: CC para js.ambientais@gmail.com na confirmação e no envio dos e-mails dos BMs.",
-    "Ângela: permissão específica de novos anexos configurada; o botão em BMs finalizados ainda aguarda atualização da tela.",
+    "Disponível para Ângela: adicionar e substituir notas em BMs finalizados, mantendo os demais bloqueios.",
     "Em preparação: evitar que notas sem serviço bloqueiem a conferência e permitir dar baixa no BM inteiro.",
     "Em preparação: melhorias em arquivos de tarefas, avisos de documentos no portal e proteção contra cliques repetidos."
   ],
@@ -22,13 +22,13 @@
       ]
     },
     {
-      "title": "Ângela — permissão configurada, tela pendente",
-      "description": "A liberação específica foi aplicada, mas anexar em BMs finalizados ainda depende da publicação do botão.",
+      "title": "Disponível — notas da Ângela em BMs finalizados",
+      "description": "Permissão específica para adicionar uma nota ou corrigir um arquivo anexado.",
       "items": [
-        "A nova permissão é somente para acrescentar uma nota ou arquivo ao BM finalizado.",
-        "Ela não permite substituir ou excluir anexos, alterar serviços e valores, reabrir o BM ou liberar outras áreas.",
-        "Os acessos anteriores e o trabalho nos BMs abertos continuam preservados.",
-        "Enquanto a atualização da tela não for publicada, o botão de anexar no finalizado pode continuar bloqueado."
+        "Ângela pode anexar novas notas e substituir arquivos já existentes no BM, inclusive os vinculados a serviços.",
+        "Na substituição de um finalizado, escolha um arquivo do mesmo formato, como PDF por PDF. O nome e os vínculos do anexo são mantidos.",
+        "Excluir anexos, alterar serviços e valores ou reabrir BMs finalizados continua bloqueado.",
+        "Os acessos anteriores e a edição dos BMs abertos permanecem como antes."
       ]
     },
     {
