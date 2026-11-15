@@ -1,3 +1,4 @@
+import { financeIssuer } from "@/lib/finance-issuer";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowUpRight,
@@ -92,9 +93,12 @@ export function FinanceTable({
     "Vencimento",
     "Descrição",
     payable ? "Fornecedor" : "Cliente",
+    ...(!payable
+      ? ["Quem fatura", "Categoria / NF", "Base registrada", "Comissão / receita Jacoby"]
+      : []),
     "Centro de custo",
     "Banco / conta",
-    "Valor",
+    ...(payable ? ["Valor"] : []),
     "Situação",
     "Ações",
   ];
@@ -185,6 +189,45 @@ export function FinanceTable({
                   )}
                 </td>
                 <td className={cell}>{row.counterparty || "—"}</td>
+                {!payable && (
+                  <>
+                    <td className={`${cell} min-w-44`}>{financeIssuer(row).name}</td>
+                    <td className={`${cell} min-w-36`}>
+                      <span className="block">
+                        {row.calculationDetail?.category || row.category || "Não informada"}
+                      </span>
+                      <span className={`block text-xs ${secondary}`}>
+                        {row.calculationDetail?.invoiceNumber
+                          ? `NF ${row.calculationDetail.invoiceNumber}`
+                          : "NF não informada"}
+                      </span>
+                    </td>
+                    <td className={`${cell} min-w-64`}>
+                      <b className="block tabular-nums">
+                        {row.calculationDetail?.baseCents != null
+                          ? money(row.calculationDetail.baseCents)
+                          : "Não informada"}
+                      </b>
+                      <span className={`block text-xs ${secondary}`}>
+                        {row.calculationDetail?.baseOrigin ||
+                          "Sem vínculo de cálculo · cadastro manual"}
+                      </span>
+                    </td>
+                    <td className={`${cell} min-w-48`}>
+                      <b className="block tabular-nums">{money(row.amountCents)}</b>
+                      <span className={`block text-xs ${secondary}`}>
+                        {row.source !== "billing"
+                          ? "Receita manual"
+                          : financeIssuer(row).id === "jacoby"
+                            ? `Receita direta · ${row.provisional ? "estimada" : "confirmada"}`
+                            : `Comissão ${row.provisional ? "estimada" : "confirmada"}`}
+                      </span>
+                      <span className={`block text-xs ${secondary}`}>
+                        {row.calculationDetail?.rule}
+                      </span>
+                    </td>
+                  </>
+                )}
                 <td className={cell}>
                   {card ? (
                     <span className={`whitespace-nowrap text-xs ${secondary}`}>
@@ -207,20 +250,22 @@ export function FinanceTable({
                     <span className={`whitespace-nowrap text-xs ${secondary}`}>Não informado</span>
                   )}
                 </td>
-                <td className={`${cell} whitespace-nowrap text-right font-semibold tabular-nums`}>
-                  {money(row.amountCents)}
-                  {partial && (
-                    <span className={`block text-xs font-normal ${secondary}`}>
-                      Pago: {money(row.paidCents!)} · Em aberto:{" "}
-                      {money(row.amountCents - row.paidCents!)}
-                    </span>
-                  )}
-                  {row.provisional && (
-                    <span className="block text-xs font-normal text-amber-800 dark:text-amber-300">
-                      Provisório · conferir no Faturamento
-                    </span>
-                  )}
-                </td>
+                {payable && (
+                  <td className={`${cell} whitespace-nowrap text-right font-semibold tabular-nums`}>
+                    {money(row.amountCents)}
+                    {partial && (
+                      <span className={`block text-xs font-normal ${secondary}`}>
+                        Pago: {money(row.paidCents!)} · Em aberto:{" "}
+                        {money(row.amountCents - row.paidCents!)}
+                      </span>
+                    )}
+                    {row.provisional && (
+                      <span className="block text-xs font-normal text-amber-800 dark:text-amber-300">
+                        Provisório · conferir no Faturamento
+                      </span>
+                    )}
+                  </td>
+                )}
                 <td className={`${cell} whitespace-nowrap`}>
                   <Status
                     row={row}

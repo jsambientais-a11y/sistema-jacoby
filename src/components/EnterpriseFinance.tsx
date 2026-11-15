@@ -1,3 +1,10 @@
+import { financeCalculationDetail } from "@/lib/finance-calculation-detail";
+import { FinanceIssuerFilter } from "@/components/FinanceIssuerFilter";
+import {
+  billingFinanceIssuer,
+  financeIssuerOptions,
+  matchesFinanceIssuer,
+} from "@/lib/finance-issuer";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
@@ -72,6 +79,7 @@ export function EnterpriseFinance({
     center: string;
     bank: string;
   } | null>(null);
+  const [issuer, setIssuer] = useState("all");
   const [bankFilter, setBankFilter] = useState("");
   const [centerFilter, setCenterFilter] = useState("");
   const flow = useBillingFlowData();
@@ -88,6 +96,7 @@ export function EnterpriseFinance({
     setPeriod(focus ? { kind: "all" } : { kind: "month", month: localFinanceToday().slice(0, 7) });
     setStatus(focus || "all");
     setShowDeleted(false);
+    setIssuer("all");
   }, [focus, kind]);
   const [uploading, setUploading] = useState(false);
   const [attachmentTarget, setAttachmentTarget] = useState<{
@@ -122,6 +131,11 @@ export function EnterpriseFinance({
       dueOn: r.expectedOn || r.invoiceDueOn,
       settledOn: r.receivedOn,
       source: "billing" as const,
+      billingIssuer: billingFinanceIssuer(
+        entry,
+        flow.cycles.find((cycle) => cycle.id === entry.cycleId),
+      ),
+      calculationDetail: financeCalculationDetail(entry),
       canSettle: r.canSettle,
       provisional: !r.confirmed,
       entry,
@@ -134,7 +148,13 @@ export function EnterpriseFinance({
     ...aggregateCardInvoices(accounts.data || [], credit.cards.data || []),
     ...billing,
   ];
+  const issuers = financeIssuerOptions([
+    ...(accounts.data || []).map(manualFinanceRow),
+    ...billing,
+  ]);
+  const issuerInScope = (r: FinanceRow) => payable || matchesFinanceIssuer(r, issuer);
   const detailInScope = (r: FinanceRow) =>
+    issuerInScope(r) &&
     inPeriod(r.settledOn || r.dueOn, period) &&
     (!centerFilter ||
       (centerFilter === "none" ? !r.costCenterId : r.costCenterId === centerFilter)) &&
@@ -151,7 +171,9 @@ export function EnterpriseFinance({
   const summary = summarizeFinance(
     allDetails.filter((row) => row.kind === kind && detailInScope(row)),
   );
-  const missingDate = all.filter((r) => r.kind === kind && !r.dueOn && !r.settledOn).length;
+  const missingDate = all.filter(
+    (r) => r.kind === kind && issuerInScope(r) && !r.dueOn && !r.settledOn,
+  ).length;
   const rows = (
     showDeleted
       ? (accounts.data || [])
@@ -409,12 +431,30 @@ export function EnterpriseFinance({
         <h1 className="text-3xl font-bold">{accountTitles[kind]}</h1>
       </header>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PeriodFilter value={period} onChange={setPeriod} />
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodFilter value={period} onChange={setPeriod} />
+          {!payable && (
+            <FinanceIssuerFilter value={issuer} onChange={setIssuer} options={issuers} />
+          )}
+          {!payable && issuer !== "all" && (
+            <Button variant="ghost" size="sm" onClick={() => setIssuer("all")}>
+              Limpar emissor
+            </Button>
+          )}
+        </div>
         <Button onClick={newAccount}>
           <Plus className="mr-2 h-4 w-4" />
           Nova conta {payable ? "a pagar" : "a receber"}
         </Button>
       </div>
+      {!payable && (
+        <p className="text-xs text-muted-foreground">
+          Cada linha mantém seu lançamento. Bases não são somadas: a mesma NF pode aparecer em
+          várias categorias. Quem fatura é o emissor vinculado ao lançamento do BM. Receitas manuais
+          e BMs sem vínculo confirmado ficam em “Sem emissor vinculado”. O resumo considera período,
+          emissor, centro de custo e banco; busca e situação filtram apenas a lista.
+        </p>
+      )}
       {(accounts.error || flowError) && (
         <div
           role="alert"

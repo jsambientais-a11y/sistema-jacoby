@@ -1,3 +1,5 @@
+import type { FinanceCalculationDetail } from "./finance-calculation-detail";
+import type { FinanceIssuer } from "./finance-issuer";
 export type FinanceKind = "payable" | "receivable";
 export type FinanceAccount = {
   id: string;
@@ -32,6 +34,9 @@ export type FinanceRow = {
   dueOn: string | null;
   settledOn: string | null;
   source: "manual" | "billing" | "card";
+  /** Display/filter metadata only; manual accounts have no issuer relation. */
+  billingIssuer?: FinanceIssuer;
+  calculationDetail?: FinanceCalculationDetail;
   cardId?: string;
   invoiceMonth?: string;
   paidCents?: number;
