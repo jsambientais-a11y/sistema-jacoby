@@ -1,94 +1,54 @@
 {
-  "version": "2026.11.15.1",
-  "title": "Novidades no envio de BMs, recorrências e documentos",
-  "summary": "Confira as mudanças disponíveis no sistema: cópia de e-mail para Juliana, sequência de BMs recorrentes, anexos e filtros para facilitar a conferência.",
+  "version": "2026.11.15.2",
+  "title": "Atualização da equipe: e-mails, anexos e conferência",
+  "summary": "Veja o que já está disponível nesta revisão e o que ainda está em preparação. As novidades anteriores foram retiradas deste painel.",
   "changes": [
-    "Antes de enviar o BM, confira os destinatários e o CC para js.ambientais@gmail.com.",
-    "Consulte a sequência dos BMs recorrentes, abra cada mês e revise os valores antes de finalizar.",
-    "Remova ou substitua arquivos anexados ao BM quando seu acesso permitir.",
-    "Em Contas a pagar, anexe documentos à despesa e escolha como excluir uma recorrência.",
-    "No portal, encontre BMs por número e resíduo e consulte as notas fiscais anexadas.",
-    "A Transpacce conta com um ambiente ISO individual.",
-    "Em Faturamento, confira categorias, notas, previsões e o total a receber por BM."
+    "Disponível: CC para js.ambientais@gmail.com na confirmação e no envio dos e-mails dos BMs.",
+    "Ângela: permissão específica de novos anexos configurada; o botão em BMs finalizados ainda aguarda atualização da tela.",
+    "Em preparação: evitar que notas sem serviço bloqueiem a conferência e permitir dar baixa no BM inteiro.",
+    "Em preparação: melhorias em arquivos de tarefas, avisos de documentos no portal e proteção contra cliques repetidos."
   ],
   "image": "updates/jacoby-novidades-2026-11-08.jpg",
-  "imageAlt": "Ilustração do fluxo de conferência e recebimento no Faturamento, apresentada no tutorial de 8 de novembro.",
+  "imageAlt": "Ilustração da conferência de boletins no Faturamento.",
   "sections": [
     {
-      "title": "E-mail com cópia para Juliana",
-      "description": "Veja quem receberá a mensagem antes de confirmar o envio do BM.",
+      "title": "Disponível — e-mail com cópia para Juliana",
+      "description": "Confira os destinatários e a cópia antes de enviar o BM.",
       "items": [
-        "A conferência mostra Para e CC. A cópia é enviada para js.ambientais@gmail.com.",
-        "A tela confirma o CC informado pelo servidor antes de liberar o envio.",
-        "Cada destinatário recebe um e-mail separado; Juliana pode receber mais de uma cópia do mesmo BM.",
-        "Se esse endereço já for o destinatário principal, não há cópia duplicada na mesma mensagem. A regra também vale para reenvios."
+        "A tela de confirmação mostra Para e CC: js.ambientais@gmail.com.",
+        "O servidor inclui esse endereço em cópia nos envios e reenvios e confirma a configuração para a tela.",
+        "Cada destinatário recebe uma mensagem separada; Juliana pode receber mais de uma cópia por BM.",
+        "Se js.ambientais@gmail.com já for o destinatário principal, a mesma mensagem não terá uma cópia duplicada."
       ]
     },
     {
-      "title": "BMs recorrentes por mês",
-      "description": "Acompanhe a sequência e revise cada boletim antes de gerar o financeiro.",
+      "title": "Ângela — permissão configurada, tela pendente",
+      "description": "A liberação específica foi aplicada, mas anexar em BMs finalizados ainda depende da publicação do botão.",
       "items": [
-        "Crie a recorrência a partir de um BM, escolhendo o primeiro mês e a quantidade de repetições.",
-        "Consulte os meses na área de recorrentes e gere os boletins em edição, inclusive antes das datas programadas.",
-        "Abra cada BM e copie os valores dos serviços do modelo ou do mês anterior, conforme a sequência.",
-        "Revise os valores e as previsões antes de finalizar em série. A finalização gera as previsões financeiras; não registra pagamento recebido."
+        "A nova permissão é somente para acrescentar uma nota ou arquivo ao BM finalizado.",
+        "Ela não permite substituir ou excluir anexos, alterar serviços e valores, reabrir o BM ou liberar outras áreas.",
+        "Os acessos anteriores e o trabalho nos BMs abertos continuam preservados.",
+        "Enquanto a atualização da tela não for publicada, o botão de anexar no finalizado pode continuar bloqueado."
       ]
     },
     {
-      "title": "Arquivos anexados ao BM",
-      "description": "Corrija um anexo enviado por engano conforme as permissões do seu acesso.",
+      "title": "Em preparação — conferência e recebimentos",
+      "description": "Ajustes feitos localmente, ainda não disponíveis no sistema online.",
       "items": [
-        "Os arquivos do BM têm ações para remover ou substituir o anexo.",
-        "Na substituição, escolha o arquivo correto e confira o resultado no próprio BM.",
-        "As restrições de BMs finalizados continuam valendo: as ações dependem da permissão do usuário."
+        "Impedir que uma nota anexada sem serviço lançado seja selecionada e bloqueie o salvamento das categorias válidas.",
+        "Adicionar Dar baixa no BM com confirmação do saldo e da data, preservando os recebimentos anteriores.",
+        "Na baixa do BM, considerar todas as categorias com saldo, mesmo com filtros ativos; valores pendentes precisam de conferência.",
+        "Tornar o filtro Quem fatura pesquisável e proteger a gravação contra cliques repetidos na mesma tela."
       ]
     },
     {
-      "title": "Despesas e recorrências",
-      "description": "Organize os documentos e as séries em Financeiro › Contas a pagar.",
+      "title": "Em preparação — tarefas e documentos",
+      "description": "Melhorias locais que ainda aguardam publicação.",
       "items": [
-        "Anexe comprovantes, notas e outros documentos diretamente às despesas.",
-        "Ao excluir uma despesa recorrente, confira as opções de exclusão da ocorrência ou da série.",
-        "Os anexos das contas a pagar ficam restritos aos acessos autorizados ao Financeiro."
-      ]
-    },
-    {
-      "title": "Portal do cliente e acesso",
-      "description": "Mais facilidade para localizar boletins e conferir seus documentos.",
-      "items": [
-        "Em BMs emitidos, filtre pelo número do boletim e pelo resíduo, junto dos filtros de período e filial.",
-        "Consulte as notas fiscais anexadas aos BMs disponibilizados no portal.",
-        "O acesso continua limitado aos dados do cliente vinculado ao login.",
-        "Os avisos de Novidades ficam no ambiente interno. O portal do cliente não mostra essa barra.",
-        "A administração do acesso ao portal tenta renovar a sessão antes de repetir uma operação que falhou por autenticação."
-      ]
-    },
-    {
-      "title": "ISO individual da Transpacce",
-      "description": "Um ambiente próprio para o controle ISO desse cliente.",
-      "items": [
-        "A Transpacce tem acesso ao seu espaço ISO conforme a habilitação do cadastro.",
-        "Os dados e anexos desse espaço ficam separados do ambiente ISO da Jacoby."
-      ]
-    },
-    {
-      "title": "Conferência no Faturamento",
-      "description": "As melhorias anteriores continuam disponíveis para conferir o BM no mesmo lugar.",
-      "items": [
-        "Abra o BM pela linha e confira Locação, Troca, Tratamento e Serviços com seus próprios valores.",
-        "Para comissão percentual, informe manualmente o líquido correspondente a cada categoria.",
-        "Campos comuns só substituem os dados das linhas selecionadas quando forem editados; diferenças antigas são indicadas para conferência.",
-        "Categorias zeradas sem cobrança não geram aviso de NF pendente. Os avisos do Faturamento e do Dashboard abrem a lista filtrada."
-      ]
-    },
-    {
-      "title": "Previsões, total e PDF",
-      "description": "Confira o valor a receber e ajuste exceções quando necessário.",
-      "items": [
-        "As regras incluem 15 dias após a emissão ou após o vencimento da nota, além da data definida manualmente.",
-        "As previsões antigas não são recalculadas em massa. A data de previsão é diferente da data em que o pagamento foi recebido.",
-        "Em Faturado, veja o total por BM e expanda para conferir a composição e as baixas individuais.",
-        "O PDF do BM mostra as datas registradas de locação, movimentação e execução dos serviços."
+        "Avisar no sino dos logins ativos do cliente quando uma solicitação de documento ficar visível e pendente; o aviso abrirá a solicitação.",
+        "Melhorar os anexos de tarefas, subtarefas e respostas do portal, com tratamento de nomes, arquivos vazios, limite de tamanho e falhas.",
+        "Ao trocar o cliente de uma tarefa, exigir que a solicitação e a visibilidade no portal sejam marcadas novamente.",
+        "Proteger salvar, excluir e restaurar modelos de processos contra cliques repetidos."
       ]
     }
   ]
