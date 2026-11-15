@@ -1,4 +1,4 @@
-export const REQUIRED_BILLING_COPY = "js.ambientais@gmail.com";
+export const REQUIRED_BILLING_COPY = "js.js.ambientais@gmail.com";
 export function hasConfirmedBillingCopy(recipients: string[], copies: string[] | null) {
   if (copies === null || !recipients.length) return false;
   const copied = copies.some(

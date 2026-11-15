@@ -15,11 +15,11 @@ const { billingEmailRecipients: recipients } = await import(
 test("envio do cliente inclui Juliana em cópia explícita", () =>
   assert.deepEqual(recipients(" Cliente@exemplo.com "), {
     to: ["cliente@exemplo.com"],
-    cc: ["js.ambientais@gmail.com"],
+    cc: ["js.js.ambientais@gmail.com"],
   }));
 test("destinatária Juliana não recebe cópia duplicada, ignorando espaços e caixa", () =>
-  assert.deepEqual(recipients(" JS.AMBIENTAIS@GMAIL.COM "), {
-    to: ["js.ambientais@gmail.com"],
+  assert.deepEqual(recipients(" JS.JS.AMBIENTAIS@GMAIL.COM "), {
+    to: ["js.js.ambientais@gmail.com"],
     cc: [],
   }));
 test("envio central da fila, reenvio e emissão por resíduo aplica mesmos destinatários", () => {
@@ -157,7 +157,7 @@ test("handler envia cópia nos caminhos publicação, reenvio, fila e resíduo c
     assert.equal(messages.length, 4);
     for (const message of messages) {
       assert.deepEqual(message.to, ["client@example.invalid"]);
-      assert.deepEqual(message.cc, ["js.ambientais@gmail.com"]);
+      assert.deepEqual(message.cc, ["js.js.ambientais@gmail.com"]);
     }
   } finally {
     globalThis.Deno = old.Deno;

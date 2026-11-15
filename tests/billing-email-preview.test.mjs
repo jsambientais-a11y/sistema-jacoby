@@ -43,25 +43,25 @@ const render = (recipients, copies, outsourcedIssuer = null) =>
   renderToStaticMarkup(React.createElement(Component, { recipients, copies, outsourcedIssuer }));
 
 test("prévia representa um email por destinatário com CC efetivo, inclusive terceiros e Juliana como TO", () => {
-  const input = ["cliente@example.invalid", "terceiro@example.invalid", "JS.AMBIENTAIS@GMAIL.COM"];
+  const input = ["cliente@example.invalid", "terceiro@example.invalid", "JS.JS.AMBIENTAIS@GMAIL.COM"];
   const data = preview(input);
   assert.deepEqual(data, {
     recipients: input.map((email) => email.toLowerCase()),
-    cc: ["js.ambientais@gmail.com"],
+    cc: ["js.js.ambientais@gmail.com"],
   });
   const html = render(data.recipients, data.cc, {
     emails: ["terceiro@example.invalid"],
     companyName: "Terceirizada Teste",
   });
   assert.equal((html.match(/<strong>Para:<\/strong>/g) || []).length, 3);
-  assert.equal((html.match(/<strong>CC:<\/strong> js.ambientais@gmail.com/g) || []).length, 2);
+  assert.equal((html.match(/<strong>CC:<\/strong> js.js.ambientais@gmail.com/g) || []).length, 2);
   assert.match(html, /Nenhuma cópia adicional nesta mensagem/);
   assert.match(html, /Terceirizada emissora:.*Terceirizada Teste/);
   assert.match(html, /várias cópias do mesmo BM/);
   assert.match(html, /Novas tentativas de envio também mantêm o CC/);
 });
 test("prévia de Juliana como único TO ou sem destinatários não anuncia CC inexistente", () => {
-  for (const input of [[], [" JS.AMBIENTAIS@GMAIL.COM "]]) {
+  for (const input of [[], [" JS.JS.AMBIENTAIS@GMAIL.COM "]]) {
     const data = preview(input);
     assert.deepEqual(data.cc, []);
     const html = render(data.recipients, data.cc);
@@ -96,7 +96,7 @@ async function withHandler(run) {
   const addresses = [
     "cliente@example.invalid",
     "terceiro@example.invalid",
-    "js.ambientais@gmail.com",
+    "js.js.ambientais@gmail.com",
   ];
   const rows = addresses.map((email, i) => ({
     id: `delivery-${i}`,
@@ -249,7 +249,7 @@ test("handler: prévia corresponde aos TO/CC das três entregas separadas, sem e
     const data = await invoke({ cycleId: "cycle", previewOnly: true });
     assert.equal(messages.length, 0);
     assert.deepEqual(rows, before);
-    assert.deepEqual(data.cc, ["js.ambientais@gmail.com"]);
+    assert.deepEqual(data.cc, ["js.js.ambientais@gmail.com"]);
     assert.equal(data.recipients.length, 3);
     const result = await invoke({});
     assert.equal(result.sent, 3);
@@ -279,17 +279,17 @@ test("handler: falha de um destinatário mantém CC no retry sem reenviar entreg
     assert.equal(retried.sent, 1);
     assert.equal(messages.length, 4);
     assert.deepEqual(messages[3].to, ["terceiro@example.invalid"]);
-    assert.deepEqual(messages[3].cc, ["js.ambientais@gmail.com"]);
+    assert.deepEqual(messages[3].cc, ["js.js.ambientais@gmail.com"]);
     assert.equal(
       messages.filter((message) => message.to[0] === "cliente@example.invalid").length,
       1,
     );
     assert.equal(
-      messages.filter((message) => message.to[0] === "js.ambientais@gmail.com").length,
+      messages.filter((message) => message.to[0] === "js.js.ambientais@gmail.com").length,
       1,
     );
     assert.deepEqual(
-      messages.find((message) => message.to[0] === "js.ambientais@gmail.com").cc,
+      messages.find((message) => message.to[0] === "js.js.ambientais@gmail.com").cc,
       [],
     );
     assert.equal(failed.attempts, 2);
@@ -303,11 +303,11 @@ test("CC não informado/vazio/incorreto nunca é apresentado como confirmado nem
     assert.doesNotMatch(html, /Cópia confirmada pelo servidor:/);
   }
   assert.equal(
-    hasConfirmedBillingCopy(["cliente@example.invalid"], [" JS.AMBIENTAIS@GMAIL.COM "]),
+    hasConfirmedBillingCopy(["cliente@example.invalid"], [" JS.JS.AMBIENTAIS@GMAIL.COM "]),
     true,
   );
-  assert.equal(hasConfirmedBillingCopy(["JS.AMBIENTAIS@GMAIL.COM"], []), true);
-  assert.equal(hasConfirmedBillingCopy([], ["js.ambientais@gmail.com"]), false);
+  assert.equal(hasConfirmedBillingCopy(["JS.JS.AMBIENTAIS@GMAIL.COM"], []), true);
+  assert.equal(hasConfirmedBillingCopy([], ["js.js.ambientais@gmail.com"]), false);
   const module = readFileSync(
     new URL("../src/components/BillingV2Module.tsx", import.meta.url),
     "utf8",
