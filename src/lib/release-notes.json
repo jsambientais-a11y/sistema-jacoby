@@ -13,13 +13,6 @@
   ],
   "image": "updates/jacoby-novidades-2026-11-08.jpg",
   "imageAlt": "Ilustração do fluxo de conferência e recebimento no Faturamento, apresentada no tutorial de 8 de novembro.",
-  "video": {
-    "src": "updates/jacoby-novidades-2026-11-08-neural-v3.mp4",
-    "poster": "updates/jacoby-novidades-2026-11-08.jpg",
-    "captions": "updates/jacoby-novidades-2026-11-08-neural-v3.vtt",
-    "title": "Tutorial de faturamento — conferência e recebimento (08/11)",
-    "webm": "updates/jacoby-novidades-2026-11-08-neural-v3.webm"
-  },
   "sections": [
     {
       "title": "E-mail com cópia para Juliana",
