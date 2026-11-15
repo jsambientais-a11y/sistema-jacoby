@@ -238,6 +238,8 @@ function Field({ label, children, className = "" }: { label: string; children: R
 export function BillingV2Module() {
   const qc = useQueryClient();
   const { permissions, hasPermission, isClient } = useAuth();
+  const serviceInvoiceWritePending = useRef(false);
+  const mayManageInvoice = !isClient && hasPermission("billing") && permissions.includes("billing_manage_finalized_invoices");
   const mayReplaceInvoice = !isClient && hasPermission("billing") && permissions.includes("billing_replace_finalized_invoice");
   const mayAppendInvoice = !isClient && hasPermission("billing") && permissions.includes("billing_append_finalized_invoice");
   const cycleInvoiceFileInput = useRef<HTMLInputElement>(null);
@@ -1021,9 +1023,11 @@ export function BillingV2Module() {
     if (error) toast.error(error.message); else refresh();
   };
   const uploadCycleServiceInvoicePdf = async (service: CycleService, file?: File) => {
-    if (!file) return;
+    if (!file || serviceInvoiceWritePending.current) return;
+    serviceInvoiceWritePending.current = true;
+    try {
     if (isClient || !hasPermission("billing")) return;
-    if (isLocked(cycle)) {
+    if (isLocked(cycle) && !mayManageInvoice) {
       if (!mayReplaceInvoice || !service.invoice_pdf_path) { toast.error("Seu acesso não permite substituir esta nota."); return; }
       try {
         await replaceFinalizedInvoice(supabase.storage.from("movement-documents"), service.invoice_pdf_path, service.invoice_pdf_name || service.invoice_pdf_path, file);
@@ -1040,18 +1044,54 @@ export function BillingV2Module() {
       .from("movement-documents")
       .upload(storagePath, file, { contentType: file.type || "application/octet-stream", upsert: false });
     if (uploadError) return toast.error(uploadError.message);
-    const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
-      .update({ invoice_pdf_name: file.name, invoice_pdf_path: storagePath })
-      .eq("id", service.id);
-    if (error) {
-      await supabase.storage.from("movement-documents").remove([storagePath]);
-      return toast.error(error.message);
+    const query = (supabase.from("billing_v2_cycle_services" as any) as any)
+      .update({ invoice_pdf_name: file.name, invoice_pdf_path: storagePath }).eq("id",service.id);
+    const {data:updated,error} = await (service.invoice_pdf_path ? query.eq("invoice_pdf_path",service.invoice_pdf_path) : query.is("invoice_pdf_path",null)).select("id");
+    if(error || !updated?.length) {
+      const refs=await (supabase.from("billing_v2_cycle_services" as any) as any).select("id").eq("invoice_pdf_path",storagePath).limit(1);
+      if(!refs.error && !refs.data?.length) await supabase.storage.from("movement-documents").remove([storagePath]);
+      return toast.error(error?.message || "A nota mudou em outra edição. Atualize e confira os anexos.");
     }
-    if (service.invoice_pdf_path && service.invoice_pdf_path !== storagePath && !service.invoice_pdf_path.startsWith("cycle-invoices/")) {
-      await supabase.storage.from("movement-documents").remove([service.invoice_pdf_path]);
+    if (service.invoice_pdf_path && service.invoice_pdf_path !== storagePath) {
+      const refs=await (supabase.from("billing_v2_cycle_services" as any) as any).select("id").eq("invoice_pdf_path",service.invoice_pdf_path).limit(1);
+      if(!refs.error && !refs.data?.length) {
+        const removed=await supabase.storage.from("movement-documents").remove([service.invoice_pdf_path]);
+        if(removed.error) toast.warning("Nova nota salva. Confira o anexo anterior que não pôde ser removido.");
+      }
     }
     refresh();
+    void qc.invalidateQueries({queryKey:["billing-v2-cycle-invoices",cycleId]});
     toast.success("Arquivo de faturamento anexado ao BM e ao Faturamento.");
+    } finally { serviceInvoiceWritePending.current = false; }
+  };
+  const renameServiceInvoice = async (service: CycleService) => {
+    if (!service.invoice_pdf_path || (isLocked(cycle) && !mayManageInvoice)) return;
+    const name=window.prompt("Novo nome do arquivo (inclua a extensão):", service.invoice_pdf_name || "nota.pdf")?.trim();
+    if (!name || name===service.invoice_pdf_name) return;
+    const {data,error}=await supabase.storage.from("movement-documents").download(service.invoice_pdf_path);
+    if(error || !data) { toast.error(error?.message || "Não foi possível ler o arquivo."); return; }
+    await uploadCycleServiceInvoicePdf(service,new File([data],name,{type:data.type}));
+  };
+  const deleteServiceInvoice = async (service: CycleService) => {
+    if (serviceInvoiceWritePending.current || isClient || !hasPermission("billing") || !service.invoice_pdf_path || (isLocked(cycle) && !mayManageInvoice)) return;
+    if (!window.confirm("Excluir somente o arquivo desta nota? O serviço e seus valores serão mantidos.")) return;
+    serviceInvoiceWritePending.current = true;
+    try {
+      const {data: updated, error}=await (supabase.from("billing_v2_cycle_services" as any) as any)
+        .update({invoice_pdf_path:null,invoice_pdf_name:null}).eq("id",service.id)
+        .eq("invoice_pdf_path",service.invoice_pdf_path).select("id");
+      if(error || !updated?.length) {
+        toast.error(error?.message || "A nota mudou em outra edição. Atualize e confira os anexos.");
+        return;
+      }
+      const remaining=await (supabase.from("billing_v2_cycle_services" as any) as any).select("id").eq("invoice_pdf_path",service.invoice_pdf_path).limit(1);
+      if(!remaining.error && !remaining.data?.length) {
+        const removed=await supabase.storage.from("movement-documents").remove([service.invoice_pdf_path]);
+        if(removed.error) toast.warning("Vínculo removido. O arquivo ainda está no armazenamento; confira os anexos.");
+      }
+      refresh();
+      void qc.invalidateQueries({queryKey:["billing-v2-cycle-invoices",cycleId]});
+    } finally { serviceInvoiceWritePending.current = false; }
   };
   const openCycleServiceInvoicePdf = async (service: CycleService) => {
     if (!service.invoice_pdf_path) return;
@@ -2741,7 +2781,7 @@ export function BillingV2Module() {
                 <Field label="Observação" className="mt-3">
                   <Input value={serviceObservation} onChange={(event) => setServiceObservation(event.target.value)} placeholder="Opcional: detalhe deste lançamento" />
                 </Field>
-                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor unitário</th><th className="p-2">Total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">Arquivo de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value, Number(item.unit_amount ?? item.amount ?? 0))} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.01" defaultValue={Number(item.unit_amount ?? item.amount ?? 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value, Number(item.quantity || 1))} /></td><td className="p-2 font-medium">{money(Number(item.amount || 0))}</td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button allowReadOnly variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir arquivo"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "Arquivo anexado"}</span></Button>}{isLocked(cycle) ? <div className="space-y-2">{item.invoice_pdf_path && mayReplaceInvoice && <BillingInvoiceFilePicker allowReadOnly label="Substituir nota" onFile={file => uploadCycleServiceInvoicePdf(item, file)} />}<Button allowReadOnly={mayAppendInvoice} disabled={!mayAppendInvoice} onClick={() => cycleInvoiceFileInput.current?.click()}>Anexar nova nota ao BM</Button>{mayReplaceInvoice && <p className="text-xs text-muted-foreground">Substitua por arquivo do mesmo formato. Nome e vínculos são mantidos.</p>}</div> : <label className="inline-flex"><input disabled={Boolean(isLocked(cycle))} className="sr-only" type="file" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar arquivo" : "Anexar arquivo"}</span></Button></label>}</div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
+                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor unitário</th><th className="p-2">Total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">Arquivo de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value, Number(item.unit_amount ?? item.amount ?? 0))} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.01" defaultValue={Number(item.unit_amount ?? item.amount ?? 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value, Number(item.quantity || 1))} /></td><td className="p-2 font-medium">{money(Number(item.amount || 0))}</td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button allowReadOnly variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir arquivo"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "Arquivo anexado"}</span></Button>}{isLocked(cycle) ? <div className="space-y-2">{item.invoice_pdf_path && (mayReplaceInvoice || mayManageInvoice) && <BillingInvoiceFilePicker allowReadOnly label="Substituir nota" onFile={file => uploadCycleServiceInvoicePdf(item, file)} />}<Button allowReadOnly={mayAppendInvoice} disabled={!mayAppendInvoice} onClick={() => cycleInvoiceFileInput.current?.click()}>Anexar nova nota ao BM</Button>{mayManageInvoice && item.invoice_pdf_path && <><Button allowReadOnly onClick={() => void renameServiceInvoice(item)}>Renomear nota</Button><Button allowReadOnly onClick={() => void deleteServiceInvoice(item)}>Excluir nota</Button></>}{mayReplaceInvoice && !mayManageInvoice && <p className="text-xs text-muted-foreground">Substitua por arquivo do mesmo formato. Nome e vínculos são mantidos.</p>}</div> : <label className="inline-flex"><input disabled={Boolean(isLocked(cycle))} className="sr-only" type="file" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar arquivo" : "Anexar arquivo"}</span></Button></label>}</div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
               </Card>
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>

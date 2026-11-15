@@ -55,6 +55,7 @@ export function CycleInvoiceAttachments({
   const readOnly = useBillingReadOnly();
   const { permissions, hasPermission, isClient } = useAuth();
   const mayAppend = mayAppendFinalizedInvoice(permissions, hasPermission("billing"), isClient);
+  const mayManage = !isClient && hasPermission("billing") && permissions.includes("billing_manage_finalized_invoices");
   const mayReplace = !isClient && hasPermission("billing") && permissions.includes("billing_replace_finalized_invoice");
   const canUpload = !isClient && hasPermission("billing") && invoiceAttachmentActionAllowed(readOnly, mayAppend, false);
   const replacementInput = useRef<HTMLInputElement>(null);
@@ -79,14 +80,14 @@ export function CycleInvoiceAttachments({
   }, [attachments.data, initialPath, linkedPaths, onLaunch, readOnly]);
   const save = useMutation({
     mutationKey: ["billing-v2-cycle-attachment-write", cycleId],
-    mutationFn: async ({ previous, file }: { previous?: CycleInvoice; file?: File }) => {
-      if (readOnly && previous && file && mayReplace) {
+    mutationFn: async ({ previous, file, renameTo }: { previous?: CycleInvoice; file?: File; renameTo?: string }) => {
+      if (readOnly && previous && file && mayReplace && !mayManage) {
         const folder = `${cycleInvoiceFolder(cycleId)}/`;
         if (!previous.path.startsWith(folder) || previous.path.slice(folder.length).includes("/")) throw new Error("Selecione um arquivo deste BM.");
         await replaceFinalizedInvoice(supabase.storage.from(CYCLE_INVOICE_BUCKET), previous.path, previous.name, file);
         return { replacement: { ...previous, size: file.size }, cleanupFailed: false };
       }
-      if (isClient || !hasPermission("billing") || !invoiceAttachmentActionAllowed(readOnly, mayAppend, Boolean(previous)))
+      if (isClient || !hasPermission("billing") || (!mayManage && !invoiceAttachmentActionAllowed(readOnly, mayAppend, Boolean(previous))))
         throw new Error("Este acesso não permite alterar este arquivo do BM.");
       const targetCycleId = cycleId;
       const bucket = supabase.storage.from(CYCLE_INVOICE_BUCKET);
@@ -95,6 +96,11 @@ export function CycleInvoiceAttachments({
         const folder = `${cycleInvoiceFolder(targetCycleId)}/`;
         if (!previous.path.startsWith(folder) || previous.path.slice(folder.length).includes("/"))
           throw new Error("Selecione um arquivo deste BM.");
+      }
+      if (renameTo && previous) {
+        const { data, error } = await bucket.download(previous.path);
+        if (error || !data) throw new Error(error?.message || "Não foi possível ler o arquivo.");
+        file = new File([data], renameTo, { type: data.type });
       }
       if (file) await validateCycleInvoice(file);
 
@@ -215,7 +221,7 @@ export function CycleInvoiceAttachments({
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={save.isPending}>Cancelar</AlertDialogCancel>
-            <Button variant="destructive" disabled={busy} onClick={() => {
+            <Button allowReadOnly={mayManage} variant="destructive" disabled={busy} onClick={() => {
               if (removing) save.mutate({ previous: removing });
             }}>{save.isPending ? "Removendo…" : "Remover arquivo"}</Button>
           </AlertDialogFooter>
@@ -257,7 +263,7 @@ export function CycleInvoiceAttachments({
       </div>
       {readOnly && mayAppend && (
         <p className="text-sm text-muted-foreground">
-          {mayReplace ? "Você pode anexar e substituir notas. Na substituição, escolha o mesmo formato; nome e vínculos são mantidos. Remover arquivos e alterar serviços ou valores continua bloqueado." : "Você pode adicionar novas notas. Substituir, remover e alterar serviços ou valores continua bloqueado."}
+          {mayManage ? "Você pode adicionar, substituir, renomear e excluir os anexos. Serviços, valores e reabertura continuam bloqueados." : mayReplace ? "Você pode anexar e substituir notas. Na substituição, escolha o mesmo formato; nome e vínculos são mantidos. Remover arquivos e alterar serviços ou valores continua bloqueado." : "Você pode adicionar novas notas. Substituir, remover e alterar serviços ou valores continua bloqueado."}
         </p>
       )}
       {attachments.isPending ? (
@@ -311,15 +317,19 @@ export function CycleInvoiceAttachments({
                 <Eye className="h-4 w-4" />
                 Abrir nota
               </Button>
-              {(!readOnly || mayReplace) && <>
-                <Button allowReadOnly={mayReplace} variant="outline" size="sm" disabled={busy} onClick={() => {
+              {(!readOnly || mayReplace || mayManage) && <>
+                <Button allowReadOnly={mayReplace || mayManage} variant="outline" size="sm" disabled={busy} onClick={() => {
                   replacing.current = file;
                   replacementInput.current?.click();
                 }}>
                   <Replace className="h-4 w-4" />
                   Substituir arquivo
                 </Button>
-                {!readOnly && <Button variant="outline" size="sm" className="text-destructive" disabled={busy} onClick={() => setRemoving(file)}>
+                {(!readOnly || mayManage) && <Button allowReadOnly={mayManage} variant="outline" size="sm" disabled={busy} onClick={() => {
+                  const name = window.prompt("Novo nome do arquivo (inclua a extensão):", file.name)?.trim();
+                  if (name && name !== file.name) save.mutate({ previous: file, renameTo: name });
+                }}>Renomear</Button>}
+                {(!readOnly || mayManage) && <Button allowReadOnly={mayManage} variant="outline" size="sm" className="text-destructive" disabled={busy} onClick={() => setRemoving(file)}>
                   <Trash2 className="h-4 w-4" />
                   Remover
                 </Button>}

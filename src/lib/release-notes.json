@@ -1,10 +1,10 @@
 {
-  "version": "2026.11.15.3",
+  "version": "2026.11.15.4",
   "title": "Atualização da equipe: e-mails, anexos e conferência",
   "summary": "Veja o que já está disponível nesta revisão e o que ainda está em preparação. As novidades anteriores foram retiradas deste painel.",
   "changes": [
     "Disponível: CC para js.ambientais@gmail.com na confirmação e no envio dos e-mails dos BMs.",
-    "Disponível para Ângela: adicionar e substituir notas em BMs finalizados, mantendo os demais bloqueios.",
+    "Disponível para Ângela: anexar, substituir, renomear e excluir notas de BMs finalizados, sem alterar os valores.",
     "Em preparação: evitar que notas sem serviço bloqueiem a conferência e permitir dar baixa no BM inteiro.",
     "Em preparação: melhorias em arquivos de tarefas, avisos de documentos no portal e proteção contra cliques repetidos."
   ],
@@ -22,13 +22,13 @@
       ]
     },
     {
-      "title": "Disponível — notas da Ângela em BMs finalizados",
-      "description": "Permissão específica para adicionar uma nota ou corrigir um arquivo anexado.",
+      "title": "Disponível — gestão de anexos da Ângela",
+      "description": "Controle dos arquivos e notas, inclusive em BMs finalizados.",
       "items": [
-        "Ângela pode anexar novas notas e substituir arquivos já existentes no BM, inclusive os vinculados a serviços.",
-        "Na substituição de um finalizado, escolha um arquivo do mesmo formato, como PDF por PDF. O nome e os vínculos do anexo são mantidos.",
-        "Excluir anexos, alterar serviços e valores ou reabrir BMs finalizados continua bloqueado.",
-        "Os acessos anteriores e a edição dos BMs abertos permanecem como antes."
+        "Ângela pode adicionar, substituir, renomear e excluir notas e anexos do BM, inclusive os vinculados a serviços.",
+        "Excluir uma nota remove o arquivo e seu vínculo, mantendo o serviço e os valores cadastrados.",
+        "O formato do novo arquivo pode ser diferente ao substituir a nota.",
+        "Valores, movimentações, exclusão de serviços e reabertura do BM finalizado continuam bloqueados."
       ]
     },
     {
