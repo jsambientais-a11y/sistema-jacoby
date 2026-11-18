@@ -1,3 +1,4 @@
+import { financeVisibleTotals } from "@/lib/finance-visible-totals";
 import { financeCalculationDetail } from "@/lib/finance-calculation-detail";
 import { FinanceIssuerFilter } from "@/components/FinanceIssuerFilter";
 import {
@@ -196,6 +197,7 @@ export function EnterpriseFinance({
           (status === "urgent" && !r.settledOn && !!r.dueOn && r.dueOn <= today)),
     )
     .sort((a, b) => (a.dueOn || "9999").localeCompare(b.dueOn || "9999"));
+  const visibleTotals = financeVisibleTotals(rows);
   const flowError = [
     credit.cards,
     centers,
@@ -449,10 +451,11 @@ export function EnterpriseFinance({
       </div>
       {!payable && (
         <p className="text-xs text-muted-foreground">
-          Cada linha mantém seu lançamento. Bases não são somadas: a mesma NF pode aparecer em
-          várias categorias. Quem fatura é o emissor vinculado ao lançamento do BM. Receitas manuais
-          e BMs sem vínculo confirmado ficam em “Sem emissor vinculado”. O resumo considera período,
-          emissor, centro de custo e banco; busca e situação filtram apenas a lista.
+          Cada linha mantém seu lançamento. A soma das bases é por lançamento: a mesma NF pode
+          aparecer em várias categorias. Quem fatura é o emissor vinculado ao lançamento do BM.
+          Receitas manuais e BMs sem vínculo confirmado ficam em “Sem emissor vinculado”. O resumo
+          considera período, emissor, centro de custo e banco; busca e situação filtram apenas a
+          lista.
         </p>
       )}
       {(accounts.error || flowError) && (
@@ -558,6 +561,41 @@ export function EnterpriseFinance({
             {showDeleted ? "Ver ativas" : "Excluídas"}
           </Button>
         </div>
+        {!payable && (
+          <section
+            aria-label="Totais dos lançamentos exibidos"
+            className="rounded-xl border bg-card p-4"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Soma das bases exibidas</p>
+                <p className="text-xl font-bold text-primary">{money(visibleTotals.baseCents)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {rows.length - visibleTotals.missingBases} com base · {visibleTotals.missingBases}{" "}
+                  sem base · {visibleTotals.estimatedBases} estimada(s)
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total comissão / receita Jacoby</p>
+                <p className="text-xl font-bold text-primary">{money(visibleTotals.totalCents)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Comissões: {money(visibleTotals.commissionCents)} · Demais receitas:{" "}
+                  {money(visibleTotals.otherIncomeCents)}
+                </p>
+                {visibleTotals.estimatedCommissionCents !== 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Inclui {money(visibleTotals.estimatedCommissionCents)} de comissão estimada.
+                  </p>
+                )}
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {showDeleted ? "Lançamentos excluídos exibidos" : "Lançamentos exibidos"} · Todos os
+              filtros da lista são considerados. Bases ausentes ficam fora da soma. Bases repetidas
+              entre categorias permanecem na soma; este não é o total único de notas fiscais.
+            </p>
+          </section>
+        )}
         <FinanceTable
           rows={rows}
           kind={kind}
