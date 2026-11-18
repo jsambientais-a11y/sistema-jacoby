@@ -2,8 +2,6 @@ import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlignLeft,
-  ArrowDown,
-  ArrowUp,
   Calendar as CalendarIcon,
   Clock3,
   ChevronDown,
@@ -54,6 +52,7 @@ import { AttachmentPreviewDialog } from "@/components/AttachmentPreviewDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RichTextEditor, RichTextView } from "@/components/RichTextEditor";
 import { CommentAttachments } from "@/components/CommentAttachments";
+import { SortableSubtaskList, SubtaskDragHandle, SubtaskNotesInline } from "@/components/SortableSubtaskList";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Client, KanbanColumn, Profile, Task, TaskCollaborator, TaskStatus, TaskTag } from "@/hooks/use-data";
@@ -82,6 +81,7 @@ interface Subtask {
   due_date: string | null;
   completed_at: string | null;
   assignee_id: string | null;
+  notes: string | null;
 }
 
 interface CardComment {
@@ -182,6 +182,8 @@ export function TaskCard({
   const [commentDraft, setCommentDraft] = useState("");
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [notesEditingId, setNotesEditingId] = useState<string | null>(null);
+  const subtaskTitleCancelled = useRef(false);
   const canDeleteSubtask = (subtask: Subtask) =>
     !!isAdmin || subtask.assignee_id !== user?.id || task.created_by === user?.id;
   const [newSubtask, setNewSubtask] = useState("");
@@ -285,7 +287,7 @@ export function TaskCard({
     (async () => {
       const [{ data: links }, { data: subs }, { data: notes }] = await Promise.all([
         supabase.from("task_tag_links").select("tag_id").eq("task_id", task.id),
-        supabase.from("subtasks").select("id, task_id, title, done, position, comment_id, due_date, completed_at, assignee_id").eq("task_id", task.id).order("position"),
+        supabase.from("subtasks").select("id, task_id, title, done, position, comment_id, due_date, completed_at, assignee_id, notes").eq("task_id", task.id).order("position"),
         supabase.from("comments").select("id, task_id, title, body, created_at, position").eq("task_id", task.id).order("position", { ascending: true }).order("created_at", { ascending: true }),
       ]);
       if (cancelled) return;
@@ -599,7 +601,7 @@ export function TaskCard({
     const { data, error } = await supabase
       .from("subtasks")
       .insert({ task_id: task.id, title, position: siblings.length, comment_id: commentId, due_date: dueOverride ?? null })
-      .select("id, task_id, title, done, position, comment_id, due_date, completed_at, assignee_id")
+      .select("id, task_id, title, done, position, comment_id, due_date, completed_at, assignee_id, notes")
       .single();
     if (error) { toast.error(error.message); return; }
     setSubtasks((c) => [...c, data as Subtask]);
@@ -619,16 +621,17 @@ export function TaskCard({
   };
 
   const startEditSubtask = (s: Subtask) => {
+    subtaskTitleCancelled.current = false;
     setEditingSubtaskId(s.id);
     setSubtaskDraft(s.title);
   };
 
   const saveSubtaskTitle = async () => {
     const id = editingSubtaskId;
-    if (!id) return;
+    if (!id || subtaskTitleCancelled.current) return;
     const next = subtaskDraft.trim();
     setEditingSubtaskId(null);
-    if (!next) return;
+    if (!next || next === subtasks.find((x) => x.id === id)?.title) return;
     setSubtasks((c) => c.map((x) => (x.id === id ? { ...x, title: next } : x)));
     const { error } = await supabase.from("subtasks").update({ title: next }).eq("id", id);
     if (error) toast.error(error.message);
@@ -670,21 +673,27 @@ export function TaskCard({
   };
 
 
-  const moveSubtaskInScope = async (id: string, dir: -1 | 1, commentId: string | null) => {
-    const scope = subtasks.filter((s) => (s.comment_id ?? null) === commentId).sort((a, b) => a.position - b.position);
-    const idx = scope.findIndex((s) => s.id === id);
-    const target = idx + dir;
-    if (idx < 0 || target < 0 || target >= scope.length) return;
-    const reordered = [...scope];
-    [reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
-    const reindexed = reordered.map((s, i) => ({ ...s, position: i }));
-    setSubtasks((c) => c.map((s) => {
-      const upd = reindexed.find((r) => r.id === s.id);
-      return upd ? { ...s, position: upd.position } : s;
-    }));
-    await Promise.all(
-      reindexed.map((s) => supabase.from("subtasks").update({ position: s.position }).eq("id", s.id)),
+  const updateSubtaskNotes = async (s: Subtask, notes: string) => {
+    const next = notes.trim() || null;
+    if (next === (s.notes ?? null)) return;
+    setSubtasks((c) => c.map((x) => (x.id === s.id ? { ...x, notes: next } : x)));
+    const { error } = await supabase.from("subtasks").update({ notes: next }).eq("id", s.id);
+    if (error) toast.error(error.message);
+  };
+
+  // Recebe a lista já na nova ordem (após arrastar) e grava só as posições que mudaram.
+  const reorderSubtasks = async (ordered: Subtask[]) => {
+    const changed = ordered
+      .map((s, position) => ({ id: s.id, position, before: s.position }))
+      .filter((s) => s.position !== s.before);
+    if (!changed.length) return;
+    const positions = new Map(changed.map((s) => [s.id, s.position]));
+    setSubtasks((c) => c.map((s) => (positions.has(s.id) ? { ...s, position: positions.get(s.id)! } : s)));
+    const results = await Promise.all(
+      changed.map((s) => supabase.from("subtasks").update({ position: s.position }).eq("id", s.id)),
     );
+    const failed = results.find((r) => r.error)?.error;
+    if (failed) toast.error(`Não foi possível salvar a nova ordem: ${failed.message}`);
   };
 
   const startEditCommentBody = (c: CardComment) => {
@@ -1103,7 +1112,7 @@ export function TaskCard({
 
         {/* Subtasks — collapsible com título editável */}
         {isVisible("subtasks") ? (() => {
-        const rootSubs = subtasks.filter((s) => !s.comment_id);
+        const rootSubs = subtasks.filter((s) => !s.comment_id).sort((a, b) => a.position - b.position);
         return (
         <div style={{ order: orderOf("subtasks") }}>
         {(rootSubs.length > 0 || addingSubtask) ? (
@@ -1142,18 +1151,29 @@ export function TaskCard({
             </div>
             <CollapsibleContent>
               <div className="space-y-0.5 border-t p-1.5">
-                {rootSubs.map((s, sIdx) => {
+                <SortableSubtaskList
+                  items={rootSubs}
+                  onReorder={(next) => void reorderSubtasks(next)}
+                  className="space-y-0.5"
+                  renderItem={(s, { handleProps, isDragging }) => {
                   const dueInfo = computeSubtaskDue(s.due_date, s.done);
+                  const notesEditing = notesEditingId === s.id;
                   return (
-                  <div key={s.id} className={cn(
-                    "group/sub rounded px-1 py-1 transition-colors",
+                  <div className={cn(
+                    "group/sub rounded py-1 pl-0 pr-1 transition-[background-color,box-shadow]",
                     s.done ? "bg-emerald-500/10 ring-1 ring-emerald-500/30 hover:bg-emerald-500/15" : "hover:bg-muted/40",
+                    isDragging && "bg-card shadow-lg ring-1 ring-primary/40",
                   )}>
                     <div className="flex items-start gap-1">
+                    <SubtaskDragHandle
+                      handleProps={handleProps}
+                      className="h-4 w-3.5 opacity-40 group-hover/sub:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                    />
                     <button
                       type="button"
                       onPointerDown={stop}
                       onClick={(e) => { stop(e); void toggleSubtask(s); }}
+                      aria-label={s.done ? "Marcar como pendente" : "Marcar como concluída"}
                       className={cn(
                         "mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
                         s.done ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40",
@@ -1161,51 +1181,58 @@ export function TaskCard({
                     >
                       {s.done ? <Check className="h-2.5 w-2.5" /> : null}
                     </button>
+                    <div className="min-w-0 flex-1">
                     {editingSubtaskId === s.id ? (
-                      <div className="min-w-0 flex-1">
+                      <div onPointerDown={stop} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); subtaskTitleCancelled.current = true; setEditingSubtaskId(null); } }}>
                         <RichTextEditor
                           value={subtaskDraft}
                           onChange={setSubtaskDraft}
                           onBlur={() => void saveSubtaskTitle()}
                           onSubmit={() => void saveSubtaskTitle()}
                           autoFocus
-                          placeholder="Escreva… (Enter para salvar)"
-                          minHeight={40}
+                          placeholder="Título da subtarefa (Enter salva · Esc cancela)"
+                          minHeight={32}
                         />
                       </div>
                     ) : (
                       <div
+                        role="button"
+                        tabIndex={0}
+                        title="Clique para editar o título"
                         onPointerDown={stop}
                         onClick={(e) => { stop(e); startEditSubtask(s); }}
-                        className={cn("min-w-0 flex-1 cursor-text break-words text-left hover:text-primary", s.done && "text-muted-foreground line-through")}
+                        onKeyDown={(e) => { if (e.key === "Enter") { stop(e); startEditSubtask(s); } }}
+                        className={cn("cursor-text break-words rounded px-1 text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring", s.done && "text-muted-foreground line-through")}
                       >
                         <RichTextView html={s.title} />
                       </div>
                     )}
-                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover/sub:opacity-100">
+                    <SubtaskNotesInline
+                      value={s.notes}
+                      editing={notesEditing}
+                      onEditingChange={(v) => setNotesEditingId(v ? s.id : null)}
+                      onSave={(next) => void updateSubtaskNotes(s, next)}
+                      className="mt-0.5"
+                      textClassName="text-[11px] leading-snug"
+                    />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover/sub:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                      {!s.notes && !notesEditing ? (
+                        <button
+                          type="button"
+                          title="Adicionar descrição"
+                          aria-label="Adicionar descrição"
+                          onPointerDown={stop}
+                          onClick={(e) => { stop(e); setNotesEditingId(s.id); }}
+                          className="rounded p-0.5 hover:bg-muted"
+                        >
+                          <AlignLeft className="h-3 w-3" />
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        title="Mover para cima"
-                        disabled={sIdx === 0}
-                        onPointerDown={stop}
-                        onClick={(e) => { stop(e); void moveSubtaskInScope(s.id, -1, null); }}
-                        className="rounded p-0.5 hover:bg-muted disabled:opacity-30"
-                      >
-                        <ArrowUp className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Mover para baixo"
-                        disabled={sIdx === rootSubs.length - 1}
-                        onPointerDown={stop}
-                        onClick={(e) => { stop(e); void moveSubtaskInScope(s.id, 1, null); }}
-                        className="rounded p-0.5 hover:bg-muted disabled:opacity-30"
-                      >
-                        <ArrowDown className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Renomear"
+                        title="Editar título"
+                        aria-label="Editar título"
                         onPointerDown={stop}
                         onClick={(e) => { stop(e); startEditSubtask(s); }}
                         className="rounded p-0.5 hover:bg-muted"
@@ -1218,6 +1245,7 @@ export function TaskCard({
                           onPointerDown={stop}
                           onClick={(e) => { stop(e); void deleteSubtask(s.id); }}
                           title="Remover"
+                          aria-label="Remover subtarefa"
                           className="rounded p-0.5 text-destructive hover:bg-destructive/10"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -1225,7 +1253,7 @@ export function TaskCard({
                       )}
                     </div>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1 pl-5">
+                    <div className="mt-1 flex flex-wrap items-center gap-1 pl-[34px]">
                       {s.done && s.completed_at ? (
                         <span
                           className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-emerald-700 ring-1 ring-emerald-500/30 dark:text-emerald-300"
@@ -1250,7 +1278,8 @@ export function TaskCard({
                     </div>
                   </div>
                   );
-                })}
+                  }}
+                />
                 {addingSubtask ? (
                   <div className="flex items-start gap-1.5 px-1">
                     <span className="mt-1 h-3.5 w-3.5 shrink-0 rounded border border-muted-foreground/40" />

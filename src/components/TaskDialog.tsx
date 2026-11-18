@@ -20,12 +20,13 @@ import { isStaticPreview, useAuth } from "@/hooks/use-auth";
 import { useClients, useColumns, useTaskProfiles, type Task } from "@/hooks/use-data";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Trash2, Paperclip, Send, Download, ExternalLink, X, Plus, Link2, ChevronDown, ChevronRight, Clock3 } from "lucide-react";
+import { Trash2, Paperclip, Send, Download, ExternalLink, X, Plus, Link2, ChevronDown, ChevronRight, Clock3, AlignLeft, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { AttachmentPreviewDialog } from "@/components/AttachmentPreviewDialog";
 import { collaboratorChanges } from "@/lib/task-notifications";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { RichTextEditor } from "@/components/RichTextEditor";
+import { RichTextEditor, RichTextView } from "@/components/RichTextEditor";
+import { SortableSubtaskList, SubtaskDragHandle, SubtaskNotesInline } from "@/components/SortableSubtaskList";
 
 import { SaveProcessTemplate } from "@/components/SaveProcessTemplate";
 import { useProcessTemplates } from "@/hooks/use-process-templates";
@@ -64,6 +65,27 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
   const templates = useProcessTemplates();
   const [templateDraft, setTemplateDraft] = useState<ProcessTemplate | null>(null);
   const [templateStepDates, setTemplateStepDates] = useState<string[]>([]);
+  // Ids estáveis para arrastar as etapas do modelo (as etapas em si não têm id).
+  const [templateStepIds, setTemplateStepIds] = useState<string[]>([]);
+  const [templateNotesEditing, setTemplateNotesEditing] = useState<string | null>(null);
+  useEffect(() => {
+    const count = templateDraft?.steps.length ?? 0;
+    if (templateStepIds.length !== count) setTemplateStepIds(Array.from({ length: count }, (_, i) => templateStepIds[i] ?? crypto.randomUUID()));
+  }, [templateDraft?.steps.length, templateStepIds]);
+  const reorderTemplateSteps = (orderedIds: string[]) => {
+    if (!templateDraft) return;
+    const order = orderedIds.map((id) => templateStepIds.indexOf(id));
+    if (order.some((i) => i < 0)) return;
+    setTemplateDraft({ ...templateDraft, steps: order.map((i) => templateDraft.steps[i]) });
+    setTemplateStepDates((dates) => order.map((i) => dates[i] || ""));
+    setTemplateStepIds(orderedIds);
+  };
+  const removeTemplateStep = (index: number) => {
+    if (!templateDraft) return;
+    setTemplateDraft({ ...templateDraft, steps: templateDraft.steps.filter((_, i) => i !== index) });
+    setTemplateStepDates((dates) => dates.filter((_, i) => i !== index));
+    setTemplateStepIds((ids) => ids.filter((_, i) => i !== index));
+  };
   const applyTemplate = (model:ProcessTemplate) => {
     setTemplateDraft({...structuredClone(model),steps:model.steps.map(step=>({...step,assigneeId:null,offsetDays:null}))});
     setTemplateStepDates(model.steps.map(()=>""));
@@ -100,6 +122,10 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
   const [subDueOpen, setSubDueOpen] = useState<Record<string, boolean>>({});
   const [subExpanded, setSubExpanded] = useState<Record<string, boolean>>({});
   const [subAttachments, setSubAttachments] = useState<Record<string, SubtaskAttachment[]>>({});
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [subtaskTitleDraft, setSubtaskTitleDraft] = useState("");
+  const subtaskTitleCancelled = useRef(false);
+  const [notesEditingId, setNotesEditingId] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [newCommentTitle, setNewCommentTitle] = useState("");
@@ -460,6 +486,13 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
   // Subtasks
   const addSubtask = async () => {
     if (!newSubtask.trim()) return;
+    if (!(currentTaskIdRef.current ?? currentTaskId) && templateDraft) {
+      // Novo processo a partir de modelo: a etapa entra no roteiro e só é gravada ao salvar.
+      setTemplateDraft({ ...templateDraft, steps: [...templateDraft.steps, { title: newSubtask.trim(), notes: null, assigneeId: newSubtaskAssignee || null, offsetDays: null }] });
+      setTemplateStepDates((dates) => [...templateDraft.steps.map((_, i) => dates[i] || ""), newSubtaskDue]);
+      setNewSubtask(""); setNewSubtaskDue(""); setNewSubtaskAssignee("");
+      return;
+    }
     const tid = await ensureTask();
     if (!tid) return;
     await commitPendingSubtask(tid);
@@ -507,9 +540,42 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
     setSubtasks(subtasks.map(s => s.id === st.id ? { ...s, assignee_id: next } : s));
   };
   const updateSubtaskNotes = async (st: Subtask, notes: string) => {
-    const { error } = await (supabase.from("subtasks") as any).update({ notes: notes || null }).eq("id", st.id);
+    const next = notes.trim() || null;
+    if (next === (st.notes ?? null)) return;
+    const { error } = await (supabase.from("subtasks") as any).update({ notes: next }).eq("id", st.id);
     if (error) return toast.error(error.message);
-    setSubtasks(subtasks.map(s => s.id === st.id ? { ...s, notes: notes || null } : s));
+    setSubtasks(prev => prev.map(s => s.id === st.id ? { ...s, notes: next } : s));
+  };
+  const startEditSubtaskTitle = (st: Subtask) => {
+    subtaskTitleCancelled.current = false;
+    setSubtaskTitleDraft(st.title);
+    setEditingSubtaskId(st.id);
+  };
+  const saveSubtaskTitle = async () => {
+    const id = editingSubtaskId;
+    if (!id || subtaskTitleCancelled.current) return;
+    setEditingSubtaskId(null);
+    const next = subtaskTitleDraft.trim();
+    const current = subtasks.find(s => s.id === id);
+    if (!next || !current || next === current.title) return;
+    setSubtasks(prev => prev.map(s => s.id === id ? { ...s, title: next } : s));
+    const { error } = await supabase.from("subtasks").update({ title: next }).eq("id", id);
+    if (error) {
+      toast.error(error.message);
+      setSubtasks(prev => prev.map(s => s.id === id ? { ...s, title: current.title } : s));
+      return;
+    }
+    void qc.invalidateQueries({ queryKey: ["subtasks"] });
+  };
+  // Recebe a lista na nova ordem (após arrastar) e grava só as posições que mudaram.
+  const reorderSubtasks = async (ordered: Subtask[]) => {
+    const changed = ordered.map((s, position) => ({ id: s.id, position, before: s.position })).filter(s => s.position !== s.before);
+    setSubtasks(ordered.map((s, position) => ({ ...s, position })));
+    if (!changed.length) return;
+    const results = await Promise.all(changed.map(s => supabase.from("subtasks").update({ position: s.position }).eq("id", s.id)));
+    const failed = results.find(r => r.error)?.error;
+    if (failed) toast.error(`Não foi possível salvar a nova ordem: ${failed.message}`);
+    void qc.invalidateQueries({ queryKey: ["subtasks"] });
   };
   const loadSubAttachments = async (subtaskId: string) => {
     const { data } = await (supabase.from("subtask_attachments") as any)
@@ -624,7 +690,11 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent
+        className="max-h-[90vh] max-w-3xl overflow-y-auto"
+        // Esc durante a edição inline de uma subtarefa só cancela a edição, não fecha o modal.
+        onEscapeKeyDown={(event) => { if (editingSubtaskId || notesEditingId || templateNotesEditing) event.preventDefault(); }}
+      >
         <DialogHeader>
           <div className="flex flex-wrap items-center justify-between gap-3 pr-6"><DialogTitle>{task ? "Editar tarefa" : templateDraft ? "Novo processo a partir de modelo" : "Nova tarefa"}</DialogTitle>
             {task && <SaveProcessTemplate taskId={task.id} title={task.title} disabled={saving}/>}</div>
@@ -889,16 +959,43 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
               </TabsList>
               <TabsContent value="subtasks" className="space-y-2">
                 {!currentTaskId && templateDraft && <>
-              <ol className="space-y-3">{templateDraft.steps.map((step,index)=><li key={index} className="space-y-2 rounded-md border bg-background p-3">
-                <div className="flex items-center gap-2"><span className="w-5 text-xs text-muted-foreground">{index+1}.</span><Input aria-label={`Etapa ${index+1} do novo processo`} className="h-8 text-sm" value={step.title} onChange={event=>setTemplateDraft({...templateDraft,steps:templateDraft.steps.map((item,i)=>i===index?{...item,title:event.target.value}:item)})}/></div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="space-y-1"><Label className="text-xs">Prazo da etapa</Label><Input type="date" aria-label={`Prazo da etapa ${index+1}`} value={templateStepDates[index] || ""} onChange={event=>setTemplateStepDates(dates=>templateDraft.steps.map((_,i)=>i===index?event.target.value:dates[i] || ""))}/></div>
-                  <div className="space-y-1"><Label className="text-xs">Responsável da etapa</Label><Select value={step.assigneeId || "none"} onValueChange={value=>setTemplateDraft({...templateDraft,steps:templateDraft.steps.map((item,i)=>i===index?{...item,assigneeId:value==="none"?null:value}:item)})}><SelectTrigger aria-label={`Responsável da etapa ${index+1}`}><SelectValue/></SelectTrigger><SelectContent><SelectItem value="none">Definir depois</SelectItem>{profiles?.map(profile=><SelectItem key={profile.id} value={profile.id}>{profile.full_name || profile.email}</SelectItem>)}</SelectContent></Select></div>
-                </div>
-              </li>)}</ol>
+              <SortableSubtaskList
+                items={templateDraft.steps.map((step, index) => ({ ...step, id: templateStepIds[index] ?? `step-${index}` }))}
+                onReorder={(next) => reorderTemplateSteps(next.map((step) => step.id))}
+                className="space-y-2"
+                renderItem={(step, { index, handleProps, isDragging }) => (
+                  <div className={`group/step space-y-2 rounded-md border bg-background p-3 transition-shadow ${isDragging ? "shadow-lg ring-1 ring-primary/40" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <SubtaskDragHandle handleProps={handleProps} className="h-8 w-5" label={`Arrastar etapa ${index + 1}`} />
+                      <span className="w-5 text-xs text-muted-foreground">{index + 1}.</span>
+                      <Input aria-label={`Etapa ${index + 1} do novo processo`} className="h-8 text-sm" value={step.title} onChange={event => setTemplateDraft({ ...templateDraft, steps: templateDraft.steps.map((item, i) => i === index ? { ...item, title: event.target.value } : item) })} />
+                      {!step.notes && templateNotesEditing !== step.id && (
+                        <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" title="Adicionar descrição" aria-label={`Adicionar descrição à etapa ${index + 1}`} onClick={() => setTemplateNotesEditing(step.id)}><AlignLeft className="h-3.5 w-3.5" /></Button>
+                      )}
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" title="Remover etapa" aria-label={`Remover etapa ${index + 1}`} onClick={() => removeTemplateStep(index)}><X className="h-3.5 w-3.5" /></Button>
+                    </div>
+                    <SubtaskNotesInline
+                      value={step.notes}
+                      editing={templateNotesEditing === step.id}
+                      onEditingChange={(v) => setTemplateNotesEditing(v ? step.id : null)}
+                      onSave={(next) => setTemplateDraft({ ...templateDraft, steps: templateDraft.steps.map((item, i) => i === index ? { ...item, notes: next || null } : item) })}
+                      className="pl-12"
+                      textClassName="text-xs"
+                    />
+                    <div className="grid grid-cols-1 gap-2 pl-12 sm:grid-cols-2">
+                      <div className="space-y-1"><Label className="text-xs">Prazo da etapa</Label><Input type="date" aria-label={`Prazo da etapa ${index + 1}`} value={templateStepDates[index] || ""} onChange={event => setTemplateStepDates(dates => templateDraft.steps.map((_, i) => i === index ? event.target.value : dates[i] || ""))} /></div>
+                      <div className="space-y-1"><Label className="text-xs">Responsável da etapa</Label><Select value={step.assigneeId || "none"} onValueChange={value => setTemplateDraft({ ...templateDraft, steps: templateDraft.steps.map((item, i) => i === index ? { ...item, assigneeId: value === "none" ? null : value } : item) })}><SelectTrigger aria-label={`Responsável da etapa ${index + 1}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Definir depois</SelectItem>{profiles?.map(profile => <SelectItem key={profile.id} value={profile.id}>{profile.full_name || profile.email}</SelectItem>)}</SelectContent></Select></div>
+                    </div>
+                  </div>
+                )}
+              />
               <p className="text-xs text-muted-foreground">Você pode definir cada etapa agora ou depois de criar o card. Ajustes deste roteiro não alteram o modelo salvo.</p>
                 </>}
-                {subtasks.map(s => {
+                <SortableSubtaskList
+                  items={subtasks}
+                  onReorder={(next) => void reorderSubtasks(next)}
+                  className="space-y-2"
+                  renderItem={(s, { handleProps, isDragging }) => {
                   const dueStr = s.due_date ? format(new Date(s.due_date), "yyyy-MM-dd") : "";
                   const historyOpen = subDueOpen[s.id];
                   const history = subDueChanges[s.id] ?? [];
@@ -906,23 +1003,63 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                   const files = subAttachments[s.id] ?? [];
                   const assignee = profiles?.find(p => p.id === s.assignee_id);
                   return (
-                    <div key={s.id} className="space-y-1.5 rounded-md border bg-muted/30 px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <Checkbox checked={s.done} onCheckedChange={() => toggleSubtask(s)} />
-                        <span className={`flex-1 text-sm ${s.done ? "line-through text-muted-foreground" : ""}`}>{s.title}</span>
+                    <div className={`group/sub space-y-1.5 rounded-md border bg-muted/30 px-2 py-2 transition-shadow ${isDragging ? "bg-background shadow-lg ring-1 ring-primary/40" : ""}`}>
+                      <div className="flex items-start gap-2">
+                        <SubtaskDragHandle handleProps={handleProps} className="mt-0.5 h-6 w-5" />
+                        <Checkbox className="mt-1" checked={s.done} onCheckedChange={() => toggleSubtask(s)} aria-label={s.done ? "Marcar como pendente" : "Marcar como concluída"} />
+                        <div className="min-w-0 flex-1">
+                          {editingSubtaskId === s.id ? (
+                            <div onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); subtaskTitleCancelled.current = true; setEditingSubtaskId(null); } }}>
+                              <RichTextEditor
+                                value={subtaskTitleDraft}
+                                onChange={setSubtaskTitleDraft}
+                                onBlur={() => void saveSubtaskTitle()}
+                                onSubmit={() => void saveSubtaskTitle()}
+                                autoFocus
+                                placeholder="Título da subtarefa (Enter salva · Esc cancela)"
+                                minHeight={32}
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              title="Clique para editar o título"
+                              onClick={() => startEditSubtaskTitle(s)}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); startEditSubtaskTitle(s); } }}
+                              className={`cursor-text break-words rounded px-1 text-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${s.done ? "line-through text-muted-foreground" : ""}`}
+                            >
+                              <RichTextView html={s.title} />
+                            </div>
+                          )}
+                          <SubtaskNotesInline
+                            value={s.notes}
+                            editing={notesEditingId === s.id}
+                            onEditingChange={(v) => setNotesEditingId(v ? s.id : null)}
+                            onSave={(next) => void updateSubtaskNotes(s, next)}
+                            className="mt-0.5"
+                            textClassName="text-xs leading-snug"
+                          />
+                        </div>
                         {assignee && (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          <span className="mt-0.5 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                             {assignee.full_name || assignee.email}
                           </span>
                         )}
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => toggleSubExpanded(s.id)} title="Detalhes">
-                          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                        </Button>
-                        {canDeleteSubtask(s) && (
-                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deleteSubtask(s.id)}><X className="h-3.5 w-3.5" /></Button>
-                        )}
+                        <div className="flex shrink-0 items-center opacity-60 transition group-hover/sub:opacity-100 focus-within:opacity-100">
+                          {!s.notes && notesEditingId !== s.id && (
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setNotesEditingId(s.id)} title="Adicionar descrição" aria-label="Adicionar descrição"><AlignLeft className="h-3.5 w-3.5" /></Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditSubtaskTitle(s)} title="Editar título" aria-label="Editar título"><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => toggleSubExpanded(s.id)} title="Responsável e arquivos" aria-label="Responsável e arquivos">
+                            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                          </Button>
+                          {canDeleteSubtask(s) && (
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deleteSubtask(s.id)} title="Remover" aria-label="Remover subtarefa"><X className="h-3.5 w-3.5" /></Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 pl-6">
+                      <div className="flex flex-wrap items-center gap-2 pl-[3.25rem]">
                         <Label className="text-[10px] text-muted-foreground">Prazo</Label>
                         <Input
                           type="date"
@@ -948,7 +1085,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                         </Button>
                       </div>
                       {historyOpen && (
-                        <div className="ml-6 space-y-1 border-l pl-2">
+                        <div className="ml-[3.25rem] space-y-1 border-l pl-2">
                           {history.length === 0 ? (
                             <p className="text-[11px] text-muted-foreground">Sem alterações registradas.</p>
                           ) : history.map(h => (
@@ -963,7 +1100,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                         </div>
                       )}
                       {expanded && (
-                        <div className="ml-6 space-y-2 border-l pl-3">
+                        <div className="ml-[3.25rem] space-y-2 border-l pl-3">
                           <div className="space-y-1">
                             <Label className="text-[10px] text-muted-foreground">Responsável</Label>
                             <Select value={s.assignee_id || "none"} onValueChange={(v) => updateSubtaskAssignee(s, v)}>
@@ -973,16 +1110,6 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                                 {profiles?.map(p => <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>)}
                               </SelectContent>
                             </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground">Anotações</Label>
-                            <Textarea
-                              rows={2}
-                              defaultValue={s.notes ?? ""}
-                              onBlur={(e) => { if ((e.target.value || "") !== (s.notes ?? "")) void updateSubtaskNotes(s, e.target.value); }}
-                              placeholder="Notas desta subtarefa"
-                              className="text-xs"
-                            />
                           </div>
                           <div className="space-y-1">
                             <Label className="text-[10px] text-muted-foreground">Arquivos</Label>
@@ -1012,7 +1139,8 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                       )}
                     </div>
                   );
-                })}
+                }}
+                />
                 <div className="flex flex-wrap gap-2">
                   <Input placeholder="Nova subtarefa" value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSubtask()} className="min-w-[180px] flex-1" />
                   <Input type="date" value={newSubtaskDue} onChange={(e) => setNewSubtaskDue(e.target.value)} className="w-52" title="Prazo (opcional)" />
@@ -1025,7 +1153,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId, initialT
                   </Select>
                   <Button onClick={addSubtask} size="icon"><Plus className="h-4 w-4" /></Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">Defina responsável e prazo já ao criar. Use a seta para editar anotações e anexar arquivos.</p>
+                <p className="text-[11px] text-muted-foreground">Arraste pela alça ⋮⋮ para reordenar. Clique no título ou na descrição para editar (Enter salva, Esc cancela). A seta abre responsável e arquivos.</p>
 
               </TabsContent>
 
