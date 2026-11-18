@@ -38,3 +38,9 @@ supabase/.temp/
 
 # Capturas dos testes de navegador (podem conter dados de clientes)
 .playwright-mcp/
+
+# Build do app mobile (Capacitor)
+dist-app
+
+# Arquivo temporário de teste do app
+.dist-app-test.tgz

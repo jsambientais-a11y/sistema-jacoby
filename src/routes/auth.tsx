@@ -31,7 +31,10 @@ function AuthPage() {
   const googleAuthEnabled = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
   // GitHub Pages serves this app below /sistema-jacoby/.
   const authRedirectTo =
-    typeof window === "undefined" ? "" : `${window.location.origin}${import.meta.env.BASE_URL}`;
+    typeof window === "undefined"
+      ? ""
+      : // No app mobile, links de e-mail abrem a versão web publicada.
+        import.meta.env.VITE_PUBLIC_WEB_URL || `${window.location.origin}${import.meta.env.BASE_URL}`;
 
   useEffect(() => {
     if (user) {

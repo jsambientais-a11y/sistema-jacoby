@@ -15,9 +15,17 @@
     "test:dev-items:sql": "bash scripts/test-dev-items-sql.sh",
     "docs:codigo": "node scripts/generate-code-explanations.mjs",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "build:app": "vite build --config vite.app.config.ts && node scripts/prepare-app.mjs && npx cap sync",
+    "app:ios": "npm run build:app && npx cap open ios",
+    "app:android": "npm run build:app && npx cap open android",
+    "app:icons": "capacitor-assets generate --ios --android --iconBackgroundColor '#ffffff' --splashBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff' --splashBackgroundColorDark '#ffffff'"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/ios": "^8.6.2",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -88,6 +96,8 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.2",
     "@eslint/js": "^9.32.0",
     "@lovable.dev/vite-tanstack-config": "2.7.6",
     "@types/node": "^22.16.5",

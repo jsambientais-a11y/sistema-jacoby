@@ -1,0 +1,14 @@
+{
+  "appId": "br.com.jacobyambiental.gestao",
+  "appName": "Jacoby",
+  "webDir": "dist-app",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
