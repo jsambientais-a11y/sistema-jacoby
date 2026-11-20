@@ -1,13 +1,15 @@
 import { ResidueReportExport } from "@/components/ResidueReportExport";
-import { buildPortalMovementReport } from "@/lib/waste-residue-report";
+import { buildPortalMovementReport, filterPortalMovementResidues } from "@/lib/waste-residue-report";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ClipboardCheck, FileText, Recycle, Scale } from "lucide-react";
+import { ChevronDown, ClipboardCheck, FileText, Recycle, Scale } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +35,10 @@ const HISTORY_TAG = "[Histórico LDJ]";
 
 function ClientMovementsPage() {
   const { clientId } = useAuth();
+  return <ClientMovements key={clientId} clientId={clientId} />;
+}
+
+function ClientMovements({ clientId }: { clientId: string | null }) {
   const { data: movements = [], isLoading, isFetching, error: movementsError } = useQuery({
     // Nunca reutilizar a memória de outro login no mesmo navegador. Isso evita
     // que uma troca de conta mostre momentaneamente dados de outro cliente.
@@ -107,19 +113,22 @@ function ClientMovementsPage() {
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [selectedBranch, setSelectedBranch] = useState("all");
-  const [selectedResidue, setSelectedResidue] = useState("all");
+  const [selectedResidues, setSelectedResidues] = useState<string[]>([]);
+  const residueSummary = selectedResidues.length === 1
+    ? selectedResidues[0]
+    : selectedResidues.length > 1 ? `${selectedResidues.length} resíduos selecionados` : "";
   const yearAndBranchMovements = useMemo(() => movements.filter((item) => item.occurred_on.slice(0, 4) === selectedYear && (selectedBranch === "all" || (item.branch_name || "Unidade não informada") === selectedBranch)), [movements, selectedYear, selectedBranch]);
-  const yearBranchAndResidueMovements = useMemo(() => yearAndBranchMovements.filter((item) => selectedResidue === "all" || (item.residue_name || "Sem resíduo") === selectedResidue), [yearAndBranchMovements, selectedResidue]);
+  const yearBranchAndResidueMovements = useMemo(() => filterPortalMovementResidues(yearAndBranchMovements, selectedResidues), [yearAndBranchMovements, selectedResidues]);
   const filteredMovements = useMemo(() => yearBranchAndResidueMovements.filter((item) => selectedMonth === "all" || item.occurred_on.slice(5, 7) === selectedMonth), [yearBranchAndResidueMovements, selectedMonth]);
   const chartData = useMemo(() => months.map((month, index) => {
     const items = yearBranchAndResidueMovements.filter((item) => Number(item.occurred_on.slice(5, 7)) === index + 1);
     return { month, movimentacoes: items.length, peso: items.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0) };
   }), [yearBranchAndResidueMovements]);
   const reportModel = useMemo(() => buildPortalMovementReport(filteredMovements, {
-    year:selectedYear, month:selectedMonth, branch:selectedBranch, residue:selectedResidue,
-  }), [filteredMovements, selectedYear, selectedMonth, selectedBranch, selectedResidue]);
+    year:selectedYear, month:selectedMonth, branch:selectedBranch, residues:selectedResidues,
+  }), [filteredMovements, selectedYear, selectedMonth, selectedBranch, selectedResidues]);
   const totalWeight = filteredMovements.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
-  const periodLabel = `${selectedMonth === "all" ? "Todo o ano" : months[Number(selectedMonth) - 1]} de ${selectedYear}${selectedBranch === "all" ? "" : ` · ${selectedBranch}`}${selectedResidue === "all" ? "" : ` · ${selectedResidue}`}`;
+  const periodLabel = `${selectedMonth === "all" ? "Todo o ano" : months[Number(selectedMonth) - 1]} de ${selectedYear}${selectedBranch === "all" ? "" : ` · ${selectedBranch}`}${residueSummary ? ` · ${residueSummary}` : ""}`;
   const openAttachment = async (attachment: MovementAttachment) => {
     const { data, error } = await supabase.storage.from("movement-documents").createSignedUrl(attachment.path, 600);
     if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o PDF.");
@@ -128,11 +137,39 @@ function ClientMovementsPage() {
 
   return <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
     <header className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Movimentações</h1><p className="text-sm text-muted-foreground">Acompanhe as movimentações confirmadas para cobrança. Os valores completos de cada boletim estão em Boletins emitidos.</p></div></header>
-    <Card className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4"><div className="space-y-1.5"><label className="text-sm font-medium">Ano</label><Select value={selectedYear} onValueChange={(year) => { setSelectedYear(year); setSelectedMonth("all"); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Array.from(new Set([String(new Date().getFullYear()), ...years])).sort().reverse().map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Mês</label><Select value={selectedMonth} onValueChange={setSelectedMonth}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os meses</SelectItem>{months.map((month, index) => <SelectItem key={month} value={String(index + 1).padStart(2, "0")}>{month}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Filial ou pátio</label><Select value={selectedBranch} onValueChange={setSelectedBranch}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os pátios e filiais</SelectItem>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Resíduo</label><Select value={selectedResidue} onValueChange={setSelectedResidue}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os resíduos</SelectItem>{residues.map((residue) => <SelectItem key={residue} value={residue}>{residue}</SelectItem>)}</SelectContent></Select></div></Card>
+    <Card className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4"><div className="space-y-1.5"><label className="text-sm font-medium">Ano</label><Select value={selectedYear} onValueChange={(year) => { setSelectedYear(year); setSelectedMonth("all"); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Array.from(new Set([String(new Date().getFullYear()), ...years])).sort().reverse().map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Mês</label><Select value={selectedMonth} onValueChange={setSelectedMonth}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os meses</SelectItem>{months.map((month, index) => <SelectItem key={month} value={String(index + 1).padStart(2, "0")}>{month}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><label className="text-sm font-medium">Filial ou pátio</label><Select value={selectedBranch} onValueChange={setSelectedBranch}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todos os pátios e filiais</SelectItem>{branches.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select></div><div className="min-w-0 space-y-1.5">
+      <span id="portal-residue-filter-label" className="text-sm font-medium">Resíduos</span>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button type="button" variant="outline" aria-labelledby="portal-residue-filter-label portal-residue-filter-value" className="w-full justify-between gap-2 font-normal">
+            <span id="portal-residue-filter-value" className="truncate">{residueSummary || "Todos os resíduos"}</span>
+            <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-72 max-w-[calc(100vw-2rem)] p-2">
+          <Button type="button" variant="ghost" size="sm" className="mb-1 w-full justify-start" onClick={() => setSelectedResidues([])}>
+            Todos os resíduos
+          </Button>
+          <div role="group" aria-label="Selecionar resíduos" className="max-h-64 overflow-y-auto">
+            {residues.map((residue) => (
+              <label key={residue} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent">
+                <Checkbox checked={selectedResidues.includes(residue)} onCheckedChange={(checked) =>
+                  setSelectedResidues((current) => checked === true
+                    ? [...new Set([...current, residue])]
+                    : current.filter((name) => name !== residue))
+                } />
+                <span className="min-w-0 break-words">{residue}</span>
+              </label>
+            ))}
+            {!residues.length && <p className="px-2 py-3 text-sm text-muted-foreground">Nenhum resíduo disponível.</p>}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div></Card>
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Relatório em PDF com os registros e filtros exibidos abaixo.</p><ResidueReportExport key={clientId} clientName={clientIdentity.data?.name || "Cliente"} report={reportModel} loading={!clientId || isFetching || clientIdentity.isPending} error={Boolean(movementsError || clientIdentity.error)} /></div>
     {(movementsError || clientIdentity.error) && <Card className="p-4 text-sm text-destructive" role="alert">Não foi possível carregar todos os dados do relatório. Atualize a página para tentar novamente.</Card>}
     <div className="grid gap-4 sm:grid-cols-3"><Metric icon={ClipboardCheck} label="Movimentações confirmadas" value={String(filteredMovements.length)} /><Metric icon={Scale} label="Peso movimentado" value={formatKg(totalWeight)} /><Metric icon={Recycle} label="Resíduos movimentados" value={String(new Set(filteredMovements.map((item) => item.residue_name || "Sem resíduo")).size)} /></div>
-    <Card className="p-5"><div className="mb-4"><h2 className="font-semibold">Movimentações por mês</h2><p className="text-sm text-muted-foreground">Gráfico anual de {selectedYear}{selectedBranch === "all" ? "" : ` para ${selectedBranch}`}{selectedResidue === "all" ? "" : ` · ${selectedResidue}`}. Ele é alimentado automaticamente pelas movimentações confirmadas.</p></div><div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid vertical={false} strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis allowDecimals={false} /><Tooltip formatter={(value: number, name: string) => [name === "peso" ? formatKg(value) : value, name === "peso" ? "Peso" : "Movimentações"]} /><Bar dataKey="movimentacoes" name="Movimentações" fill="hsl(var(--primary))" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div></Card>
+    <Card className="p-5"><div className="mb-4"><h2 className="font-semibold">Movimentações por mês</h2><p className="text-sm text-muted-foreground">Gráfico anual de {selectedYear}{selectedBranch === "all" ? "" : ` para ${selectedBranch}`}{residueSummary ? ` · ${residueSummary}` : ""}. Ele é alimentado automaticamente pelas movimentações confirmadas.</p></div><div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid vertical={false} strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis allowDecimals={false} /><Tooltip formatter={(value: number, name: string) => [name === "peso" ? formatKg(value) : value, name === "peso" ? "Peso" : "Movimentações"]} /><Bar dataKey="movimentacoes" name="Movimentações" fill="hsl(var(--primary))" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div></Card>
     <Card className="overflow-hidden"><div className="border-b p-5"><h2 className="font-semibold">Movimentações confirmadas · {periodLabel}</h2><p className="text-sm text-muted-foreground">Registro operacional do período.</p></div>{isLoading ? <p className="p-8 text-sm text-muted-foreground">Carregando movimentações...</p> : !filteredMovements.length ? <p className="p-10 text-center text-sm text-muted-foreground">Nenhuma movimentação confirmada para estes filtros.</p> : <div className="divide-y">{filteredMovements.map((item) => <div key={item.id} className="flex flex-wrap items-start gap-4 p-4"><Recycle className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="font-medium">{item.residue_name || "Resíduo não informado"}</p><span className="text-sm text-muted-foreground">· {item.branch_name || "Unidade não informada"}</span></div><p className="mt-1 text-sm text-muted-foreground">{new Intl.DateTimeFormat("pt-BR").format(new Date(`${item.occurred_on}T00:00:00`))}{item.service_order ? ` · OS ${item.service_order}` : ""}</p><p className="mt-1 text-sm text-muted-foreground">Retirada: {item.removed_equipment || "—"} · Colocação: {item.placed_equipment || "—"}{item.observation ? ` · ${item.observation}` : ""}</p></div><div className="flex flex-col items-end gap-1 text-right text-sm"><div><p className="font-semibold">{formatKg(Number(item.weight_kg || 0))}</p><p className="text-muted-foreground">{Number(item.removed_quantity || 0)} retirada(s) · {Number(item.placed_quantity || 0)} colocada(s)</p></div>{(item.attachments || []).map((attachment) => <Button key={attachment.id} size="sm" variant="outline" title={attachment.name} onClick={() => void openAttachment(attachment)}><FileText className="mr-2 h-4 w-4" /><span className="max-w-48 truncate">{attachment.name}</span></Button>)}</div></div>)}</div>}</Card>
   </div>;
 }

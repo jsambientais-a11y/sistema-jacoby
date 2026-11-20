@@ -128,6 +128,15 @@ export function buildWasteResidueReport(
 }
 export type WasteResidueReport = ReturnType<typeof buildWasteResidueReport>;
 
+export function filterPortalMovementResidues<T extends { residue_name: string | null }>(
+  rows: T[],
+  selectedResidues: readonly string[],
+): T[] {
+  if (!selectedResidues.length) return rows;
+  const selected = new Set(selectedResidues);
+  return rows.filter((row) => selected.has(row.residue_name || "Sem resíduo"));
+}
+
 /** The client movement screen already applies its account-scoped filters.
  * Adapt those exact rows without fetching a different client's catalog/data. */
 export function buildPortalMovementReport(
@@ -139,7 +148,7 @@ export function buildPortalMovementReport(
     weight_kg: number | string;
     service_order?: string | null;
   }[],
-  filters: { year: string; month: string; branch: string; residue: string },
+  filters: { year: string; month: string; branch: string; residues: readonly string[] },
 ) {
   const branches = Array.from(
     new Set(rows.map((item) => item.branch_name || "Unidade não informada")),
@@ -162,11 +171,13 @@ export function buildPortalMovementReport(
       residue: "all",
     },
   );
+  const residueLabel = filters.residues.length
+    ? filters.residues.join(", ")
+    : "Todos os resíduos";
   return {
     ...model,
     branchLabel: filters.branch === "all" ? "Todos os pátios e filiais" : filters.branch,
-    residueLabel:
-      filters.residue === "all" ? "Todos os resíduos" : normalizeReportResidue(filters.residue),
-    filters: { ...filters, month: filters.month === "all" ? "todos" : filters.month },
+    residueLabel,
+    filters: { ...model.filters, branch: filters.branch, residue: filters.residues.length ? residueLabel : "all" },
   };
 }

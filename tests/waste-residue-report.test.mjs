@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import ts from 'typescript';
 const compile=source=>'data:text/javascript;base64,'+Buffer.from(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText).toString('base64');
 const domain=compile(readFileSync(new URL('../src/lib/waste-residue-report.ts',import.meta.url),'utf8'));
-const {buildWasteResidueReport,buildPortalMovementReport}=await import(domain);
+const {buildWasteResidueReport,buildPortalMovementReport,filterPortalMovementResidues}=await import(domain);
 const branches=[{id:'a',name:'Filial A'},{id:'b',name:'Filial B'}];
 const residues=[{id:'m1',name:'MADEIRA 1'},{id:'m2',name:'Madeira 2'},{id:'l',name:'LIXO COMERCIAL'}];
 const move=(id,residue,branch,kg,extra={})=>({id,waste_residue_id:residue,branch_id:branch,weight_kg:kg,occurred_on:'2026-10-01',...extra});
@@ -44,15 +44,32 @@ test('multi-page PDF handles a long client name and keeps all source movements i
  assert.match(fileName,/2026-10\.pdf$/);
 });
 
-test('client movement export uses only the visible rows and retains the displayed filters',()=>{
- const visible=[{id:'visible-1',occurred_on:'2026-03-12',branch_name:'Unidade A',residue_name:'MADEIRA',weight_kg:1250.5,service_order:'OS-1'},
- {id:'visible-2',occurred_on:'2026-03-14',branch_name:'Unidade A',residue_name:'MADEIRA',weight_kg:250,service_order:'OS-2'}];
- const report=buildPortalMovementReport(visible,{year:'2026',month:'03',branch:'Unidade A',residue:'MADEIRA'});
- assert.deepEqual(report.rows.map(item=>item.id).sort(),['visible-1','visible-2']);
- assert.equal(report.totalKg,1500.5);assert.equal(report.rows.length,2);assert.equal(report.summary.length,1);
- assert.equal(report.branchLabel,'Unidade A');assert.equal(report.residueLabel,'MADEIRA');
- assert.equal(report.monthly.length,1);assert.equal(report.monthly[0].kg,1500.5);
- const annual=buildPortalMovementReport(visible,{year:'2026',month:'all',branch:'all',residue:'all'});
- assert.equal(annual.filters.month,'todos');assert.equal(annual.monthly.length,12);
- assert.equal(annual.branchLabel,'Todos os pátios e filiais');
+test("client can combine residues and export the filtered month without hidden rows", () => {
+  const rows = [
+    { id: "mixed", occurred_on: "2026-03-12", residue_name: "SUCATA MISTA", weight_kg: 1250.5 },
+    { id: "msc", occurred_on: "2026-03-14", residue_name: "SUCATA - MSC", weight_kg: 250 },
+    { id: "paper", occurred_on: "2026-03-14", residue_name: "PAPELÃO", weight_kg: 300 },
+    { id: "later", occurred_on: "2026-04-14", residue_name: "SUCATA MISTA", weight_kg: 400 },
+    { id: "unknown", occurred_on: "2026-03-14", residue_name: null, weight_kg: 20 },
+  ].map((row) => ({ ...row, branch_name: "Unidade A" }));
+  const residues = ["SUCATA MISTA", "SUCATA - MSC"];
+  const selected = filterPortalMovementResidues(rows, residues);
+  assert.deepEqual(selected.map((row) => row.id), ["mixed", "msc", "later"]);
+  const report = buildPortalMovementReport(selected, { year: "2026", month: "03", branch: "Unidade A", residues });
+  assert.deepEqual(report.rows.map((row) => row.id).sort(), ["mixed", "msc"]);
+  assert.equal(report.totalKg, 1500.5);
+  assert.equal(report.summary.length, 2);
+  assert.equal(report.branchLabel, "Unidade A");
+  assert.equal(report.residueLabel, "SUCATA MISTA, SUCATA - MSC");
+  assert.equal(report.monthly.length, 1);
+  assert.equal(report.monthly[0].kg, 1500.5);
+
+  const annual = buildPortalMovementReport(filterPortalMovementResidues(rows, []), { year: "2026", month: "all", branch: "all", residues: [] });
+  assert.equal(annual.rows.length, rows.length);
+  assert.equal(annual.filters.month, "todos");
+  assert.equal(annual.monthly.length, 12);
+  assert.equal(annual.branchLabel, "Todos os pátios e filiais");
+  assert.equal(annual.residueLabel, "Todos os resíduos");
+  assert.deepEqual(filterPortalMovementResidues(rows, ["Sem resíduo"]).map((row) => row.id), ["unknown"]);
+  assert.deepEqual(filterPortalMovementResidues(rows, ["VIDRO"]), []);
 });
