@@ -7,9 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { parseBankBalance } from "@/lib/finance-reports";
-import { localFinanceToday, normalizePayableCategories } from "@/lib/enterprise-finance";
+import {
+  localFinanceToday,
+  normalizePayableCategories,
+  type BankAccountUsage,
+} from "@/lib/enterprise-finance";
 import { Textarea } from "@/components/ui/textarea";
 import { BankBalanceCells } from "@/components/BankBalanceCells";
+import { FinanceBankBadge } from "@/components/FinanceBankBadge";
 import { toast } from "sonner";
 export const Route = createFileRoute("/_app/centros-de-custo")({ component: CostCentersPage });
 const kinds = { income: "Receitas", expense: "Despesas", both: "Receitas e despesas" };
@@ -24,7 +29,8 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
   const title = bank ? "Bancos e contas" : "Centros de custo";
   const singular = bank ? "conta bancária" : "centro de custo";
   const [search, setSearch] = useState(""),
-    [inactive, setInactive] = useState(false);
+    [inactive, setInactive] = useState(false),
+    [bankFilter, setBankFilter] = useState("");
   const [draft, setDraft] = useState<{
     name: string;
     kind: CostCenter["kind"];
@@ -33,6 +39,7 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
     reference?: string;
     categories?: string;
     bankId?: string;
+    usage?: BankAccountUsage | "";
   } | null>(null);
   const fail = (e: unknown) =>
     toast.error(e instanceof Error ? e.message : "Não foi possível salvar.");
@@ -40,6 +47,7 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
   const rows = (centers.data || []).filter(
     (c) =>
       (inactive || c.active) &&
+      (bank || !bankFilter || (c.bank_account_id || "general") === bankFilter) &&
       c.name.toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR")),
   );
   const save = async (e: FormEvent) => {
@@ -60,6 +68,9 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
               name: draft.name.trim(),
               opening_balance_cents: draft.balance?.trim() ? parseBankBalance(draft.balance) : null,
               opening_on: draft.balance?.trim() ? draft.reference || localFinanceToday() : null,
+              ...(draft.old?.account_usage !== undefined || draft.usage
+                ? { account_usage: draft.usage || null }
+                : {}),
               ...(draft.old?.payable_categories || payableCategories.length
                 ? { payable_categories: payableCategories }
                 : {}),
@@ -103,6 +114,22 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {!bank && (
+          <select
+            aria-label="Filtrar centros por conta"
+            className="h-10 rounded-md border bg-background px-3 text-sm"
+            value={bankFilter}
+            onChange={(e) => setBankFilter(e.target.value)}
+          >
+            <option value="">Todos os centros</option>
+            <option value="general">Centros de uso geral</option>
+            {(banks.data || []).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        )}
         <label className="flex gap-2 text-sm">
           <input
             type="checkbox"
@@ -144,7 +171,7 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
           <tbody>
             {rows.map((c) => (
               <tr key={c.id} className="border-b last:border-0">
-                <td className="p-4 font-medium">{c.name}</td>
+                <td className="p-4 font-medium">{bank ? <FinanceBankBadge bank={c} /> : c.name}</td>
                 <td>{bank ? "Conta bancária" : kinds[c.kind]}</td>
                 {bank && (
                   <td>
@@ -184,6 +211,7 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
                           reference: c.opening_on || localFinanceToday(),
                           categories: c.payable_categories?.join("\n"),
                           bankId: c.bank_account_id || "",
+                          usage: c.account_usage || "",
                         })
                       }
                     >
@@ -250,6 +278,23 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 />
               </div>
+              {bank && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="bank-usage">Uso da conta</Label>
+                  <select
+                    id="bank-usage"
+                    className="h-10 w-full rounded-md border bg-background px-3"
+                    value={draft.usage || ""}
+                    onChange={(e) =>
+                      setDraft({ ...draft, usage: e.target.value as typeof draft.usage })
+                    }
+                  >
+                    <option value="">Identificar pelo nome</option>
+                    <option value="personal">Pessoal · roxo</option>
+                    <option value="business">Empresarial · azul</option>
+                  </select>
+                </div>
+              )}
               {bank && (
                 <div className="space-y-3 rounded-lg border p-3">
                   <div>
@@ -318,7 +363,7 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
                       ))}
                   </select>
                   <p id="cc-bank-help" className="text-xs text-muted-foreground">
-                    Selecione uma conta para disponibilizar este centro apenas nela.
+                    Cada conta pode ter seu próprio centro com o mesmo nome.
                   </p>
                 </div>
               )}

@@ -5,3 +5,21 @@ test('fechamento decide primeira fatura, incluindo virada de ano e dia exato',()
 test('meses curtos usam último dia sem pular mês',()=>{assert.equal(cardDate('2028-02',31),'2028-02-29');assert.equal(cardDate('2026-02',31),'2026-02-28');assert.equal(shiftCardMonth('2026-12',1),'2027-01');assert.equal(shiftCardMonth('2027-01',-1),'2026-12');});
 test('parcelas preservam centavos e nunca geram zero',()=>{assert.deepEqual(splitCardInstallments(10001,3),[3334,3334,3333]);assert.equal(splitCardInstallments(999999,60).reduce((a,b)=>a+b),999999);for(const args of [[1,2],[0,1],[100,0],[100,61],[1.1,1],[100,1.1]])assert.throws(()=>splitCardInstallments(...args));});
 test('contas a pagar mostra uma linha por fatura com total e saldo pago sem duplicar compras',()=>{const a=(id,amount,month,settled=null,deleted=null)=>({id,credit_card_id:'card',invoice_month:month,amount_cents:amount,settled_on:settled,deleted_at:deleted,due_on:`${month.slice(0,7)}-05`,bank_account_id:'bank'});const rows=[a('1',10000,'2026-11-01'),a('2',5000,'2026-11-01','2026-11-02'),a('3',9999,'2026-11-01',null,'deleted'),a('4',8000,'2026-12-01')];const grouped=aggregateCardInvoices(rows,[{id:'card',name:'Itaú empresarial',bank_label:'Itaú'}]);assert.equal(grouped.length,2);assert.equal(grouped[0].amountCents,15000);assert.equal(grouped[0].paidCents,5000);assert.equal(grouped[0].settledOn,null);assert.equal(grouped[0].source,'card');assert.equal(grouped[0].canSettle,false);rows[0].settled_on='2026-11-03';assert.equal(aggregateCardInvoices(rows,[])[0].settledOn,'2026-11-03');});
+
+test('filtro por conta mostra somente os itens correspondentes de uma fatura mista', () => {
+  const item = { credit_card_id: 'card', invoice_month: '2026-11-01', due_on: '2026-11-05' };
+  const accounts = [
+    { ...item, amount_cents: 10000, bank_account_id: 'pessoal', settled_on: '2026-11-02' },
+    { ...item, amount_cents: 5000, bank_account_id: 'empresa' },
+    { ...item, amount_cents: 2000, bank_account_id: null },
+  ];
+  assert.equal(aggregateCardInvoices(accounts, [])[0].amountCents, 17000);
+  assert.equal(aggregateCardInvoices(accounts, [])[0].mixedBankAccounts, true);
+  const [personal] = aggregateCardInvoices(accounts, [], ['pessoal']);
+  assert.equal(personal.amountCents, 10000);
+  assert.equal(personal.paidCents, 10000);
+  assert.equal(personal.bankAccountId, 'pessoal');
+  assert.equal(personal.filteredInvoice, true);
+  assert.equal(aggregateCardInvoices(accounts, [], [''])[0].amountCents, 2000);
+  assert.equal(aggregateCardInvoices(accounts, [], ['outra']).length, 0);
+});

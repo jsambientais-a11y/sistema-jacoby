@@ -38,3 +38,11 @@ test('centro vinculado fica disponível apenas para a conta escolhida', () => {
   assert.equal(centerAvailableForBank(personal, ''), false);
   assert.equal(centerAvailableForBank({ bank_account_id: null }, 'empresa'), true);
 });
+
+test('o tipo escolhido para a conta tem prioridade sobre a sugestão do nome', () => {
+  const { bankAccountUsage } = financeModule;
+  assert.equal(bankAccountUsage({ name: 'Jacoby Pessoal' }), 'personal');
+  assert.equal(bankAccountUsage({ name: 'Jacoby Empresarial' }), 'business');
+  assert.equal(bankAccountUsage({ name: 'Jacoby Pessoal', account_usage: 'business' }), 'business');
+  assert.equal(bankAccountUsage({ name: 'Conta Itaú' }), null);
+});

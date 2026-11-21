@@ -41,6 +41,7 @@ import { PeriodFilter } from "@/components/PeriodFilter";
 import { PayableAttachments } from "@/components/PayableAttachments";
 import { uploadPayableAttachments } from "@/lib/payable-attachments";
 import { FinanceTable } from "@/components/FinanceTable";
+import { FinanceBankBadge } from "@/components/FinanceBankBadge";
 const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const date = (value: string | null) =>
@@ -161,10 +162,21 @@ export function EnterpriseFinance({
   const allDetails: FinanceRow[] = [...active, ...billing];
   const all: FinanceRow[] = [
     ...active.filter((r) => !r.manual?.credit_card_id),
-    ...aggregateCardInvoices(accounts.data || [], credit.cards.data || []),
+    ...aggregateCardInvoices(accounts.data || [], credit.cards.data || [], payableFilters.banks),
     ...billing,
   ];
   const issuers = financeIssuerOptions([...(accounts.data || []).map(toFinanceRow), ...billing]);
+  const bankById = new Map(banks.data?.map((bank) => [bank.id, bank]));
+  const centerFilterLabel = (center: {
+    name: string;
+    bank_account_id?: string | null;
+    active: boolean;
+  }) =>
+    center.name +
+    (center.bank_account_id
+      ? ` · ${bankById.get(center.bank_account_id)?.name || "Conta vinculada"}`
+      : "") +
+    (center.active ? "" : " (desativado)");
   const issuerInScope = (r: FinanceRow) => payable || matchesFinanceIssuer(r, issuer);
   const centerForChangedBank = (centerId: string, bankId: string) =>
     centerAvailableForBank(
@@ -231,14 +243,20 @@ export function EnterpriseFinance({
   const summary = summarizeFinance(
     allDetails.filter((row) => row.kind === kind && detailInScope(row)),
   );
-  const payableCenterTotals = new Map<string, { name: string; open: number; paid: number }>();
+  const payableCenterTotals = new Map<
+    string,
+    { name: string; bankId: string | null; open: number; paid: number }
+  >();
   if (payable && !showDeleted) {
     const names = new Map((centers.data || []).map((center) => [center.id, center.name]));
     for (const row of allDetails) {
       if (row.kind !== "payable" || !detailInScope(row)) continue;
-      const key = row.costCenterId || "";
+      const key = `${row.costCenterId || ""}:${row.bankAccountId || ""}`;
       const total = payableCenterTotals.get(key) || {
-        name: key ? names.get(key) || "Centro não encontrado" : "Sem centro de custo",
+        name: row.costCenterId
+          ? names.get(row.costCenterId) || "Centro não encontrado"
+          : "Sem centro de custo",
+        bankId: row.bankAccountId || null,
         open: 0,
         paid: 0,
       };
@@ -614,17 +632,17 @@ export function EnterpriseFinance({
                   { id: "", name: "Sem centro de custo" },
                   ...(centers.data || []).map((center) => ({
                     id: center.id,
-                    name: center.name + (center.active ? "" : " (desativado)"),
+                    name: centerFilterLabel(center),
                   })),
                 ]}
               />
               <FinanceMultiFilter
-                label="Filtrar por banco ou conta"
-                allLabel="Todos os bancos"
+                label="Filtrar por conta"
+                allLabel="Todas as contas"
                 value={payableFilters.banks}
                 onChange={(banks) => setPayableFilters((previous) => ({ ...previous, banks }))}
                 options={[
-                  { id: "", name: "Banco não informado" },
+                  { id: "", name: "Sem conta informada" },
                   ...(banks.data || []).map((bank) => ({
                     id: bank.id,
                     name: bank.name + (bank.active ? "" : " (desativado)"),
@@ -665,19 +683,18 @@ export function EnterpriseFinance({
                 <option value="none">Sem centro de custo</option>
                 {(centers.data || []).map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.active ? "" : " (desativado)"}
+                    {centerFilterLabel(c)}
                   </option>
                 ))}
               </select>
               <select
-                aria-label="Filtrar por banco"
+                aria-label="Filtrar por conta"
                 className={`${selectClass} h-9 w-auto max-w-52`}
                 value={bankFilter}
                 onChange={(e) => setBankFilter(e.target.value)}
               >
-                <option value="">Todos os bancos</option>
-                <option value="none">Banco não informado</option>
+                <option value="">Todas as contas</option>
+                <option value="none">Sem conta informada</option>
                 {(banks.data || []).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -750,14 +767,26 @@ export function EnterpriseFinance({
             <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {[...payableCenterTotals]
                 .sort(([, a], [, b]) => a.name.localeCompare(b.name, "pt-BR"))
-                .map(([id, total]) => (
-                  <div key={id} className="rounded-md border p-2.5 text-sm">
-                    <p className="font-medium">{total.name}</p>
-                    <p className="text-muted-foreground">
-                      Em aberto {money(total.open)} · Pago {money(total.paid)}
-                    </p>
-                  </div>
-                ))}
+                .map(([id, total]) => {
+                  const bank = total.bankId ? bankById.get(total.bankId) : undefined;
+                  return (
+                    <div key={id} className="rounded-md border p-2.5 text-sm">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{total.name}</p>
+                        {bank ? (
+                          <FinanceBankBadge bank={bank} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {total.bankId ? "Conta vinculada" : "Sem conta"}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-muted-foreground">
+                        Em aberto {money(total.open)} · Pago {money(total.paid)}
+                      </p>
+                    </div>
+                  );
+                })}
             </div>
           </details>
         )}

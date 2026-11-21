@@ -83,6 +83,7 @@ export function splitCardInstallments(cents: number, count: number) {
 export function aggregateCardInvoices(
   accounts: import("./enterprise-finance").FinanceAccount[],
   cards: CreditCard[],
+  bankFilters: string[] = [],
 ): import("./enterprise-finance").FinanceRow[] {
   const groups = new Map<string, import("./enterprise-finance").FinanceAccount[]>();
   for (const a of accounts) {
@@ -90,33 +91,40 @@ export function aggregateCardInvoices(
     const key = `${a.credit_card_id}:${a.invoice_month}`;
     groups.set(key, [...(groups.get(key) || []), a]);
   }
-  return [...groups.entries()].map(([key, items]) => {
+  return [...groups.entries()].flatMap(([key, invoice]) => {
+    const items = bankFilters.length
+      ? invoice.filter((item) => bankFilters.includes(item.bank_account_id || ""))
+      : invoice;
+    if (!items.length) return [];
     const first = items[0],
       card = cards.find((c) => c.id === first.credit_card_id);
     const paid = items.filter((a) => a.settled_on);
-    return {
-      id: `card:${key}`,
-      kind: "payable",
-      description: `Fatura ${card?.name || "Cartão"} · ${first.invoice_month!.slice(0, 7).split("-").reverse().join("/")}`,
-      counterparty: card?.bank_label || "Cartão de crédito",
-      category: "Fatura do cartão",
-      amountCents: items.reduce((s, a) => s + Number(a.amount_cents), 0),
-      paidCents: paid.reduce((s, a) => s + Number(a.amount_cents), 0),
-      dueOn: first.due_on,
-      settledOn:
-        paid.length === items.length
-          ? paid
-              .map((a) => a.settled_on!)
-              .sort()
-              .at(-1)!
-          : null,
-      source: "card",
-      canSettle: false,
-      cardId: first.credit_card_id!,
-      invoiceMonth: first.invoice_month!.slice(0, 7),
-      bankAccountId: items.every((a) => a.bank_account_id === first.bank_account_id)
-        ? first.bank_account_id
-        : null,
-    };
+    const bankIds = new Set(items.map((item) => item.bank_account_id || null));
+    return [
+      {
+        id: `card:${key}`,
+        kind: "payable",
+        description: `Fatura ${card?.name || "Cartão"} · ${first.invoice_month!.slice(0, 7).split("-").reverse().join("/")}`,
+        counterparty: card?.bank_label || "Cartão de crédito",
+        category: "Fatura do cartão",
+        amountCents: items.reduce((s, a) => s + Number(a.amount_cents), 0),
+        paidCents: paid.reduce((s, a) => s + Number(a.amount_cents), 0),
+        dueOn: first.due_on,
+        settledOn:
+          paid.length === items.length
+            ? paid
+                .map((a) => a.settled_on!)
+                .sort()
+                .at(-1)!
+            : null,
+        source: "card",
+        canSettle: false,
+        cardId: first.credit_card_id!,
+        invoiceMonth: first.invoice_month!.slice(0, 7),
+        bankAccountId: bankIds.size === 1 ? first.bank_account_id : null,
+        mixedBankAccounts: bankIds.size > 1,
+        filteredInvoice: items.length < invoice.length,
+      },
+    ];
   });
 }

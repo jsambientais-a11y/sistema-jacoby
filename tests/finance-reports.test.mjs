@@ -7,3 +7,16 @@ test('saldo aceita zero e negativo sem confundir ausência com zero',()=>{assert
 test('saldo carrega baixas desde a referência e projeta abertos atrasados uma única vez',()=>{const rows=[r('receivable',50000,'2026-08-31','2026-08-31'),r('receivable',20000,'2026-09-10','2026-09-10'),r('payable',30000,'2026-10-10','2026-10-10'),r('receivable',40000,null,'2026-09-30'),r('payable',10000,null,'2026-10-31'),r('receivable',90000,null,'2026-11-01'),r('receivable',99999,'2026-10-10','2026-10-10','other'),r('receivable',12345,null,null)];const result=bankMonthlyBalance(bank,rows,'2026-10','2026-10-31');assert.equal(result.opening,120000);assert.equal(result.current,90000);assert.equal(result.projected,120000);assert.equal(result.overdue,1);});
 test('referência no meio do mês não inventa saldo de abertura; passado não projeta inadimplência atual',()=>{const b={...bank,opening_on:'2026-10-20'};assert.equal(bankMonthlyBalance(b,[],'2026-10','2026-10-31').opening,null);assert.equal(bankMonthlyBalance(b,[],'2026-09','2026-10-31').available,false);const past=bankMonthlyBalance(bank,[r('payable',50000,null,'2026-09-10')],'2026-09','2026-10-31');assert.equal(past.projected,100000);});
 test('relatório usa data de baixa para realizado e mantém sem centro visível',()=>{const rows=[r('receivable',150000,'2026-10-20','2026-09-01'),r('payable',50000,'2026-10-22','2026-11-01'),r('receivable',25000,null,'2026-10-31','b',null),r('payable',10000,null,'2026-11-01')];assert.deepEqual(costCenterMonthly(rows,'2026-10'),[{id:'c',received:150000,paid:50000,pendingIn:0,pendingOut:0},{id:'none',received:0,paid:0,pendingIn:25000,pendingOut:0}]);assert.deepEqual(monthBounds('2028-02'),{start:'2028-02-01',end:'2028-02-29'});assert.throws(()=>monthBounds('2026-13'));});
+
+test('relatório separa o mesmo centro usado em contas diferentes sem repetir valores', () => {
+  const rows = [
+    r('payable', 5000, '2026-10-15', '2026-10-15', 'pessoal', 'telefone'),
+    r('payable', 7500, null, '2026-10-19', 'empresa', 'telefone'),
+    r('payable', 1000, null, '2026-10-21', null, 'telefone'),
+  ];
+  assert.deepEqual(costCenterMonthly(rows, '2026-10', true), [
+    { id: 'telefone', bankAccountId: 'pessoal', received: 0, paid: 5000, pendingIn: 0, pendingOut: 0 },
+    { id: 'telefone', bankAccountId: 'empresa', received: 0, paid: 0, pendingIn: 0, pendingOut: 7500 },
+    { id: 'telefone', bankAccountId: null, received: 0, paid: 0, pendingIn: 0, pendingOut: 1000 },
+  ]);
+});

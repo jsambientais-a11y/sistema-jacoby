@@ -9,6 +9,7 @@ import { monthBounds, bankMonthlyBalance, costCenterMonthly } from "@/lib/financ
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { FinanceBankBadge } from "@/components/FinanceBankBadge";
 export const Route = createFileRoute("/_app/relatorios-financeiros")({ component: FinanceReports });
 const money = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v / 100);
@@ -22,7 +23,7 @@ function FinanceReports() {
     [bankFilter, setBankFilter] = useState("");
   if (isClient || !hasPermission("finance")) return <Navigate to="/dashboard" />;
   const { start, end } = monthBounds(month);
-  const rows = ledger.rows.filter((r) => !bankFilter || r.bankAccountId === bankFilter);
+  const rows = ledger.rows.filter((r) => !bankFilter || (r.bankAccountId || "none") === bankFilter);
   const monthRows = rows.filter((r) => {
     const d = r.settledOn || r.dueOn;
     return d && d >= start && d <= end;
@@ -63,7 +64,7 @@ function FinanceReports() {
     !!unassigned.length ||
     !!undated.length ||
     !!provisional;
-  const centerRows = costCenterMonthly(rows, month).sort((a, b) =>
+  const centerRows = costCenterMonthly(rows, month, true).sort((a, b) =>
     (centers.data?.find((c) => c.id === a.id)?.name || "Sem centro de custo").localeCompare(
       centers.data?.find((c) => c.id === b.id)?.name || "Sem centro de custo",
       "pt-BR",
@@ -100,7 +101,7 @@ function FinanceReports() {
           />
         </div>
         <div>
-          <Label htmlFor="report-bank">Banco / conta</Label>
+          <Label htmlFor="report-bank">Filtrar por conta</Label>
           <select
             id="report-bank"
             value={bankFilter}
@@ -108,6 +109,7 @@ function FinanceReports() {
             className="block h-10 rounded-md border bg-background px-3 text-sm"
           >
             <option value="">Todas as contas</option>
+            <option value="none">Sem conta informada</option>
             {(banks.data || []).map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -127,17 +129,21 @@ function FinanceReports() {
       )}
       <section className="rounded-xl border bg-primary/5 p-5">
         <p className="text-sm font-semibold">
-          {end < today
-            ? "Saldo de encerramento calculado"
-            : incomplete
-              ? "Quanto deve sobrar · projeção parcial"
-              : "Quanto deve sobrar no final do mês"}
+          {bankFilter === "none"
+            ? "Lançamentos sem conta"
+            : end < today
+              ? "Saldo de encerramento calculado"
+              : incomplete
+                ? "Quanto deve sobrar · projeção parcial"
+                : "Quanto deve sobrar no final do mês"}
         </p>
         <strong
           className={`mt-2 block text-4xl ${projected < 0 ? "text-destructive" : "text-primary"}`}
         >
           {!available.length && !loading && !error
-            ? "Defina os saldos iniciais"
+            ? bankFilter === "none"
+              ? "Saldo indisponível"
+              : "Defina os saldos iniciais"
             : display(projected)}
         </strong>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -189,7 +195,9 @@ function FinanceReports() {
           className="space-y-1 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
         >
           <h2 className="font-semibold">O que falta para fechar a visão</h2>
-          {!bankRows.length && <p>Cadastre as contas bancárias e seus saldos iniciais.</p>}
+          {!bankRows.length && bankFilter !== "none" && (
+            <p>Cadastre as contas bancárias e seus saldos iniciais.</p>
+          )}
           {missingOpening > 0 && (
             <p>{missingOpening} conta(s) sem saldo inicial válido para este mês.</p>
           )}
@@ -242,7 +250,7 @@ function FinanceReports() {
               {bankResults.map(({ bank, balance }) => (
                 <tr key={bank.id} className="border-b last:border-0">
                   <td className="p-3 font-medium">
-                    {bank.name}
+                    <FinanceBankBadge bank={bank} />
                     {!bank.active && " (desativada)"}
                     <span className="block text-xs font-normal text-muted-foreground">
                       {bank.opening_on
@@ -286,6 +294,7 @@ function FinanceReports() {
               <tr className="border-b">
                 {[
                   "Centro de custo",
+                  "Conta",
                   "Recebido",
                   "Pago",
                   "A receber",
@@ -300,28 +309,43 @@ function FinanceReports() {
               </tr>
             </thead>
             <tbody>
-              {centerRows.map((c) => (
-                <tr key={c.id} className="border-b last:border-0">
-                  <td className="p-3 font-medium">
-                    {centers.data?.find((cc) => cc.id === c.id)?.name || "Sem centro de custo"}
-                  </td>
-                  {[
-                    c.received,
-                    c.paid,
-                    c.pendingIn,
-                    c.pendingOut,
-                    c.received - c.paid,
-                    c.received + c.pendingIn - c.paid - c.pendingOut,
-                  ].map((v, i) => (
-                    <td className="whitespace-nowrap p-3" key={i}>
-                      {display(v)}
+              {centerRows.map((c) => {
+                const bank = banks.data?.find((item) => item.id === c.bankAccountId);
+                return (
+                  <tr
+                    key={`${c.id}:${c.bankAccountId || "none"}`}
+                    className="border-b last:border-0"
+                  >
+                    <td className="p-3 font-medium">
+                      {centers.data?.find((cc) => cc.id === c.id)?.name || "Sem centro de custo"}
                     </td>
-                  ))}
-                </tr>
-              ))}
+                    <td className="p-3">
+                      {bank ? (
+                        <FinanceBankBadge bank={bank} />
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {c.bankAccountId ? "Conta vinculada" : "Sem conta"}
+                        </span>
+                      )}
+                    </td>
+                    {[
+                      c.received,
+                      c.paid,
+                      c.pendingIn,
+                      c.pendingOut,
+                      c.received - c.paid,
+                      c.received + c.pendingIn - c.paid - c.pendingOut,
+                    ].map((v, i) => (
+                      <td className="whitespace-nowrap p-3" key={i}>
+                        {display(v)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
               {!centerRows.length && (
                 <tr>
-                  <td colSpan={7} className="p-6 text-muted-foreground">
+                  <td colSpan={8} className="p-6 text-muted-foreground">
                     {loading ? "Carregando…" : "Sem lançamentos neste mês."}
                   </td>
                 </tr>

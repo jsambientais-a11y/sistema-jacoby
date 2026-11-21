@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import type { BankAccountUsage } from "@/lib/enterprise-finance";
 export type CostCenter = {
   id: string;
   name: string;
@@ -11,6 +12,7 @@ export type CostCenter = {
   opening_on?: string | null;
   payable_categories?: string[];
   bank_account_id?: string | null;
+  account_usage?: BankAccountUsage | null;
 };
 export const compatibleCenter = (center: CostCenter, kind: "payable" | "receivable") =>
   center.kind === "both" || center.kind === (kind === "payable" ? "expense" : "income");
@@ -55,7 +57,11 @@ function useFinanceRegistry(tableName: string) {
         : await table().insert(values).select("id");
       if (r.error)
         throw new Error(
-          r.error.code === "23505" ? "Já existe um cadastro com esse nome." : r.error.message,
+          r.error.code === "23505"
+            ? tableName === "finance_cost_centers"
+              ? "Já existe um centro com esse nome para a conta selecionada."
+              : "Já existe um cadastro com esse nome."
+            : r.error.message,
         );
       if (!r.data?.length)
         throw new Error("Este cadastro mudou em outra sessão. Atualize antes de salvar.");

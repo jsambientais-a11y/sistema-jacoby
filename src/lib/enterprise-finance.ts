@@ -1,6 +1,17 @@
 import type { FinanceCalculationDetail } from "./finance-calculation-detail";
 import type { FinanceIssuer } from "./finance-issuer";
 export type FinanceKind = "payable" | "receivable";
+export type BankAccountUsage = "personal" | "business";
+
+export function bankAccountUsage(account: {
+  name: string;
+  account_usage?: BankAccountUsage | null;
+}) {
+  if (account.account_usage) return account.account_usage;
+  if (/\bpessoal\b/i.test(account.name)) return "personal";
+  if (/\b(empresa|empresarial)\b/i.test(account.name)) return "business";
+  return null;
+}
 
 export function centerAvailableForBank(
   center: { bank_account_id?: string | null } | undefined,
@@ -82,6 +93,8 @@ export type FinanceRow = {
   cardId?: string;
   invoiceMonth?: string;
   paidCents?: number;
+  filteredInvoice?: boolean;
+  mixedBankAccounts?: boolean;
   canSettle: boolean;
   costCenterId?: string | null;
   bankAccountId?: string | null;

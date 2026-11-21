@@ -19,6 +19,8 @@ import {
   type FinanceRow,
 } from "@/lib/enterprise-finance";
 import { Button } from "@/components/ui/button";
+import { FinanceBankBadge } from "@/components/FinanceBankBadge";
+import type { BankAccountUsage } from "@/lib/enterprise-finance";
 
 const money = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -73,7 +75,7 @@ export function FinanceTable({
   today: string;
   showDeleted: boolean;
   centers: Named[] | undefined;
-  banks: Named[] | undefined;
+  banks: (Named & { account_usage?: BankAccountUsage | null })[] | undefined;
   /** Baixas em andamento, já pintadas antes da resposta do servidor. */
   pending: Record<string, string | null>;
   busy: boolean;
@@ -121,6 +123,9 @@ export function FinanceTable({
             const urgency = showDeleted ? "upcoming" : financeUrgency(row, today);
             const partial = row.source === "card" && !!row.paidCents && !settledOn;
             const card = row.source === "card";
+            const bank = row.bankAccountId
+              ? banks?.find((b) => b.id === row.bankAccountId)
+              : undefined;
             const centerIndex = (centers || []).findIndex((c) => c.id === row.costCenterId);
             const paidWord = row.kind === "payable" ? "pago" : "recebido";
             return (
@@ -131,7 +136,14 @@ export function FinanceTable({
               >
                 <td className={`${cell} w-12 px-1 text-center`}>
                   {!showDeleted &&
-                    (row.canSettle || card ? (
+                    (row.filteredInvoice ? (
+                      <span
+                        className="text-xs text-muted-foreground"
+                        title="Abra a fatura completa para registrar a baixa."
+                      >
+                        —
+                      </span>
+                    ) : row.canSettle || card ? (
                       <button
                         type="button"
                         aria-pressed={!!settledOn}
@@ -256,15 +268,26 @@ export function FinanceTable({
                   )}
                 </td>
                 <td className={cell}>
-                  {row.bankAccountId ? (
-                    banks?.find((b) => b.id === row.bankAccountId)?.name || "Carregando…"
+                  {bank ? (
+                    <FinanceBankBadge bank={bank} />
                   ) : (
-                    <span className={`whitespace-nowrap text-xs ${secondary}`}>Não informado</span>
+                    <span className={`whitespace-nowrap text-xs ${secondary}`}>
+                      {row.mixedBankAccounts
+                        ? "Várias contas"
+                        : row.bankAccountId
+                          ? "Conta vinculada"
+                          : "Sem conta"}
+                    </span>
                   )}
                 </td>
                 {payable && (
                   <td className={`${cell} whitespace-nowrap text-right font-semibold tabular-nums`}>
                     {money(row.amountCents)}
+                    {row.filteredInvoice && (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        Parcela da fatura no filtro
+                      </span>
+                    )}
                     {partial && (
                       <span className={`block text-xs font-normal ${secondary}`}>
                         Pago: {money(row.paidCents!)} · Em aberto:{" "}

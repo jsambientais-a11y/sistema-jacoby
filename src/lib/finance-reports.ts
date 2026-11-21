@@ -59,17 +59,33 @@ export function bankMonthlyBalance(
     provisional: pending.filter((r) => r.provisional).length,
   };
 }
-export function costCenterMonthly(rows: FinanceRow[], month: string) {
+export function costCenterMonthly(rows: FinanceRow[], month: string, groupByBank = false) {
   const { start, end } = monthBounds(month);
   const result = new Map<
     string,
-    { id: string; received: number; paid: number; pendingIn: number; pendingOut: number }
+    {
+      id: string;
+      bankAccountId?: string | null;
+      received: number;
+      paid: number;
+      pendingIn: number;
+      pendingOut: number;
+    }
   >();
   for (const row of rows) {
     const date = row.settledOn || row.dueOn;
     if (!date || date < start || date > end) continue;
     const id = row.costCenterId || "none";
-    const group = result.get(id) || { id, received: 0, paid: 0, pendingIn: 0, pendingOut: 0 };
+    const bankAccountId = row.bankAccountId || null;
+    const key = groupByBank ? `${id}:${bankAccountId || "none"}` : id;
+    const group = result.get(key) || {
+      id,
+      ...(groupByBank ? { bankAccountId } : {}),
+      received: 0,
+      paid: 0,
+      pendingIn: 0,
+      pendingOut: 0,
+    };
     if (row.settledOn) {
       if (row.kind === "receivable") group.received += row.amountCents;
       else group.paid += row.amountCents;
@@ -77,7 +93,7 @@ export function costCenterMonthly(rows: FinanceRow[], month: string) {
       if (row.kind === "receivable") group.pendingIn += row.amountCents;
       else group.pendingOut += row.amountCents;
     }
-    result.set(id, group);
+    result.set(key, group);
   }
   return [...result.values()];
 }
