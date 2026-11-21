@@ -178,6 +178,18 @@ export function FinanceTable({
                             : "Cadastro manual"}
                         {!card && row.category ? ` · ${row.category}` : ""}
                       </span>
+                      {payable && !!row.tags?.length && (
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {row.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded border bg-background px-1.5 text-xs text-muted-foreground"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </span>
                   </span>
                   {row.manual?.recurrence_id && (

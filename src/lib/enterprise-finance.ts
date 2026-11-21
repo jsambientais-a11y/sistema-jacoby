@@ -15,6 +15,7 @@ export type FinanceAccount = {
   description: string;
   counterparty: string;
   category: string;
+  tags?: string[] | null;
   cost_center_id?: string | null;
   bank_account_id?: string | null;
   amount_cents: number;
@@ -30,6 +31,7 @@ export type FinanceRow = {
   description: string;
   counterparty: string;
   category: string;
+  tags?: string[];
   amountCents: number;
   dueOn: string | null;
   settledOn: string | null;

@@ -9,6 +9,7 @@ export const RECURRENCE_FREQUENCIES = {
 } as const;
 export type RecurrenceFrequency = keyof typeof RECURRENCE_FREQUENCIES;
 export type FinanceRecurrence = {
+  tags?: string[];
   credit_card_id?: string | null;
   id: string;
   description: string;

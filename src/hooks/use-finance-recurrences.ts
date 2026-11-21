@@ -85,7 +85,11 @@ export function useFinanceRecurrences() {
       repeat: import("@/lib/finance-recurrence").InlineRecurrence;
     }) => {
       const r = await (supabase.rpc as any)(
-        card ? "save_inline_card_purchase" : "save_inline_payable",
+        card
+          ? "save_inline_card_purchase"
+          : Array.isArray(values.tags)
+            ? "save_tagged_payable"
+            : "save_inline_payable",
         {
           payload: values,
           target_id: old?.id || null,

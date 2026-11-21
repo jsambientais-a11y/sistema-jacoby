@@ -1,3 +1,4 @@
+import { FinanceMultiFilter } from "@/components/FinanceMultiFilter";
 import { financeVisibleTotals } from "@/lib/finance-visible-totals";
 import { financeCalculationDetail } from "@/lib/finance-calculation-detail";
 import { FinanceIssuerFilter } from "@/components/FinanceIssuerFilter";
@@ -52,6 +53,7 @@ type Draft = {
   description: string;
   counterparty: string;
   category: string;
+  tags?: string;
   cost_center_id: string;
   bank_account_id: string;
   value: string;
@@ -81,6 +83,12 @@ export function EnterpriseFinance({
     bank: string;
   } | null>(null);
   const [issuer, setIssuer] = useState("all");
+  const [payableFilters, setPayableFilters] = useState({
+    centers: [] as string[],
+    banks: [] as string[],
+    categories: [] as string[],
+    tags: [] as string[],
+  });
   const [bankFilter, setBankFilter] = useState("");
   const [centerFilter, setCenterFilter] = useState("");
   const flow = useBillingFlowData();
@@ -117,7 +125,12 @@ export function EnterpriseFinance({
   // A trava de concorrência usa updated_at: o "Desfazer" do aviso precisa da versão mais recente.
   const latestAccounts = useRef(accounts.data);
   latestAccounts.current = accounts.data;
-  const active = (accounts.data || []).filter((a) => !a.deleted_at).map(manualFinanceRow);
+  const recurrenceTags = new Map((recurring.data || []).map((rule) => [rule.id, rule.tags]));
+  const toFinanceRow = (account: FinanceAccount): FinanceRow => ({
+    ...manualFinanceRow(account),
+    tags: account.tags ?? recurrenceTags.get(account.recurrence_id || "") ?? [],
+  });
+  const active = (accounts.data || []).filter((a) => !a.deleted_at).map(toFinanceRow);
   const billing = flow.billingFlowEntries.map((entry) => {
     const r = toReceivable(entry, today, billingAgreement(entry).requiresAgreement);
     return {
@@ -149,17 +162,38 @@ export function EnterpriseFinance({
     ...aggregateCardInvoices(accounts.data || [], credit.cards.data || []),
     ...billing,
   ];
-  const issuers = financeIssuerOptions([
-    ...(accounts.data || []).map(manualFinanceRow),
-    ...billing,
-  ]);
+  const issuers = financeIssuerOptions([...(accounts.data || []).map(toFinanceRow), ...billing]);
   const issuerInScope = (r: FinanceRow) => payable || matchesFinanceIssuer(r, issuer);
+  const payableCategories = [
+    ...new Set(
+      (accounts.data || [])
+        .filter((account) => account.kind === "payable")
+        .map((account) => account.category)
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const payableTags = [
+    ...new Set(
+      (accounts.data || [])
+        .filter((account) => account.kind === "payable")
+        .flatMap((account) => toFinanceRow(account).tags || []),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const matchesSelection = (selected: string[], value?: string | null) =>
+    !selected.length || selected.includes(value || "");
   const detailInScope = (r: FinanceRow) =>
     issuerInScope(r) &&
     inPeriod(r.settledOn || r.dueOn, period) &&
-    (!centerFilter ||
-      (centerFilter === "none" ? !r.costCenterId : r.costCenterId === centerFilter)) &&
-    (!bankFilter || (bankFilter === "none" ? !r.bankAccountId : r.bankAccountId === bankFilter));
+    (payable
+      ? matchesSelection(payableFilters.centers, r.costCenterId) &&
+        matchesSelection(payableFilters.banks, r.bankAccountId) &&
+        matchesSelection(payableFilters.categories, r.category) &&
+        (!payableFilters.tags.length ||
+          (r.tags || []).some((tag) => payableFilters.tags.includes(tag)))
+      : (!centerFilter ||
+          (centerFilter === "none" ? !r.costCenterId : r.costCenterId === centerFilter)) &&
+        (!bankFilter ||
+          (bankFilter === "none" ? !r.bankAccountId : r.bankAccountId === bankFilter)));
   const inScope = (r: FinanceRow) =>
     r.source === "card"
       ? allDetails.some(
@@ -172,6 +206,22 @@ export function EnterpriseFinance({
   const summary = summarizeFinance(
     allDetails.filter((row) => row.kind === kind && detailInScope(row)),
   );
+  const payableCenterTotals = new Map<string, { name: string; open: number; paid: number }>();
+  if (payable && !showDeleted) {
+    const names = new Map((centers.data || []).map((center) => [center.id, center.name]));
+    for (const row of allDetails) {
+      if (row.kind !== "payable" || !detailInScope(row)) continue;
+      const key = row.costCenterId || "";
+      const total = payableCenterTotals.get(key) || {
+        name: key ? names.get(key) || "Centro não encontrado" : "Sem centro de custo",
+        open: 0,
+        paid: 0,
+      };
+      if (row.settledOn) total.paid += row.amountCents;
+      else total.open += row.amountCents;
+      payableCenterTotals.set(key, total);
+    }
+  }
   const missingDate = all.filter(
     (r) => r.kind === kind && issuerInScope(r) && !r.dueOn && !r.settledOn,
   ).length;
@@ -179,7 +229,7 @@ export function EnterpriseFinance({
     showDeleted
       ? (accounts.data || [])
           .filter((a) => a.deleted_at && !a.credit_card_id && !a.recurrence_suppressed)
-          .map(manualFinanceRow)
+          .map(toFinanceRow)
       : all
   )
     .filter(
@@ -187,7 +237,7 @@ export function EnterpriseFinance({
         r.kind === kind &&
         inScope(r) &&
         (!search ||
-          `${r.description} ${r.counterparty} ${r.category}`
+          `${r.description} ${r.counterparty} ${r.category} ${r.tags?.join(" ") || ""}`
             .toLocaleLowerCase("pt-BR")
             .includes(search.toLocaleLowerCase("pt-BR"))) &&
         (status === "all" ||
@@ -259,9 +309,22 @@ export function EnterpriseFinance({
         kind: draft.kind,
       };
       if (draft.kind === "payable") {
+        const tags = [
+          ...new Set(
+            (draft.tags || "")
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+          ),
+        ];
+        if (tags.length > 12 || tags.some((tag) => tag.length > 40))
+          throw new Error("Informe até 12 etiquetas com no máximo 40 caracteres cada.");
+        const hasSavedTags =
+          Array.isArray(draft.old?.tags) ||
+          !!recurrenceTags.get(draft.old?.recurrence_id || "")?.length;
         const accountId = await recurring.saveInline.mutateAsync({
           old: draft.old,
-          values,
+          values: tags.length || hasSavedTags ? { ...values, tags } : values,
           repeat: draft.repeat || inlineRecurrence(),
         });
         if (draft.files?.length) {
@@ -515,36 +578,90 @@ export function EnterpriseFinance({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <select
-            aria-label="Filtrar por centro de custo"
-            className={`${selectClass} h-9 w-auto max-w-52`}
-            value={centerFilter}
-            onChange={(e) => setCenterFilter(e.target.value)}
-          >
-            <option value="">Todos os centros</option>
-            <option value="none">Sem centro de custo</option>
-            {(centers.data || []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.active ? "" : " (desativado)"}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filtrar por banco"
-            className={`${selectClass} h-9 w-auto max-w-52`}
-            value={bankFilter}
-            onChange={(e) => setBankFilter(e.target.value)}
-          >
-            <option value="">Todos os bancos</option>
-            <option value="none">Banco não informado</option>
-            {(banks.data || []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-                {b.active ? "" : " (desativado)"}
-              </option>
-            ))}
-          </select>
+          {payable ? (
+            <>
+              <FinanceMultiFilter
+                label="Filtrar por centro de custo"
+                allLabel="Todos os centros"
+                value={payableFilters.centers}
+                onChange={(centers) => setPayableFilters((previous) => ({ ...previous, centers }))}
+                options={[
+                  { id: "", name: "Sem centro de custo" },
+                  ...(centers.data || []).map((center) => ({
+                    id: center.id,
+                    name: center.name + (center.active ? "" : " (desativado)"),
+                  })),
+                ]}
+              />
+              <FinanceMultiFilter
+                label="Filtrar por banco ou conta"
+                allLabel="Todos os bancos"
+                value={payableFilters.banks}
+                onChange={(banks) => setPayableFilters((previous) => ({ ...previous, banks }))}
+                options={[
+                  { id: "", name: "Banco não informado" },
+                  ...(banks.data || []).map((bank) => ({
+                    id: bank.id,
+                    name: bank.name + (bank.active ? "" : " (desativado)"),
+                  })),
+                ]}
+              />
+              <FinanceMultiFilter
+                label="Filtrar por categoria"
+                allLabel="Todas as categorias"
+                value={payableFilters.categories}
+                onChange={(categories) =>
+                  setPayableFilters((previous) => ({ ...previous, categories }))
+                }
+                options={[
+                  { id: "", name: "Sem categoria" },
+                  ...payableCategories.map((name) => ({ id: name, name })),
+                ]}
+              />
+              {(payableTags.length > 0 || payableFilters.tags.length > 0) && (
+                <FinanceMultiFilter
+                  label="Filtrar por etiqueta"
+                  allLabel="Todas as etiquetas"
+                  options={payableTags.map((name) => ({ id: name, name }))}
+                  value={payableFilters.tags}
+                  onChange={(tags) => setPayableFilters((previous) => ({ ...previous, tags }))}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <select
+                aria-label="Filtrar por centro de custo"
+                className={`${selectClass} h-9 w-auto max-w-52`}
+                value={centerFilter}
+                onChange={(e) => setCenterFilter(e.target.value)}
+              >
+                <option value="">Todos os centros</option>
+                <option value="none">Sem centro de custo</option>
+                {(centers.data || []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.active ? "" : " (desativado)"}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Filtrar por banco"
+                className={`${selectClass} h-9 w-auto max-w-52`}
+                value={bankFilter}
+                onChange={(e) => setBankFilter(e.target.value)}
+              >
+                <option value="">Todos os bancos</option>
+                <option value="none">Banco não informado</option>
+                {(banks.data || []).map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {b.active ? "" : " (desativado)"}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <select
             aria-label="Situação da conta"
             className={`${selectClass} h-9 w-auto`}
@@ -596,6 +713,29 @@ export function EnterpriseFinance({
             </p>
           </section>
         )}
+        {payableCenterTotals.size > 0 && (
+          <details className="rounded-xl border bg-card p-3" open>
+            <summary className="cursor-pointer text-sm font-semibold">
+              Resumo por centro de custo
+            </summary>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Valores por período, conta bancária, centro, categoria e etiqueta. Compras de cartão
+              entram pelo valor de cada lançamento.
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {[...payableCenterTotals]
+                .sort(([, a], [, b]) => a.name.localeCompare(b.name, "pt-BR"))
+                .map(([id, total]) => (
+                  <div key={id} className="rounded-md border p-2.5 text-sm">
+                    <p className="font-medium">{total.name}</p>
+                    <p className="text-muted-foreground">
+                      Em aberto {money(total.open)} · Pago {money(total.paid)}
+                    </p>
+                  </div>
+                ))}
+            </div>
+          </details>
+        )}
         <FinanceTable
           rows={rows}
           kind={kind}
@@ -629,6 +769,7 @@ export function EnterpriseFinance({
               description: row.description,
               counterparty: row.counterparty,
               category: row.category,
+              tags: row.tags?.join(", "),
               cost_center_id: row.costCenterId || "",
               bank_account_id: row.bankAccountId || "",
               value: (row.amountCents / 100).toFixed(2).replace(".", ","),
@@ -842,12 +983,46 @@ export function EnterpriseFinance({
                 <Label htmlFor="finance-category">Categoria</Label>
                 <Input
                   id="finance-category"
+                  list={draft.kind === "payable" ? "finance-center-categories" : undefined}
                   maxLength={200}
                   placeholder="Ex.: aluguel, pessoal, serviços"
                   value={draft.category}
                   onChange={(e) => setDraft({ ...draft, category: e.target.value })}
                 />
+                {draft.kind === "payable" && (
+                  <datalist id="finance-center-categories">
+                    {[
+                      ...new Set(
+                        (accounts.data || [])
+                          .filter(
+                            (account) =>
+                              account.kind === "payable" &&
+                              !account.deleted_at &&
+                              (account.cost_center_id || "") === draft.cost_center_id,
+                          )
+                          .map((account) => account.category)
+                          .filter(Boolean),
+                      ),
+                    ]
+                      .sort()
+                      .map((category) => (
+                        <option key={category} value={category} />
+                      ))}
+                  </datalist>
+                )}
               </div>
+              {draft.kind === "payable" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="finance-tags">Etiquetas</Label>
+                  <Input
+                    id="finance-tags"
+                    value={draft.tags || ""}
+                    placeholder="Ex.: Casa, mercado"
+                    onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">Separe as etiquetas com vírgulas.</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="finance-center">Centro de custo</Label>
                 <select
