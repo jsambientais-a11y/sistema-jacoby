@@ -319,6 +319,7 @@ export function EnterpriseFinance({
     recurring.deletePayableSeries.isPending ||
     accounts.save.isPending ||
     credit.settle.isPending ||
+    credit.correctPaymentDate.isPending ||
     recurring.saveInline.isPending ||
     flow.settleReceivable.isPending ||
     receiptDetails.save.isPending;
@@ -493,12 +494,25 @@ export function EnterpriseFinance({
     if (!confirm) return;
     try {
       const { row, action } = confirm;
+      if (action === "settle" && (!settleDate || settleDate > today)) {
+        throw new Error("Informe uma data até hoje.");
+      }
       if (row.source === "card") {
-        await setCardSettled(
-          row,
-          action === "settle" ? settleDate : null,
-          action === "settle" ? settleBank : null,
-        );
+        if (action === "settle" && row.settledOn) {
+          await credit.correctPaymentDate.mutateAsync({
+            cardId: row.cardId!,
+            month: row.invoiceMonth!,
+            previous: row.settledOn,
+            date: settleDate,
+            total: row.amountCents,
+          });
+        } else {
+          await setCardSettled(
+            row,
+            action === "settle" ? settleDate : null,
+            action === "settle" ? settleBank : null,
+          );
+        }
       } else if (row.source === "billing") {
         const b = billing.find((b) => b.id === row.id);
         if (!b) throw new Error("Atualize para conferir este recebível.");
@@ -1197,7 +1211,9 @@ export function EnterpriseFinance({
           <DialogTitle>
             {confirm?.action === "settle"
               ? confirm.row.settledOn
-                ? "Alterar data da baixa"
+                ? confirm.row.kind === "payable"
+                  ? "Alterar data do pagamento"
+                  : "Alterar data do recebimento"
                 : "Registrar baixa"
               : confirm?.action === "reopen"
                 ? "Desfazer baixa?"
@@ -1211,11 +1227,13 @@ export function EnterpriseFinance({
               ? seriesToDelete
                 ? "Você pode excluir só esta conta ou a série inteira. Excluir a série encerra a geração e move todas as contas em aberto para Excluídas, inclusive as vencidas. Os pagamentos registrados ficam no histórico."
                 : "A conta sairá do comparativo e ficará recuperável em Excluídas."
-              : confirm?.row.source === "card"
-                ? confirm.action === "reopen"
-                  ? "As baixas desta fatura serão desfeitas e os valores voltarão ao contas a pagar. Nenhum dinheiro será movimentado."
-                  : "Este cartão não tem conta padrão ativa. Informe de qual conta a fatura saiu. Nenhum dinheiro será movimentado."
-                : "Confira antes de salvar. A baixa de um recebível do Faturamento é compartilhada com aquela tela."}
+              : confirm?.action === "settle" && confirm.row.settledOn
+                ? "A data corrigida será usada nos relatórios e no saldo da conta."
+                : confirm?.row.source === "card"
+                  ? confirm.action === "reopen"
+                    ? "As baixas desta fatura serão desfeitas e os valores voltarão ao contas a pagar. Nenhum dinheiro será movimentado."
+                    : "Este cartão não tem conta padrão ativa. Informe de qual conta a fatura saiu. Nenhum dinheiro será movimentado."
+                  : "Confira antes de salvar. A baixa de um recebível do Faturamento é compartilhada com aquela tela."}
           </DialogDescription>
           {confirm?.action === "settle" && (
             <div className="space-y-1">
@@ -1231,29 +1249,31 @@ export function EnterpriseFinance({
               />
             </div>
           )}
-          {confirm?.action === "settle" && confirm.row.source === "card" && (
-            <div className="space-y-1">
-              <Label htmlFor="finance-settlement-bank">Conta bancária de saída</Label>
-              <select
-                id="finance-settlement-bank"
-                className={selectClass}
-                value={settleBank}
-                onChange={(e) => setSettleBank(e.target.value)}
-              >
-                <option value="">Selecione a conta</option>
-                {(banks.data || [])
-                  .filter((b) => b.active)
-                  .map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-              </select>
-              <Link to="/bancos" className="text-xs text-primary underline underline-offset-2">
-                Cadastrar conta em Bancos e contas
-              </Link>
-            </div>
-          )}
+          {confirm?.action === "settle" &&
+            confirm.row.source === "card" &&
+            !confirm.row.settledOn && (
+              <div className="space-y-1">
+                <Label htmlFor="finance-settlement-bank">Conta bancária de saída</Label>
+                <select
+                  id="finance-settlement-bank"
+                  className={selectClass}
+                  value={settleBank}
+                  onChange={(e) => setSettleBank(e.target.value)}
+                >
+                  <option value="">Selecione a conta</option>
+                  {(banks.data || [])
+                    .filter((b) => b.active)
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                </select>
+                <Link to="/bancos" className="text-xs text-primary underline underline-offset-2">
+                  Cadastrar conta em Bancos e contas
+                </Link>
+              </div>
+            )}
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" disabled={busy} onClick={() => setConfirm(null)}>
               Cancelar
@@ -1264,11 +1284,17 @@ export function EnterpriseFinance({
                 (confirm?.action === "settle" &&
                   (!settleDate ||
                     settleDate > today ||
-                    (confirm.row.source === "card" && !settleBank)))
+                    (confirm.row.source === "card" && !confirm.row.settledOn && !settleBank)))
               }
               onClick={() => void execute()}
             >
-              {busy ? "Salvando…" : seriesToDelete ? "Excluir só esta conta" : "Confirmar"}
+              {busy
+                ? "Salvando…"
+                : seriesToDelete
+                  ? "Excluir só esta conta"
+                  : confirm?.action === "settle" && confirm.row.settledOn
+                    ? "Salvar data"
+                    : "Confirmar"}
             </Button>
             {seriesToDelete && (
               <Button

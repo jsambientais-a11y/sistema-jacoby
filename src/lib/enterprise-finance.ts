@@ -94,6 +94,7 @@ export type FinanceRow = {
   invoiceMonth?: string;
   paidCents?: number;
   filteredInvoice?: boolean;
+  mixedPaymentDates?: boolean;
   mixedBankAccounts?: boolean;
   canSettle: boolean;
   costCenterId?: string | null;

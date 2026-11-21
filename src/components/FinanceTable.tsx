@@ -308,10 +308,13 @@ export function FinanceTable({
                     urgency={urgency}
                     partial={partial}
                     onChangeDate={
-                      row.source === "manual" && !showDeleted
+                      !showDeleted &&
+                      (row.source === "manual" ||
+                        (card && !row.filteredInvoice && !row.mixedPaymentDates))
                         ? () => onChangeDate(source)
                         : undefined
                     }
+                    dateEditDisabled={busy || row.id in pending}
                   />
                 </td>
                 <td className={`${cell} w-32`}>
@@ -418,29 +421,32 @@ function Status({
   urgency,
   partial,
   onChangeDate,
+  dateEditDisabled,
 }: {
   row: FinanceRow;
   today: string;
   urgency: ReturnType<typeof financeUrgency>;
   partial: boolean;
   onChangeDate?: () => void;
+  dateEditDisabled: boolean;
 }) {
   if (row.settledOn)
     return (
       <span className="font-semibold text-emerald-900 dark:text-emerald-100">
         {financeStatus(row, today)}
+        <span className="block text-xs font-normal tabular-nums">{date(row.settledOn)}</span>
         {onChangeDate ? (
           <button
             type="button"
-            title="Alterar a data da baixa"
-            className="block text-xs font-normal tabular-nums underline underline-offset-2"
+            aria-label={`Alterar data ${row.kind === "payable" ? "do pagamento" : "do recebimento"} de ${row.description}`}
+            className="mt-0.5 inline-flex items-center gap-1 rounded text-xs font-medium underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            disabled={dateEditDisabled}
             onClick={onChangeDate}
           >
-            {date(row.settledOn)}
+            <Pencil className="size-3" aria-hidden="true" />
+            Alterar data
           </button>
-        ) : (
-          <span className="block text-xs font-normal tabular-nums">{date(row.settledOn)}</span>
-        )}
+        ) : null}
       </span>
     );
   if (partial) return <span className="font-semibold">Parcialmente paga</span>;

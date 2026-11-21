@@ -98,7 +98,7 @@ export const useFinanceRecurrences = () => ({
   deletePayableSeries: mutation,
   saveInline: mutation,
 });
-export const useCreditCards = () => ({ cards: query(), settle: mutation });
+export const useCreditCards = () => ({ cards: query(), settle: mutation, correctPaymentDate: mutation });
 export const useCostCenters = () =>
   query([{ id: "center", name: "Serviços", kind: "income", active: true }]);
 export const useBanks = () => query([{ id: "bank", name: "Banco teste", active: true }]);

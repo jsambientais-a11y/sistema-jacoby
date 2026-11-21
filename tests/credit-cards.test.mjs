@@ -23,3 +23,14 @@ test('filtro por conta mostra somente os itens correspondentes de uma fatura mis
   assert.equal(aggregateCardInvoices(accounts, [], [''])[0].amountCents, 2000);
   assert.equal(aggregateCardInvoices(accounts, [], ['outra']).length, 0);
 });
+
+test('fatura identifica quando as baixas ocorreram em datas diferentes', () => {
+  const item = { credit_card_id: 'card', invoice_month: '2026-11-01', due_on: '2026-11-05', amount_cents: 100 };
+  const entries = [
+    { ...item, settled_on: '2026-11-02' },
+    { ...item, settled_on: '2026-11-03' },
+  ];
+  assert.equal(aggregateCardInvoices(entries, [])[0].mixedPaymentDates, true);
+  entries[0].settled_on = entries[1].settled_on;
+  assert.equal(aggregateCardInvoices(entries, [])[0].mixedPaymentDates, false);
+});

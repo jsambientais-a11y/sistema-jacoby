@@ -111,7 +111,41 @@ export function useCreditCards() {
     },
     onSuccess: refresh,
   });
-  return { cards, purchases, saveCard, savePurchase, deletePurchase, settle, importInvoice };
+  const correctPaymentDate = useMutation({
+    mutationFn: async ({
+      cardId,
+      month,
+      previous,
+      date,
+      total,
+    }: {
+      cardId: string;
+      month: string;
+      previous: string;
+      date: string;
+      total: number;
+    }) => {
+      const r = await (supabase.rpc as any)("correct_card_payment_date", {
+        target_card_id: cardId,
+        target_month: `${month}-01`,
+        previous_paid_on: previous,
+        corrected_paid_on: date,
+        expected_payment_cents: total,
+      });
+      if (r.error) throw new Error(r.error.message);
+    },
+    onSuccess: refresh,
+  });
+  return {
+    cards,
+    purchases,
+    saveCard,
+    savePurchase,
+    deletePurchase,
+    settle,
+    importInvoice,
+    correctPaymentDate,
+  };
 }
 async function readAll<T>(name: string) {
   const all: T[] = [];

@@ -98,11 +98,13 @@ function CreditCardsPage() {
   const [cardDraft, setCardDraft] = useState<CardDraft | null>(null),
     [purchaseDraft, setPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [confirm, setConfirm] = useState<{
-      action: "pay" | "reopen" | "delete" | "restore";
+      action: "pay" | "reopen" | "delete" | "restore" | "correct-date";
       purchase?: CardPurchase;
       total?: number;
+      paymentDates?: Map<string, number>;
     } | null>(null),
     [payDate, setPayDate] = useState(today),
+    [previousPayDate, setPreviousPayDate] = useState(""),
     [payBank, setPayBank] = useState("");
   if (isClient || !hasPermission("finance")) return <Navigate to="/dashboard" />;
   const allCards = data.cards.data || [];
@@ -142,7 +144,8 @@ function CreditCardsPage() {
     data.savePurchase.isPending ||
     recurring.saveInline.isPending ||
     data.deletePurchase.isPending ||
-    data.settle.isPending;
+    data.settle.isPending ||
+    data.correctPaymentDate.isPending;
   const fail = (e: unknown) =>
     toast.error(e instanceof Error ? e.message : "Não foi possível salvar.");
   const newCard = () =>
@@ -262,6 +265,16 @@ function CreditCardsPage() {
         await data.deletePurchase.mutateAsync({
           purchase: confirm.purchase,
           deleted: confirm.action === "delete",
+        });
+      } else if (confirm.action === "correct-date") {
+        const total = confirm.paymentDates?.get(previousPayDate);
+        if (!total || !payDate || payDate > today) throw new Error("Confira a data do pagamento.");
+        await data.correctPaymentDate.mutateAsync({
+          cardId: selected.id,
+          month,
+          previous: previousPayDate,
+          date: payDate,
+          total,
         });
       } else {
         await data.settle.mutateAsync({
@@ -526,6 +539,28 @@ function CreditCardsPage() {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
+              {paid > 0 && (
+                <Button
+                  variant="outline"
+                  disabled={busy || !!error}
+                  onClick={() => {
+                    const paymentDates = new Map<string, number>();
+                    for (const item of statement) {
+                      if (!item.settled_on) continue;
+                      paymentDates.set(
+                        item.settled_on,
+                        (paymentDates.get(item.settled_on) || 0) + Number(item.amount_cents),
+                      );
+                    }
+                    const latestDate = [...paymentDates.keys()].sort().at(-1)!;
+                    setPreviousPayDate(latestDate);
+                    setPayDate(latestDate);
+                    setConfirm({ action: "correct-date", paymentDates });
+                  }}
+                >
+                  Alterar data do pagamento
+                </Button>
+              )}
               {paid > 0 && (
                 <Button
                   variant="outline"
@@ -1080,21 +1115,55 @@ function CreditCardsPage() {
       >
         <DialogContent>
           <DialogTitle>
-            {confirm?.action === "pay"
-              ? "Registrar pagamento da fatura"
-              : confirm?.action === "reopen"
-                ? "Desfazer baixa da fatura"
-                : confirm?.action === "delete"
-                  ? "Excluir compra e parcelas"
-                  : "Restaurar compra e parcelas"}
+            {confirm?.action === "correct-date"
+              ? "Alterar data do pagamento"
+              : confirm?.action === "pay"
+                ? "Registrar pagamento da fatura"
+                : confirm?.action === "reopen"
+                  ? "Desfazer baixa da fatura"
+                  : confirm?.action === "delete"
+                    ? "Excluir compra e parcelas"
+                    : "Restaurar compra e parcelas"}
           </DialogTitle>
           <DialogDescription>
             {confirm?.purchase
               ? `${confirm.purchase.description}. A alteração alcança todas as parcelas e atualiza os totais do Financeiro. A exclusão pode ser desfeita.`
-              : confirm?.action === "pay"
-                ? `Registrar a baixa do saldo em aberto de ${cardMoney(pending)}. Este controle não executa um pagamento bancário.`
-                : "As baixas desta fatura serão desfeitas e os valores voltarão ao contas a pagar. Nenhum dinheiro será movimentado."}
+              : confirm?.action === "correct-date"
+                ? "A correção vale para os lançamentos da fatura baixados na data selecionada."
+                : confirm?.action === "pay"
+                  ? `Registrar a baixa do saldo em aberto de ${cardMoney(pending)}. Este controle não executa um pagamento bancário.`
+                  : "As baixas desta fatura serão desfeitas e os valores voltarão ao contas a pagar. Nenhum dinheiro será movimentado."}
           </DialogDescription>
+          {confirm?.action === "correct-date" && (
+            <div className="space-y-3">
+              <Field label="Data registrada">
+                <select
+                  className={inputSelect}
+                  value={previousPayDate}
+                  onChange={(event) => {
+                    setPreviousPayDate(event.target.value);
+                    setPayDate(event.target.value);
+                  }}
+                >
+                  {[...(confirm.paymentDates || [])]
+                    .sort(([a], [b]) => b.localeCompare(a))
+                    .map(([day, total]) => (
+                      <option key={day} value={day}>
+                        {dateLabel(day)} · {cardMoney(total)}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Data correta do pagamento">
+                <Input
+                  type="date"
+                  max={today}
+                  value={payDate}
+                  onChange={(event) => setPayDate(event.target.value)}
+                />
+              </Field>
+            </div>
+          )}
           {confirm?.action === "pay" && (
             <div className="space-y-3">
               <Field label="Data do pagamento">
@@ -1132,10 +1201,19 @@ function CreditCardsPage() {
               Cancelar
             </Button>
             <Button
-              disabled={busy || (confirm?.action === "pay" && (!payDate || !payBank))}
+              disabled={
+                busy ||
+                (confirm?.action === "pay" && (!payDate || !payBank)) ||
+                (confirm?.action === "correct-date" &&
+                  (!payDate || payDate > today || payDate === previousPayDate))
+              }
               onClick={() => void execute()}
             >
-              {busy ? "Salvando…" : "Confirmar"}
+              {busy
+                ? "Salvando…"
+                : confirm?.action === "correct-date"
+                  ? "Salvar data"
+                  : "Confirmar"}
             </Button>
           </div>
         </DialogContent>

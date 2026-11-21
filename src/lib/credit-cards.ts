@@ -124,6 +124,7 @@ export function aggregateCardInvoices(
         bankAccountId: bankIds.size === 1 ? first.bank_account_id : null,
         mixedBankAccounts: bankIds.size > 1,
         filteredInvoice: items.length < invoice.length,
+        mixedPaymentDates: new Set(paid.map((item) => item.settled_on)).size > 1,
       },
     ];
   });
