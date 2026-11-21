@@ -14,6 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
+      finance_suppliers: {
+        Row: { id: string; name: string }
+        Insert: { id?: string; name: string }
+        Update: never
+        Relationships: []
+      }
       billing_v2_recurring_bulletin_occurrences: {
         Row: { schedule_id: string; scheduled_on: string; cycle_id: string | null }
         Insert: never

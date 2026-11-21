@@ -13,6 +13,7 @@ export default defineConfig({
     alias: [
       ...[
         "use-finance-accounts",
+        "use-finance-suppliers",
         "use-finance-recurrences",
         "use-credit-cards",
         "use-cost-centers",

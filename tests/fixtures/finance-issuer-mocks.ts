@@ -93,6 +93,7 @@ export const fixtureAccounts = [
   manual("payable", { kind: "payable", description: "Despesa fictícia" }),
 ];
 export const useFinanceAccounts = () => ({ ...query(fixtureAccounts), save: mutation });
+export const useFinanceSuppliers = () => ({ ...query(), save: mutation });
 export const useFinanceRecurrences = () => ({
   ...query(),
   deletePayableSeries: mutation,

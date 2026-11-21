@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PeriodFilter } from "@/components/PeriodFilter";
 import { PayableAttachments } from "@/components/PayableAttachments";
+import { PayableSupplierField } from "@/components/PayableSupplierField";
 import { uploadPayableAttachments } from "@/lib/payable-attachments";
 import { FinanceTable } from "@/components/FinanceTable";
 import { FinanceBankBadge } from "@/components/FinanceBankBadge";
@@ -1044,17 +1045,22 @@ export function EnterpriseFinance({
                   onChange={(e) => setDraft({ ...draft, due_on: e.target.value })}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="finance-party">
-                  {draft.kind === "payable" ? "Fornecedor / favorecido" : "Cliente / origem"}
-                </Label>
-                <Input
-                  id="finance-party"
-                  maxLength={500}
+              {draft.kind === "payable" ? (
+                <PayableSupplierField
                   value={draft.counterparty}
-                  onChange={(e) => setDraft({ ...draft, counterparty: e.target.value })}
+                  onChange={(counterparty) => setDraft({ ...draft, counterparty })}
                 />
-              </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="finance-party">Cliente / origem</Label>
+                  <Input
+                    id="finance-party"
+                    maxLength={500}
+                    value={draft.counterparty}
+                    onChange={(e) => setDraft({ ...draft, counterparty: e.target.value })}
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="finance-bank">
                   Banco / conta {draft.kind === "receivable" ? "de entrada" : "de saída"}
