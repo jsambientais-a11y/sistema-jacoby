@@ -1,6 +1,46 @@
 import type { FinanceCalculationDetail } from "./finance-calculation-detail";
 import type { FinanceIssuer } from "./finance-issuer";
 export type FinanceKind = "payable" | "receivable";
+
+export function centerAvailableForBank(
+  center: { bank_account_id?: string | null } | undefined,
+  bankId: string | null | undefined,
+) {
+  return !center?.bank_account_id || center.bank_account_id === bankId;
+}
+
+export function normalizePayableCategories(names: string[]) {
+  const categories = new Map<string, string>();
+  for (const name of names) {
+    const trimmed = name.trim();
+    const key = trimmed.toLocaleLowerCase("pt-BR");
+    if (trimmed && !categories.has(key)) categories.set(key, trimmed);
+  }
+  return [...categories.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+export function payableCategoryOptions(
+  accounts: FinanceAccount[],
+  bankId: string,
+  centerId: string,
+  bankCategories: string[] = [],
+) {
+  if (bankId && bankCategories.length > 0) return normalizePayableCategories(bankCategories);
+
+  return normalizePayableCategories(
+    accounts
+      .filter(
+        (account) =>
+          account.kind === "payable" &&
+          !account.deleted_at &&
+          (bankId
+            ? account.bank_account_id === bankId
+            : !account.bank_account_id && (account.cost_center_id || "") === centerId),
+      )
+      .map((account) => account.category),
+  );
+}
+
 export type FinanceAccount = {
   id: string;
   kind: FinanceKind;

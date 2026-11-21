@@ -29,7 +29,11 @@ import {
   type CreditCard,
   type CardPurchase,
 } from "@/lib/credit-cards";
-import { localFinanceToday, parseFinanceMoney } from "@/lib/enterprise-finance";
+import {
+  centerAvailableForBank,
+  localFinanceToday,
+  parseFinanceMoney,
+} from "@/lib/enterprise-finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -987,7 +991,9 @@ function CreditCardsPage() {
                     {centers.data
                       ?.filter(
                         (c) =>
-                          (c.active && compatibleCenter(c, "payable")) ||
+                          (c.active &&
+                            compatibleCenter(c, "payable") &&
+                            centerAvailableForBank(c, selected?.bank_account_id)) ||
                           c.id === purchaseDraft.center,
                       )
                       .map((c) => (

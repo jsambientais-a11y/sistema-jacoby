@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { parseBankBalance } from "@/lib/finance-reports";
-import { localFinanceToday } from "@/lib/enterprise-finance";
+import { localFinanceToday, normalizePayableCategories } from "@/lib/enterprise-finance";
+import { Textarea } from "@/components/ui/textarea";
 import { BankBalanceCells } from "@/components/BankBalanceCells";
 import { toast } from "sonner";
 export const Route = createFileRoute("/_app/centros-de-custo")({ component: CostCentersPage });
@@ -30,6 +31,8 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
     old?: CostCenter;
     balance?: string;
     reference?: string;
+    categories?: string;
+    bankId?: string;
   } | null>(null);
   const fail = (e: unknown) =>
     toast.error(e instanceof Error ? e.message : "Não foi possível salvar.");
@@ -43,6 +46,13 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
     e.preventDefault();
     if (!draft) return;
     try {
+      const payableCategories = normalizePayableCategories(draft.categories?.split("\n") ?? []);
+      if (
+        bank &&
+        (payableCategories.length > 30 || payableCategories.some((name) => name.length > 200))
+      ) {
+        throw new Error("Informe até 30 categorias com até 200 caracteres cada.");
+      }
       await centers.save.mutateAsync({
         old: draft.old,
         values: bank
@@ -50,8 +60,17 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
               name: draft.name.trim(),
               opening_balance_cents: draft.balance?.trim() ? parseBankBalance(draft.balance) : null,
               opening_on: draft.balance?.trim() ? draft.reference || localFinanceToday() : null,
+              ...(draft.old?.payable_categories || payableCategories.length
+                ? { payable_categories: payableCategories }
+                : {}),
             }
-          : { name: draft.name.trim(), kind: draft.kind },
+          : {
+              name: draft.name.trim(),
+              kind: draft.kind,
+              ...(draft.old?.bank_account_id !== undefined || draft.bankId
+                ? { bank_account_id: draft.bankId || null }
+                : {}),
+            },
       });
       setDraft(null);
       toast.success("Cadastro salvo.");
@@ -111,7 +130,13 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
             <tr className="border-b">
               <th className="p-4">Nome</th>
               <th>Aplicação</th>
-              {bank && <th>Saldo da conta</th>}
+              {bank && (
+                <>
+                  <th>Saldo da conta</th>
+                  <th>Categorias de despesas</th>
+                </>
+              )}
+              {!bank && <th>Conta vinculada</th>}
               <th>Situação</th>
               <th>Ações</th>
             </tr>
@@ -124,6 +149,19 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
                 {bank && (
                   <td>
                     <BankBalanceCells bank={c} />
+                  </td>
+                )}
+                {bank && (
+                  <td className="pr-3 text-muted-foreground">
+                    {c.payable_categories?.length || "Nenhuma cadastrada"}
+                  </td>
+                )}
+                {!bank && (
+                  <td className="pr-3 text-muted-foreground">
+                    {c.bank_account_id
+                      ? banks.data?.find((item) => item.id === c.bank_account_id)?.name ||
+                        "Conta vinculada"
+                      : "Todas as contas"}
                   </td>
                 )}
                 <td>{c.active ? "Ativo" : "Desativado"}</td>
@@ -144,6 +182,8 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
                                   .toFixed(2)
                                   .replace(".", ","),
                           reference: c.opening_on || localFinanceToday(),
+                          categories: c.payable_categories?.join("\n"),
+                          bankId: c.bank_account_id || "",
                         })
                       }
                     >
@@ -174,7 +214,7 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={bank ? 5 : 4} className="p-8 text-center text-muted-foreground">
+                <td colSpan={bank ? 6 : 5} className="p-8 text-center text-muted-foreground">
                   {centers.isLoading ? "Carregando…" : "Nenhum cadastro encontrado."}
                 </td>
               </tr>
@@ -188,7 +228,7 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
           if (!open) setDraft(null);
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogTitle>
             {draft?.old ? "Editar" : "Novo"} {singular}
           </DialogTitle>
@@ -237,6 +277,48 @@ export function FinanceRegistry({ bank = false }: { bank?: boolean }) {
                     Informe o saldo no início desse dia. Baixas a partir dessa data serão somadas ou
                     descontadas. Deixe vazio para definir depois; zero significa saldo confirmado em
                     R$ 0,00. Editar a referência recalcula os relatórios.
+                  </p>
+                </div>
+              )}
+              {bank && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="bank-payable-categories">Categorias de despesas</Label>
+                  <Textarea
+                    id="bank-payable-categories"
+                    rows={3}
+                    placeholder={"Mercado\nMoradia\nTransporte"}
+                    value={draft.categories || ""}
+                    onChange={(e) => setDraft({ ...draft, categories: e.target.value })}
+                    aria-describedby="bank-payable-categories-help"
+                  />
+                  <p id="bank-payable-categories-help" className="text-xs text-muted-foreground">
+                    Uma categoria por linha. A lista aparece ao selecionar esta conta em Contas a
+                    pagar.
+                  </p>
+                </div>
+              )}
+              {!bank && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="cc-bank">Conta vinculada</Label>
+                  <select
+                    id="cc-bank"
+                    className="h-10 w-full rounded-md border bg-background px-3"
+                    value={draft.bankId || ""}
+                    onChange={(e) => setDraft({ ...draft, bankId: e.target.value })}
+                    aria-describedby="cc-bank-help"
+                  >
+                    <option value="">Todas as contas</option>
+                    {(banks.data || [])
+                      .filter((item) => item.active || item.id === draft.bankId)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                          {item.active ? "" : " (desativada)"}
+                        </option>
+                      ))}
+                  </select>
+                  <p id="cc-bank-help" className="text-xs text-muted-foreground">
+                    Selecione uma conta para disponibilizar este centro apenas nela.
                   </p>
                 </div>
               )}

@@ -23,9 +23,11 @@ import { useBillingFlowData } from "@/hooks/use-billing-flow";
 import { billingAgreement } from "@/lib/billing-agreement";
 import { toReceivable, inPeriod, type Period, settlementInput } from "@/lib/receivables";
 import {
+  centerAvailableForBank,
   localFinanceToday,
   manualFinanceRow,
   parseFinanceMoney,
+  payableCategoryOptions,
   summarizeFinance,
   type FinanceRow,
   type FinanceAccount,
@@ -164,14 +166,23 @@ export function EnterpriseFinance({
   ];
   const issuers = financeIssuerOptions([...(accounts.data || []).map(toFinanceRow), ...billing]);
   const issuerInScope = (r: FinanceRow) => payable || matchesFinanceIssuer(r, issuer);
-  const payableCategories = [
-    ...new Set(
-      (accounts.data || [])
-        .filter((account) => account.kind === "payable")
-        .map((account) => account.category)
-        .filter(Boolean),
-    ),
-  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const centerForChangedBank = (centerId: string, bankId: string) =>
+    centerAvailableForBank(
+      centers.data?.find((center) => center.id === centerId),
+      bankId,
+    )
+      ? centerId
+      : "";
+  const draftBank = banks.data?.find((bank) => bank.id === draft?.bank_account_id);
+  const draftCategoryOptions =
+    draft?.kind === "payable"
+      ? payableCategoryOptions(
+          accounts.data || [],
+          draft.bank_account_id,
+          draft.cost_center_id,
+          draftBank?.payable_categories,
+        )
+      : [];
   const payableTags = [
     ...new Set(
       (accounts.data || [])
@@ -181,6 +192,20 @@ export function EnterpriseFinance({
   ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   const matchesSelection = (selected: string[], value?: string | null) =>
     !selected.length || selected.includes(value || "");
+  const payableCategories = [
+    ...new Set([
+      ...payableFilters.categories.filter(Boolean),
+      ...(accounts.data || [])
+        .filter(
+          (account) =>
+            account.kind === "payable" &&
+            matchesSelection(payableFilters.centers, account.cost_center_id) &&
+            matchesSelection(payableFilters.banks, account.bank_account_id),
+        )
+        .map((account) => account.category)
+        .filter(Boolean),
+    ]),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   const detailInScope = (r: FinanceRow) =>
     issuerInScope(r) &&
     inPeriod(r.settledOn || r.dueOn, period) &&
@@ -848,6 +873,35 @@ export function EnterpriseFinance({
               }}
             >
               <div>
+                <Label htmlFor="receipt-bank">
+                  {classification.row.kind === "receivable"
+                    ? "Banco / conta em que entrou"
+                    : "Banco / conta de saída"}
+                </Label>
+                <select
+                  id="receipt-bank"
+                  className={selectClass}
+                  value={classification.bank}
+                  onChange={(e) =>
+                    setClassification({
+                      ...classification,
+                      bank: e.target.value,
+                      center: centerForChangedBank(classification.center, e.target.value),
+                    })
+                  }
+                >
+                  <option value="">Não informado</option>
+                  {(banks.data || [])
+                    .filter((b) => b.active || b.id === classification.bank)
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                        {b.active ? "" : " (desativado)"}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
                 <Label htmlFor="receipt-center">Centro de custo</Label>
                 <select
                   id="receipt-center"
@@ -859,36 +913,15 @@ export function EnterpriseFinance({
                   {(centers.data || [])
                     .filter(
                       (c) =>
-                        (c.active && compatibleCenter(c, classification.row.kind)) ||
+                        (c.active &&
+                          compatibleCenter(c, classification.row.kind) &&
+                          centerAvailableForBank(c, classification.bank)) ||
                         c.id === classification.center,
                     )
                     .map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                         {c.active ? "" : " (desativado)"}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <Label htmlFor="receipt-bank">
-                  {classification.row.kind === "receivable"
-                    ? "Banco / conta em que entrou"
-                    : "Banco / conta de saída"}
-                </Label>
-                <select
-                  id="receipt-bank"
-                  className={selectClass}
-                  value={classification.bank}
-                  onChange={(e) => setClassification({ ...classification, bank: e.target.value })}
-                >
-                  <option value="">Não informado</option>
-                  {(banks.data || [])
-                    .filter((b) => b.active || b.id === classification.bank)
-                    .map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                        {b.active ? "" : " (desativado)"}
                       </option>
                     ))}
                 </select>
@@ -980,34 +1013,83 @@ export function EnterpriseFinance({
                 />
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="finance-bank">
+                  Banco / conta {draft.kind === "receivable" ? "de entrada" : "de saída"}
+                </Label>
+                <select
+                  id="finance-bank"
+                  className={selectClass}
+                  value={draft.bank_account_id}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      bank_account_id: e.target.value,
+                      cost_center_id: centerForChangedBank(draft.cost_center_id, e.target.value),
+                    })
+                  }
+                >
+                  <option value="">Não informado</option>
+                  {(banks.data || [])
+                    .filter((b) => b.active || b.id === draft.bank_account_id)
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                        {b.active ? "" : " (desativado)"}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="finance-center">Centro de custo</Label>
+                <select
+                  id="finance-center"
+                  className={selectClass}
+                  value={draft.cost_center_id}
+                  onChange={(e) => setDraft({ ...draft, cost_center_id: e.target.value })}
+                >
+                  <option value="">Sem centro de custo</option>
+                  {(centers.data || [])
+                    .filter(
+                      (c) =>
+                        (c.active &&
+                          compatibleCenter(c, draft.kind) &&
+                          centerAvailableForBank(c, draft.bank_account_id)) ||
+                        c.id === draft.cost_center_id,
+                    )
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.active ? "" : " (desativado)"}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="finance-category">Categoria</Label>
                 <Input
                   id="finance-category"
                   list={draft.kind === "payable" ? "finance-center-categories" : undefined}
                   maxLength={200}
-                  placeholder="Ex.: aluguel, pessoal, serviços"
+                  placeholder={
+                    draftCategoryOptions.length
+                      ? "Escolha ou digite uma categoria"
+                      : "Ex.: aluguel, pessoal, serviços"
+                  }
                   value={draft.category}
                   onChange={(e) => setDraft({ ...draft, category: e.target.value })}
                 />
+                {draft.kind === "payable" && draft.bank_account_id && (
+                  <p className="text-xs text-muted-foreground">
+                    {draftCategoryOptions.length
+                      ? "Sugestões da conta selecionada."
+                      : "Para cadastrar sugestões desta conta, edite-a em Bancos e contas."}
+                  </p>
+                )}
                 {draft.kind === "payable" && (
                   <datalist id="finance-center-categories">
-                    {[
-                      ...new Set(
-                        (accounts.data || [])
-                          .filter(
-                            (account) =>
-                              account.kind === "payable" &&
-                              !account.deleted_at &&
-                              (account.cost_center_id || "") === draft.cost_center_id,
-                          )
-                          .map((account) => account.category)
-                          .filter(Boolean),
-                      ),
-                    ]
-                      .sort()
-                      .map((category) => (
-                        <option key={category} value={category} />
-                      ))}
+                    {draftCategoryOptions.map((category) => (
+                      <option key={category} value={category} />
+                    ))}
                   </datalist>
                 )}
               </div>
@@ -1023,50 +1105,6 @@ export function EnterpriseFinance({
                   <p className="text-xs text-muted-foreground">Separe as etiquetas com vírgulas.</p>
                 </div>
               )}
-              <div className="space-y-1.5">
-                <Label htmlFor="finance-center">Centro de custo</Label>
-                <select
-                  id="finance-center"
-                  className={selectClass}
-                  value={draft.cost_center_id}
-                  onChange={(e) => setDraft({ ...draft, cost_center_id: e.target.value })}
-                >
-                  <option value="">Sem centro de custo</option>
-                  {(centers.data || [])
-                    .filter(
-                      (c) =>
-                        (c.active && compatibleCenter(c, draft.kind)) ||
-                        c.id === draft.cost_center_id,
-                    )
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                        {c.active ? "" : " (desativado)"}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="finance-bank">
-                  Banco / conta {draft.kind === "receivable" ? "de entrada" : "de saída"}
-                </Label>
-                <select
-                  id="finance-bank"
-                  className={selectClass}
-                  value={draft.bank_account_id}
-                  onChange={(e) => setDraft({ ...draft, bank_account_id: e.target.value })}
-                >
-                  <option value="">Não informado</option>
-                  {(banks.data || [])
-                    .filter((b) => b.active || b.id === draft.bank_account_id)
-                    .map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                        {b.active ? "" : " (desativado)"}
-                      </option>
-                    ))}
-                </select>
-              </div>
               {draft.kind === "payable" && (
                 <div className="sm:col-span-2">
                   <InlineRecurrenceFields

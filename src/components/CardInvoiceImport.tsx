@@ -7,7 +7,11 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { useCreditCards } from "@/hooks/use-credit-cards";
 import { useCostCenters, compatibleCenter } from "@/hooks/use-cost-centers";
 import { cardMoney, type CreditCard, type CardPurchase } from "@/lib/credit-cards";
-import { parseFinanceMoney, localFinanceToday } from "@/lib/enterprise-finance";
+import {
+  centerAvailableForBank,
+  parseFinanceMoney,
+  localFinanceToday,
+} from "@/lib/enterprise-finance";
 import {
   readCsv,
   guessCsvColumns,
@@ -355,7 +359,12 @@ export function CardInvoiceImport({
                     >
                       <option value="">Sem centro</option>
                       {centers.data
-                        ?.filter((c) => c.active && compatibleCenter(c, "payable"))
+                        ?.filter(
+                          (c) =>
+                            c.active &&
+                            compatibleCenter(c, "payable") &&
+                            centerAvailableForBank(c, card.bank_account_id),
+                        )
                         .map((c) => (
                           <option value={c.id} key={c.id}>
                             {c.name}
@@ -430,7 +439,12 @@ export function CardInvoiceImport({
                             >
                               <option value="">Sem centro</option>
                               {centers.data
-                                ?.filter((c) => c.active && compatibleCenter(c, "payable"))
+                                ?.filter(
+                                  (c) =>
+                                    c.active &&
+                                    compatibleCenter(c, "payable") &&
+                                    centerAvailableForBank(c, card.bank_account_id),
+                                )
                                 .map((c) => (
                                   <option value={c.id} key={c.id}>
                                     {c.name}

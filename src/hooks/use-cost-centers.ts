@@ -9,6 +9,8 @@ export type CostCenter = {
   updated_at: string;
   opening_balance_cents?: number | null;
   opening_on?: string | null;
+  payable_categories?: string[];
+  bank_account_id?: string | null;
 };
 export const compatibleCenter = (center: CostCenter, kind: "payable" | "receivable") =>
   center.kind === "both" || center.kind === (kind === "payable" ? "expense" : "income");
